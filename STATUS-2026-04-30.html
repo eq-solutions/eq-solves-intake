@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EQ Intake — Session Status (30 Apr 2026)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --primary: #3DA8D8;
+      --deep: #2986B4;
+      --ice: #EAF5FB;
+      --ink: #1A1A2E;
+      --muted: #5C5C6E;
+      --line: #E2E8F0;
+      --green: #0A6E3A;
+      --green-bg: #E6F4EA;
+      --amber: #8B6914;
+      --amber-bg: #FEF7E0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      color: var(--ink);
+      background: #FAFBFC;
+      line-height: 1.55;
+      font-size: 15px;
+    }
+    body { max-width: 880px; margin: 0 auto; padding: 48px 32px 80px; }
+    header { padding-bottom: 32px; border-bottom: 1px solid var(--line); margin-bottom: 40px; }
+    header h1 { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; }
+    header .subtitle { color: var(--muted); margin-top: 8px; font-size: 16px; }
+    header .date { color: var(--primary); font-weight: 600; margin-top: 4px; font-size: 14px; }
+    section { margin-bottom: 48px; }
+    h2 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--primary);
+      display: inline-block;
+    }
+    h3 { font-size: 17px; font-weight: 600; margin: 24px 0 8px; color: var(--deep); }
+    p { margin-bottom: 12px; }
+    .lede { font-size: 17px; line-height: 1.6; color: var(--ink); }
+    code, .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; }
+    .inline-code {
+      background: var(--ice);
+      padding: 1px 6px;
+      border-radius: 4px;
+      color: var(--deep);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+    .callout {
+      background: var(--ice);
+      border-left: 3px solid var(--primary);
+      padding: 14px 18px;
+      margin: 16px 0;
+      border-radius: 4px;
+    }
+    .callout-amber {
+      background: var(--amber-bg);
+      border-left-color: var(--amber);
+    }
+    .callout-green {
+      background: var(--green-bg);
+      border-left-color: var(--green);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 14px;
+    }
+    th {
+      text-align: left;
+      padding: 10px 12px;
+      background: var(--ice);
+      font-weight: 600;
+      color: var(--deep);
+      border-bottom: 1px solid var(--line);
+    }
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    tr:last-child td { border-bottom: none; }
+    .status-ok { color: var(--green); font-weight: 600; }
+    .status-pending { color: var(--amber); font-weight: 600; }
+    .status-parked { color: var(--muted); font-style: italic; }
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 600;
+      background: var(--ice);
+      color: var(--deep);
+    }
+    .pill-done { background: var(--green-bg); color: var(--green); }
+    .pill-parked { background: #F1F5F9; color: var(--muted); }
+    ul { padding-left: 22px; margin-bottom: 12px; }
+    ul li { margin-bottom: 6px; }
+    .iteration {
+      border: 1px solid var(--line);
+      padding: 16px 20px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+    .iteration h3 {
+      margin-top: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .iteration-num {
+      display: inline-block;
+      background: var(--primary);
+      color: white;
+      width: 26px;
+      height: 26px;
+      border-radius: 4px;
+      text-align: center;
+      line-height: 26px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .iteration-meta {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 6px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    pre {
+      background: var(--ink);
+      color: #E2E8F0;
+      padding: 14px 18px;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      margin: 12px 0;
+    }
+    .toc {
+      background: white;
+      border: 1px solid var(--line);
+      padding: 16px 20px;
+      border-radius: 6px;
+      margin-bottom: 40px;
+    }
+    .toc ul { padding-left: 18px; margin-bottom: 0; }
+    .toc a { color: var(--deep); text-decoration: none; }
+    .toc a:hover { color: var(--primary); text-decoration: underline; }
+    footer {
+      margin-top: 64px;
+      padding-top: 24px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .key-stat {
+      display: inline-block;
+      background: white;
+      border: 1px solid var(--line);
+      padding: 16px 20px;
+      border-radius: 6px;
+      margin: 4px 8px 4px 0;
+      min-width: 140px;
+    }
+    .key-stat-num {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--primary);
+      line-height: 1;
+      display: block;
+    }
+    .key-stat-label {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-top: 6px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>EQ Intake — Session Status</h1>
+    <div class="subtitle">What landed, what's verified, what's parked.</div>
+    <div class="date">30 April 2026 · power-on session</div>
+  </header>
+
+  <nav class="toc">
+    <strong style="color: var(--deep);">Contents</strong>
+    <ul>
+      <li><a href="#frame">The frame</a></li>
+      <li><a href="#shipped">What shipped this session</a></li>
+      <li><a href="#state">Current build state</a></li>
+      <li><a href="#untested">Honest read on what's untested</a></li>
+      <li><a href="#parked">Parked work · what's next</a></li>
+      <li><a href="#run">How to run it</a></li>
+    </ul>
+  </nav>
+
+  <section id="frame">
+    <h2>The frame</h2>
+    <p class="lede">EQ is the layer between systems trade subbies are forced to use that don't talk to each other. Not a SimPRO replacement. Not a Xero competitor. The thing in the middle that means apprentices don't do the same induction four times a week and bookkeepers don't retype timesheets at 8pm on a Friday.</p>
+    <p>Phase 1 is plumbing. The canonical schemas, the validation engine, the AI mapping layer, the bidirectional <span class="inline-code">EQ Format</span> surface. The plumbing serves specific named moments of pain — when it stops doing that, we've drifted.</p>
+    <div class="callout">
+      <strong>Pricing read confirmed this session:</strong> same product, deeper integrations as the crew grows. A 5-person crew uses Cards for inductions and Format to clean up one supplier's CSV per quarter. A 200-person crew uses both plus the canonical spine, plus client-portal exports, plus accounting write-back. No tiered SKUs, no feature gates — EQ does more for you when you connect more systems. Memory: <span class="inline-code">eq_pricing_frame</span>.
+    </div>
+  </section>
+
+  <section id="shipped">
+    <h2>What shipped this session</h2>
+    <div>
+      <div class="key-stat">
+        <span class="key-stat-num">10</span>
+        <div class="key-stat-label">Iterations</div>
+      </div>
+      <div class="key-stat">
+        <span class="key-stat-num">8/8</span>
+        <div class="key-stat-label">Punchlist items</div>
+      </div>
+      <div class="key-stat">
+        <span class="key-stat-num">+5</span>
+        <div class="key-stat-label">Asset schema fields</div>
+      </div>
+      <div class="key-stat">
+        <span class="key-stat-num">175</span>
+        <div class="key-stat-label">Tests passing</div>
+      </div>
+    </div>
+
+    <h3>Phase A — alias coverage and schema redirect</h3>
+
+    <div class="iteration">
+      <h3><span class="iteration-num">1</span> Widened <span class="inline-code">asset.schema.json</span> source-aliases</h3>
+      <p>~80 new aliases across all properties (external_id, asset_type, name, make, model, serial_number, rating, install_date, criticality, location_in_site, etc). Fixed a real bug in the process: <span class="inline-code">description</span> was an alias on both <span class="inline-code">name</span> and <span class="inline-code">notes</span>, making column-mapping ambiguous. Kept it on name (where it almost always belongs in real registers).</p>
+      <div class="iteration-meta">173 tests passed · schema lint 10/10</div>
+    </div>
+
+    <div class="iteration">
+      <h3><span class="iteration-num">2</span> Schema-extension redirect mid-iteration</h3>
+      <p>Original item 2 was a KNX-heuristic widening in the SimPRO demo. You sent real PPM register / scope / schedule files plus a Maximo-shaped data-centre BREAKER spreadsheet with the note "KNX was just an example." Stopped the loop, read everything, agreed on a hybrid shape, then shipped:</p>
+      <ul>
+        <li><span class="inline-code">condition</span> — enum (good/fair/poor/needs_replacement/unknown)</li>
+        <li><span class="inline-code">ppm_frequency</span> — free text ("6-Monthly May/Nov", "Annual", "Q")</li>
+        <li><span class="inline-code">client_classification</span> — jsonb, preserves customer-imposed taxonomy verbatim (Maximo IAM values, etc)</li>
+        <li><span class="inline-code">defects_summary</span> — one-line denormalised text over the per-defect records that come later</li>
+      </ul>
+      <p>Four new related entities (<span class="inline-code">service_visit</span>, <span class="inline-code">service_task_completion</span>, <span class="inline-code">asset_test_result</span>, <span class="inline-code">asset_defect</span>) sketched in detail in <span class="inline-code">PHASE-2-3-BACKLOG.md</span> — parked for a focused-session build because the 1:N entities need design-care, not loop iteration.</p>
+      <div class="iteration-meta">173 tests passed · schema lint 10/10</div>
+    </div>
+
+    <div class="iteration">
+      <h3><span class="iteration-num">3</span> Cleaned up the alarming 10K-perf test</h3>
+      <p>Output used to read <span class="inline-code">10000 flagged 0 valid</span> — looked broken, was actually a test-data artefact (every synthetic row carried a sensitive cost field, so every row got the <span class="inline-code">sensitive_field</span> advisory). Redistributed the synthetic mix into 8500 clean / 1300 flagged (inactive without end_date) / 200 rejected (blank first_name). Output now reads honestly. Added explicit bucket-count assertions so future regressions don't slip past silently.</p>
+      <div class="iteration-meta">10000 rows in ~130ms · 173 tests passed</div>
+    </div>
+
+    <h3>Phase B — EQ Format derive surface</h3>
+
+    <div class="iteration">
+      <h3><span class="iteration-num">4a</span> <span class="inline-code">src/derive/</span> module + <span class="inline-code">/api/format/derive</span> endpoint + BOM profile</h3>
+      <p>Built the profile-registry shape so adding a future profile is a single-file addition, not an engine reshape. Each profile declares an <span class="inline-code">inputShape</span> (<span class="inline-code">simpro-quote</span> / <span class="inline-code">canonical</span> / <span class="inline-code">raw</span>) so the dispatch knows whether to feed raw parsed rows or canonical validated rows. Output of the BOM profile byte-matches <span class="inline-code">demos/simpro-quote-781/bom.csv</span> — the smoke test enforces that any future drift is deliberate, not accidental.</p>
+      <div class="iteration-meta">173 tests passed · typecheck clean</div>
+    </div>
+
+    <div class="iteration">
+      <h3><span class="iteration-num">4b</span> Device-register profile</h3>
+      <p>Ported the addressable-device expansion logic. Generalised the internal language from "KNX device" to "addressable device" so DALI / BACnet / Modbus can be peer profiles later. The KNX-flavoured term list is the starter set. Smoke test now byte-checks both BOM and device-register against the demo fixtures.</p>
+      <div class="iteration-meta">173 tests passed · typecheck clean</div>
+    </div>
+
+    <div class="iteration">
+      <h3><span class="iteration-num">4c</span> Labour-summary profile + UI download buttons</h3>
+      <p>Third (and final) SimPRO profile. Drops zero-hour placeholder lines. Smoke checks all three byte-for-byte.</p>
+      <p>UI: <span class="inline-code">index.html</span> gained a <span class="inline-code">#derived-exports</span> section between the result table and the actions row. <span class="inline-code">main.ts</span> added <span class="inline-code">renderDerivedExports()</span> which fetches <span class="inline-code">/api/format/profiles</span> after every successful validation, filters by <span class="inline-code">inputShape</span>, and renders one Download button per applicable profile. SimPRO-shape profiles only appear when the source CSV has <span class="inline-code">Item Type</span> + <span class="inline-code">Part Description</span> — so the user isn't offered nonsensical reshapes.</p>
+      <div class="iteration-meta">173 tests passed · typecheck clean</div>
+    </div>
+
+    <h3>Phase C — power-on session (5 → 8)</h3>
+
+    <div class="iteration">
+      <h3><span class="iteration-num">5</span> Real AST-depth fix in <span class="inline-code">cross-field-eval</span></h3>
+      <p>The historical <span class="inline-code">MAX_DEPTH = 32</span> counted parser recursion, not AST node depth. A chain like <span class="inline-code">a==1 AND b==1 AND ... AND h==1</span> has parser recursion of about 5 but AST depth of 9 — so deeply-nested-but-flat chains slipped through. Replaced with a post-parse <span class="inline-code">astDepth()</span> walker and <span class="inline-code">MAX_AST_DEPTH = 8</span>. New test asserts the boundary (9-deep throws, 8-deep compiles).</p>
+      <div class="iteration-meta">174 tests passed · typecheck clean</div>
+    </div>
+
+    <div class="iteration">
+      <h3><span class="iteration-num">6</span> <span class="inline-code">noUncheckedIndexedAccess: true</span> in <span class="inline-code">@eq/validation</span></h3>
+      <p>33 error sites fixed across coerce-date (regex match groups), coerce-number (accounting-negative match), cross-field-eval (tokeniser <span class="inline-code">src[i]</span> with bounded loops, parser tokens[pos] with eof sentinel, getField path traversal), signature-hash (non-empty-checked sorted entries), validate (rows[rowIdx] inside bounded loop, FK ref <span class="inline-code">.split('.')[0]</span>). Non-null assertions only where the invariant is explicit in code. Zero <span class="inline-code">as</span> casts. The validation package's type guarantees now match every other package in the workspace.</p>
+      <div class="iteration-meta">174 tests passed · typecheck clean</div>
+    </div>
+
+    <div class="iteration">
+      <h3><span class="iteration-num">7</span> Reshape-out demo — canonical register → next month's PPM SOW</h3>
+      <p>New folder <span class="inline-code">demos/reshape-out-ppm-sow/</span> with synthetic 20-asset register × 4 generic sites × annual PPM schedule × May 2026 visit-day allocation. <span class="inline-code">derive.mjs</span> (pure Node ESM, no deps) computes which assets need which tasks on which day per visit, emits a <span class="inline-code">sow-asset-schedule.csv</span> with ☐/— tickboxes per applicable task, plus a <span class="inline-code">sow-summary-&lt;site&gt;.csv</span> form per visit.</p>
+      <p>Output shape matches real PPM SOW spreadsheets — same columns, same tickbox pattern, same per-site summary template. Generic placeholder names only (Site-Alpha / Bravo / Charlie / Delta). README ties it to the conduit thesis: same product for a 5-person crew with one client and a 200-person crew with thirty — second crew just has more rows.</p>
+      <div class="iteration-meta">Pure Node · zero deps · output byte-clean</div>
+    </div>
+
+    <div class="iteration">
+      <h3><span class="iteration-num">8</span> Local "save mapping as template" in <span class="inline-code">@eq/format-ui</span></h3>
+      <p>Two new endpoints: <span class="inline-code">POST /api/templates/find</span> and <span class="inline-code">POST /api/templates/save</span>. Both compute the signature hash server-side via <span class="inline-code">@eq/validation</span>'s <span class="inline-code">computeSignatureHash</span> and persist to <span class="inline-code">.templates/&lt;hash&gt;.json</span> (gitignored).</p>
+      <p>UI flow: every CSV ingest first checks for a template match. If hit, the saved mapping applies directly and a green banner shows "Template matched — no AI call this time." If miss, the heuristic mapper runs as before. "Save as template" button persists the current mapping for next time.</p>
+      <div class="callout callout-green">
+        <strong>First end-to-end demo of the signature-hash cache hypothesis</strong> from <span class="inline-code">EQ-INTAKE-ARCHITECTURE.md</span>. The local-file shape is compatible with the future <span class="inline-code">eq_intake_find_template_by_signature</span> Supabase RPC — when the canonical project lands, the swap is two URL changes.
+      </div>
+      <div class="iteration-meta">174 tests passed · typecheck clean</div>
+    </div>
+  </section>
+
+  <section id="state">
+    <h2>Current build state</h2>
+    <table>
+      <thead>
+        <tr><th>Check</th><th>Result</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="inline-code">pnpm schemas:lint</span></td>
+          <td class="status-ok">10/10 schemas valid against JSON Schema draft 2020-12</td>
+        </tr>
+        <tr>
+          <td><span class="inline-code">pnpm -r build</span></td>
+          <td class="status-ok">All 5 packages build clean</td>
+        </tr>
+        <tr>
+          <td><span class="inline-code">pnpm -r test</span></td>
+          <td class="status-ok">175 passed, 1 skipped (integration, intentionally gated)</td>
+        </tr>
+        <tr>
+          <td><span class="inline-code">pnpm --filter @eq/validation typecheck</span></td>
+          <td class="status-ok">Clean with <span class="inline-code">noUncheckedIndexedAccess: true</span></td>
+        </tr>
+        <tr>
+          <td><span class="inline-code">pnpm --filter @eq/format-ui typecheck</span></td>
+          <td class="status-ok">Clean</td>
+        </tr>
+        <tr>
+          <td>Derive smoke (BOM + device-register + labour-summary)</td>
+          <td class="status-ok">All three byte-match demo fixtures</td>
+        </tr>
+        <tr>
+          <td>PPM SOW reshape-out</td>
+          <td class="status-ok">20 task rows + 4 site summary forms generated</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Package layout</h3>
+    <pre>eq-platform/
+├── packages/
+│   ├── eq-schemas/       10 canonical JSON Schemas + generated TS/Zod
+│   ├── eq-validation/    coercers, FK, cross-field, signature-hash,
+│   │                     processCapture (now hardened with
+│   │                     noUncheckedIndexedAccess: true)
+│   ├── eq-ai/            AnthropicProvider, fetch-based
+│   ├── eq-confirm-ui/    Phase-2 placeholder
+│   └── eq-format-ui/     Vite SPA + derive profile registry +
+│                         template cache (.templates/)
+└── demos/
+    ├── simpro-quote-781/         Cleanup-in demo (SimPRO → canonical)
+    └── reshape-out-ppm-sow/      Reshape-out demo (register → SOW)</pre>
+  </section>
+
+  <section id="untested">
+    <h2>Honest read on what's untested</h2>
+    <div class="callout callout-amber">
+      <strong>UI work in items 4c and 8 has not been browser-verified.</strong>
+      <p style="margin-top: 8px;">The download buttons (BOM, device-register, labour-summary), the cache-hit banner, the "Save as template" button — all typechecked, all API endpoints smoke-tested, but no human eyes have seen the DOM render. First dev-server session will surface any UI bugs.</p>
+      <p style="margin-top: 8px;">Verify with: <span class="inline-code">pnpm --filter @eq/format-ui dev</span> then drop the SimPRO sample in and walk through ingest → validate → derive → save.</p>
+    </div>
+    <p>Other gaps that haven't been closed and aren't loop-friendly:</p>
+    <ul>
+      <li>No canonical Supabase project provisioned. Cards still runs on its own separate project. Migration scripts <span class="inline-code">001/002/003</span> sit unrun.</li>
+      <li>No real users on EQ Format yet. The UI exists but Royce is its only user.</li>
+      <li>No deploy story. Format-ui is dev-only (Vite middleware exposes the API). Localhost only.</li>
+      <li><span class="inline-code">@vitest/coverage-v8</span> not wired. The 95%-line target from Phase 1 hasn't been measured.</li>
+      <li>No real <span class="inline-code">.knxproj</span> end-to-end. The KNX demo derives from a SimPRO quote, not from an actual ETS export.</li>
+    </ul>
+  </section>
+
+  <section id="parked">
+    <h2>Parked work · what's next</h2>
+    <p>These came up during scoping but aren't loop-iteration work. They live in <span class="inline-code">PHASE-2-3-BACKLOG.md</span> for focused-session pickups.</p>
+
+    <h3>PPM workflow canonical entities <span class="pill pill-parked">parked · Phase 2</span></h3>
+    <p>The schema-extension conversation surfaced four new related entities the canonical layer needs. The lighter additions to <span class="inline-code">asset</span> shipped in iteration 2. The 1:N entities need a focused session — FK directions, RLS posture, RPC surface, indexes for common queries.</p>
+    <table>
+      <thead>
+        <tr><th>Entity</th><th>Replaces</th><th>Key fields</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="inline-code">service_visit</span></td>
+          <td>The manual Master Schedule sheet</td>
+          <td>visit_id, site_id, scheduled_date, actual_date, crew_lead, client_job_code, status, logistics_notes</td>
+        </tr>
+        <tr>
+          <td><span class="inline-code">service_task_completion</span></td>
+          <td>The SOW Asset Schedule tickbox grid</td>
+          <td>visit_id, asset_id, task_type, completed, completed_at, tech, notes</td>
+        </tr>
+        <tr>
+          <td><span class="inline-code">asset_test_result</span></td>
+          <td>The "Last Thermal / Last RCD Test" fields on assets, plus the signed paper trail</td>
+          <td>asset_id, test_type, test_date, tested_by, licence_number, signature_attached, pass_fail, raw_values, action_taken_if_fail</td>
+        </tr>
+        <tr>
+          <td><span class="inline-code">asset_defect</span></td>
+          <td>The "Defects Outstanding" column with lifecycle</td>
+          <td>asset_id, raised_date, raised_by, severity, description, status, resolution_date, resolved_by, resolution_notes</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>Together they flip the workflow from "bookkeeper retypes Last-Thermal back into the register from filled-in paperwork" to "register is a computed view over visits + completions + tests + defects."</p>
+
+    <h3>Provisioning the canonical Supabase project <span class="pill pill-parked">parked · needs Royce</span></h3>
+    <p>Three migrations sit ready (<span class="inline-code">001_intake_spine.sql</span>, <span class="inline-code">002_intake_module_columns.sql</span>, <span class="inline-code">003_schema_version_columns.sql</span>). Apply against a fresh Supabase project, seed the schema registry, wire up the spine RPCs. Needs Royce's credentials and explicit SQL approval — not loop-safe.</p>
+
+    <h3>Cards-to-Intake migration scoping <span class="pill pill-parked">parked · Phase 2</span></h3>
+    <p>Per <span class="inline-code">EQ-CARDS-INTAKE-BRIDGE.md</span> (Path A decided). Diff Cards' <span class="inline-code">profiles</span> shape against canonical <span class="inline-code">staff</span>; decide whether licences live as <span class="inline-code">staff.licences[]</span> jsonb or a separate <span class="inline-code">licences</span> table with FK; pick a migration window. Pure docs work, no code.</p>
+
+    <h3>Real Akko KNX <span class="inline-code">.knxproj</span> end-to-end <span class="pill pill-parked">parked · needs Royce</span></h3>
+    <p>Get an actual <span class="inline-code">.knxproj</span> file from a recent job + Akko's supplier PO format. Build export profiles for both. Get a real island KNX job through end-to-end. Loop can't get those inputs.</p>
+
+    <h3>Coverage measurement <span class="pill pill-parked">parked · focused session</span></h3>
+    <p>Wire <span class="inline-code">@vitest/coverage-v8</span>, run, find the gaps. Need to honestly read whether the 95%-line target from Phase 1 is even calibrated to this package shape, or whether the fixture-driven tests are exercising the right surface.</p>
+
+    <h3>Multi-tab Excel paste tolerance in format-ui <span class="pill pill-parked">parked · Phase 2</span></h3>
+    <p>Workbooks with multiple sheets — let the user pick which sheet(s) to import, or auto-detect "this sheet is the staff list, this one is the asset register." Existing Phase 2 backlog item.</p>
+  </section>
+
+  <section id="run">
+    <h2>How to run it</h2>
+    <p>From <span class="inline-code">C:\Projects\eq-intake\eq-platform\</span>:</p>
+    <pre>pnpm install                # codegen runs automatically via prepare hook
+pnpm -r build               # all 5 packages
+pnpm -r test                # 175 unit tests + 1 integration cleanly skipped
+pnpm schemas:lint           # 10/10 schemas valid
+
+# UI dev loop (the active surface — first place to browser-verify
+# items 4c and 8 from this session)
+pnpm --filter @eq/format-ui dev
+# Browser opens at http://localhost:5173/
+
+# Real Anthropic call - costs ~$0.005 per run, gated on .env having the key
+pnpm test:integration</pre>
+
+    <p>Demo scripts (pure Node ESM, no deps):</p>
+    <pre>cd demos/simpro-quote-781
+node parse.mjs                  # SimPRO quote → BOM + device register + labour summary
+
+cd ../reshape-out-ppm-sow
+node derive.mjs                 # canonical register → next month's SOW spreadsheet</pre>
+  </section>
+
+  <footer>
+    <p>Living document. Cross-references: <span class="inline-code">EQ-AS-CONDUIT.md</span> (framing) · <span class="inline-code">HOW-WE-WORK-WITH-AI.md</span> (working principles) · <span class="inline-code">SESSION-LOG.md</span> (chronological session record) · <span class="inline-code">LOOP-PUNCHLIST.md</span> (the punchlist this session worked through) · <span class="inline-code">PHASE-2-3-BACKLOG.md</span> (everything deferred).</p>
+    <p style="margin-top: 8px;">EQ Solutions · 30 April 2026 · plumbing serves the moments, not the other way around.</p>
+  </footer>
+</body>
+</html>

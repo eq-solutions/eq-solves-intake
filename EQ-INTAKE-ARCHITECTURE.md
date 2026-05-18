@@ -1,0 +1,227 @@
+# EQ Intake — Architecture (v2)
+
+**Read `EQ-AS-CONDUIT.md` first.** That doc explains what we're building and why. This one is the technical shape.
+
+---
+
+## The shape
+
+```
+                 ┌──────────────────────────────────────────┐
+                 │  EQ Cards          EQ Import      EQ Capture │
+                 │  (mobile)          (desktop)      (vision)   │
+                 │  inductions        spreadsheets   paper      │
+                 │  prestarts         CSVs           PDFs       │
+                 │  SWMS              XLSXs          photos     │
+                 │  toolbox           multi-tab      emails     │
+                 │  incidents                                   │
+                 │  ITPs                                        │
+                 └──────────┬───────────────┬───────────────┬──┘
+                            │               │               │
+                            ▼               ▼               ▼
+              ┌──────────────────────────────────────────────┐
+              │   Canonical schema spine                     │
+              │   • One canonical shape per entity           │
+              │   • Validation engine                        │
+              │   • Multi-tenant                             │
+              │   • Audit trail per row, rollback per import │
+              │   • Schema versioning                        │
+              └──────┬───────────┬─────────┬─────────┬───────┘
+                     │           │         │         │
+        ┌────────────┘           │         │         └────────────┐
+        ▼                        ▼         ▼                      ▼
+   ┌─────────┐            ┌──────────┐ ┌─────────┐         ┌──────────────┐
+   │ Job-mgt │            │Accounting│ │ Client  │         │  Compliance  │
+   │ systems │            │ systems  │ │ portals │         │  bundles     │
+   │         │            │          │ │         │         │              │
+   │ SimPRO  │            │  Xero    │ │Equinix  │         │ Audit packs  │
+   │ AroFlo  │            │  MYOB    │ │NEXTDC   │         │ Insurance    │
+   │Workbench│            │  QB      │ │Hospital │         │  evidence    │
+   │ServiceM8│            │          │ │ networks│         │ Principal    │
+   │         │            │          │ │Councils │         │  contractor  │
+   └─────────┘            └──────────┘ └─────────┘         └──────────────┘
+```
+
+**Three doors in. Canonical layer in the middle. Every door out.** That's the whole shape.
+
+---
+
+## Why a canonical layer
+
+Without one: N input systems × M output systems = N×M point-to-point integrations, each one bespoke, each one breaking when one side changes.
+
+With one: each input system has one job (turn its data into the canonical shape). Each output system has one job (turn the canonical shape into its format). N + M integrations instead of N×M. A new client portal added later means one new export profile, not a refactor.
+
+The canonical layer is the only piece that needs to know about every kind of data flowing through. Everything else is replaceable.
+
+---
+
+## What lives in the spine
+
+A small set of canonical entities — the ones that show up in every trade business regardless of which job-management system they use:
+
+- **Staff** — employees, subbies, labour-hire, casuals, apprentices
+- **Sites** — wherever work happens
+- **Assets** — anything serviceable (switchboards, UPS, generators, fire pumps, AHUs, etc)
+- **Schedule assignments** — staff × site × date × hours
+- **SWMS** — Safe Work Method Statements
+- **Prestarts** — daily site/plant checks
+- **JSAs** — Job Safety Analyses
+- **Toolbox talks** — recorded site briefings
+- **Incidents** — injury, near-miss, hazard, environmental, property
+- **ITPs** — Inspection & Test Plans
+
+Each one defined as a JSON Schema with:
+- The canonical fields and types
+- Known column-name aliases from common source systems (so AI mapping has hints)
+- Coercion rules (AU dates, E.164 phones, currency strings, AU states, Y/N booleans)
+- Foreign-key references to other canonical entities
+- Cross-field validity rules (end after start, charge >= cost, induction-required-implies-induction-url)
+
+These ten cover the working week of every electrical, mechanical, fire, hydraulic, civil, and data subbie I've worked with. They'll get extended as real use surfaces gaps. Quotes / variations / expenses / service jobs are scaffolded for Phase 2-3 when the immediate intake/output pain is solved first.
+
+---
+
+## How data gets in
+
+### EQ Cards
+
+The mobile surface. Forms render directly from the canonical schema — same fields, same validation, same shape regardless of which client's site the apprentice is on. GPS-stamped. Signature-captured. Offline-queued.
+
+The first wedge here is **inductions**. Every data centre, every hospital, every commercial site has its own induction system. Every subbie does the same induction with slightly different forms 30+ times a year. EQ Cards lets the boys do the induction once in EQ, then exports it in whichever format the next site demands.
+
+After inductions: prestarts, SWMS, JSAs, toolbox talks, incidents, ITPs. All structured. All landing in the same canonical layer.
+
+### EQ Import
+
+The desktop surface. Drag any spreadsheet in. AI maps the columns to the canonical schema by reading the column names and a sample of values, then asks for confirmation. Once confirmed, the mapping is saved as a template — next time a similar-shaped file comes in, no AI call needed, the cached mapping applies automatically.
+
+This is what gets the office out of "manually retype the SimPRO export into the new system" hell. Drag, confirm, done.
+
+### EQ Capture
+
+The vision surface. Photos of paper SWMS. PDF supplier invoices. Forwarded emails. Handwritten prestart sheets. Vision AI extracts the structured data and routes it to the right canonical entity, preserving the raw text for audit.
+
+This is the single biggest time-recovery for any subbie still using paper for anything compliance-critical. SKS (50+ field staff, data centre projects) generates dozens of paper SWMS per week. Every one of them is currently a retype-or-scan-and-hope job.
+
+---
+
+## How data gets out
+
+The mirror image. Each output target gets an export profile that knows how to translate canonical entities into the target's format.
+
+### Job-management systems
+
+SimPRO, AroFlo, Workbench, ServiceM8. Each has its own API, its own field names, its own quirks. EQ doesn't replace these — it feeds them. A SWMS captured on EQ Cards lands in SimPRO with the right asset attached, the right job number, the right format SimPRO expects.
+
+### Accounting systems
+
+Xero, MYOB, QuickBooks. The bookkeeper's view. Timesheets, expenses, supplier invoices flow from canonical into whatever format the accountant uses. Cost rates are sensitive — masked by default for non-admin roles.
+
+### Client portals
+
+This is where every subbie bleeds the most. Equinix's compliance portal wants induction records in their format. NEXTDC wants SWMS in their template. The hospital network has its own incident reporting system. The council has another one. Each principal contractor adds another.
+
+Each one becomes an EQ Export profile. Set it up once, the data flows in the right format from then on. The deeper a customer wires their client portals into EQ, the less retyping happens, the more EQ becomes structurally important to their business.
+
+### Compliance bundles
+
+Audit packs, insurance renewal evidence, principal contractor documentation. Generated from the canonical layer on demand. The audit trail is real because every row knows which import it came from and which version of the schema produced it.
+
+---
+
+## What's underneath
+
+### Multi-tenant isolation
+
+Every row carries a `tenant_id`. Supabase Row Level Security enforces isolation in the database itself, not just at the application layer. JWT claim drives the policy. Cross-tenant queries are not possible by design.
+
+### Audit and rollback
+
+Every intake operation creates an `eq_intake_events` row. Every source row creates an `eq_intake_row_audit` entry — committed, flagged, or rejected. Every canonical row tagged with the intake_id that produced it.
+
+If an import goes wrong, `eq_intake_rollback(intake_id)` deletes everything that import created and marks the audit rows accordingly. No partial-state cleanup, no manual SQL.
+
+This matters because real-world imports go wrong. Bookkeepers will upload the wrong file. AI mapping will guess wrong on a low-confidence column. Without a clean rollback path, every mistake becomes a data-recovery support ticket.
+
+### Schema versioning
+
+Every canonical table has a `schema_version` column. Every imported row tags which version produced it. The `eq_schema_registry` is the source of truth — exactly one version per entity is `is_current = true` at any time.
+
+Adding new fields is a backward-compatible minor bump (1.0.0 → 1.1.0). Renaming or removing fields is a major bump that requires migration scripts and a dual-write window. The `validate()` orchestrator refuses to run against a non-current schema unless explicitly opted in (historical re-validation jobs only).
+
+### AI layer (vendor-agnostic)
+
+Two operations: `map(input)` for column mapping, `extract(input)` for vision capture. Defined as an interface; AnthropicProvider is the only implementation in v1. The layer captures metrics on every call (tokens, latency, cost, success/failure) so we can see what AI actually costs per import once real usage hits.
+
+If a customer eventually needs local-model inference for data residency reasons, that's a new provider implementation, not a rewrite.
+
+### Signature-hash caching
+
+Before invoking AI, the orchestrator hashes the columns + sample value patterns of the incoming file. If the hash matches a previously-confirmed mapping, the AI call is skipped entirely and the cached mapping applies. Routine imports of the same shape cost nothing in AI tokens after the first time.
+
+### Validation engine
+
+A shared TypeScript package. Schema-driven. Coerces (AU dates, Excel serials, E.164 phones, AU states, Y/N booleans, currency strings), validates (type, format, enum, pattern, range, length), resolves foreign keys (exact + fuzzy via Jaro-Winkler), evaluates cross-field rules (safe AST walker, no `eval`).
+
+10,000 rows × 50 fields validate in under 2 seconds on a single thread. The engine is the same on every intake path — Cards, Import, Capture all run through it.
+
+---
+
+## What this gets us
+
+The plumbing serves a small set of moments:
+
+**6:30am Tuesday.** Apprentice arrives on a data centre site they've never been to. EQ Cards has their existing induction record. They tap "share with this site," it exports in the principal contractor's format, the gate gets approval in 30 seconds. They're on the tools.
+
+**7pm Friday.** Bookkeeper opens the laptop. The week's timesheets are already structured (came in via EQ Cards from the boys' phones). They drag last week's supplier invoices folder onto EQ Capture. Five minutes later everything's in Xero with the right job costing attached.
+
+**Renewal time.** Insurance broker asks for evidence of safety procedures. EQ generates the bundle in 30 seconds — every SWMS, every toolbox talk, every incident from the last 12 months, structured, dated, signed.
+
+**Quarterly client review.** Equinix asks for compliance evidence in their format. EQ exports it directly in the format they want. No Excel manipulation, no PDF generation, no retype.
+
+Each of those moments is currently a long, painful, error-prone manual process. The whole architecture exists to make those moments invisible.
+
+---
+
+## What we explicitly haven't built
+
+- A new job-management system. SimPRO and AroFlo do that.
+- A new accounting platform. Xero and MYOB do that.
+- A new field-services scheduling tool. Plenty of those exist.
+- A new compliance management system. Same.
+- A new "platform" that demands switching off anything.
+
+We sit between these things. We don't replace any of them.
+
+---
+
+## What's deferred
+
+- **Quotes / variations / service jobs / expenses** as full canonical entities (Phase 2-3). The schemas exist as stubs. Working through staff/sites/assets/SWMS first because that's where SKS bleeds the most.
+- **Webhook/API intake** (Phase 4). For customers whose existing systems can push canonical-shaped data directly. Not v1 because it muddies the "three doors in" framing and isn't a near-term pain for the people we're building this for.
+- **Email-in capture** (Phase 5). Forwarded supplier PDFs to a tenant-specific inbox, auto-routed. Magical but not v1.
+- **Custom export profile builder** (Phase 4). Users define their own client-portal export formats with AI assistance.
+
+The full deferred list is in `PHASE-2-3-BACKLOG.md`.
+
+---
+
+## Open questions
+
+1. **Which job-management system gets the first deep integration?** Depends on what subbie conversations surface. SimPRO has the largest AU share but AroFlo has strong vertical penetration in some areas. ServiceM8 dominates the small-team end. Pick the one with the most pain we can fix first.
+2. **Xero/MYOB write-back from day 1, or read-only first?** Write-back is harder; read-only gets us the audit/reporting wins faster. Probably read-only first, write-back when a real customer asks for it.
+3. **R2 retention default.** 7 years matches AU records-of-work obligations. 30 years is overkill unless the customer specifically needs it. Default 7, opt-in to 30.
+
+---
+
+## How this compares to the rest of the docs
+
+- **`EQ-AS-CONDUIT.md`** — the why. Read first.
+- **`SPRINT-1-SETUP.md`** — locked technical decisions for the first build session.
+- **`COWORK-BRIEF-PHASE-1.md`** — the 7-sprint build plan.
+- **`PHASE-2-3-BACKLOG.md`** — everything deferred.
+- **`CONFIRM-UI-SPEC.md`** — what users see.
+- **`VALIDATION-ENGINE-SPEC.md`** — the validation package internals.
+
+If anything in those docs drifts from the framing in `EQ-AS-CONDUIT.md`, the framing wins. Update the doc.

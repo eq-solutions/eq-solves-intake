@@ -1,0 +1,9 @@
+section,cost_centre,part_number,description,uom,quantity,unit_cost,unit_sell,total_cost,total_sell
+Option 1 Stair Light,Install Costs(3669),C-CLI413-15-2.5,10A SURFACE SOCKET C/W 15M 2.5MM SQ TPS CABLE,ea,19,30.24,42.34,574.56,804.46
+Option 1 Stair Light,Install Costs(3669),,Cutting lights in,ea,19,100.00,140.00,1900.00,2660.00
+Option 1 Stair Light,LIght fitting(3668),,Foro 11,ea,19,108.41,124.67,2059.79,2368.73
+Option 2 Stair light,Install Costs(3671),C-CLI413-15-2.5,10A SURFACE SOCKET C/W 15M 2.5MM SQ TPS CABLE,ea,19,30.24,42.34,574.56,804.46
+Option 2 Stair light,Install Costs(3671),,Cutting lights in,ea,19,100.00,140.00,1900.00,2660.00
+Option 2 Stair light,KNX Programming and Equipment(3672),,in wall actuator,ea,19,195.88,205.67,3721.72,3907.73
+Option 2 Stair light,Light Fitting(3670),,Gala,ea,19,55.00,63.25,1045.00,1201.75
+Travel,Sealink(3673),,Ferry,ea,1,622.00,684.20,622.00,684.20

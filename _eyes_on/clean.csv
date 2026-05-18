@@ -1,0 +1,5 @@
+first_name,last_name,email,phone,employment_type,trade,start_date,active
+James,Patel,james.patel@example.com.au,+61412345678,employee,electrical,2022-03-01,true
+Sarah,O'Brien,sarah.obrien@example.com.au,+61413555111,subcontractor,electrical,2023-06-15,true
+Lien,Tran,lien.tran@example.com.au,+61415444222,apprentice,electrical,2024-01-22,true
+Kofi,Asante,k.asante@example.com.au,+61416777888,employee,fire,2020-11-05,true

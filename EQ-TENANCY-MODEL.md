@@ -1,0 +1,289 @@
+# EQ Tenancy Model
+
+> **Read `EQ-AS-CONDUIT.md` first.** That's the why. This doc is the
+> tenancy and deployment shape — how EQ modules plug in to each other
+> per customer.
+
+Decision logged 2026-05-18 after the post-rollup-shipped strategy
+review. Foundational — every Supabase / deployment / schema-migration
+decision from here on answers to this doc.
+
+---
+
+## The model in one diagram
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│         ONE canonical Supabase project — PER TENANT             │
+│                                                                 │
+│  Platform tables:                                               │
+│    eq_schema_registry · eq_intake_events · eq_intake_row_audit  │
+│    eq_intake_templates · eq_export_events · eq_export_profiles  │
+│                                                                 │
+│  Canonical entity tables (generated from @eq/schemas):          │
+│    staff · customer · contact · site · asset · swms ·           │
+│    prestart · jsa · toolbox_talk · incident · itp · schedule    │
+│                                                                 │
+│  Supabase Auth (per-tenant user pool)                           │
+│  RLS — but enforcing role-within-tenant, not cross-tenant       │
+└──────────┬───────────────┬───────────────┬──────────────┬───────┘
+           │               │               │              │
+           ▼               ▼               ▼              ▼
+      EQ Field        EQ Service       EQ Intake     EQ Quotes
+      (mobile)        (work orders)    (in/out)      (quoting)
+      ────────        ────────         ────────      ────────
+      Each module = a frontend app (Vite/React/Netlify).
+      ALL point at the SAME tenant's Supabase.
+      Each module owns a SURFACE, not data.
+      All share @eq/schemas + @eq/validation + @eq/confirm-ui.
+```
+
+**Each customer (SKS, future customers) gets their own Supabase project.**
+That project is THEIR canonical layer. Every EQ module they use points at it.
+
+## Why per-tenant Supabase (not one shared DB with RLS)
+
+EQ knows everything about a customer's operations — staff, customers,
+contacts, sites, induction records, SWMS, prestarts, schedules. That's
+payroll-adjacent, compliance-adjacent, lawsuit-adjacent data. The
+default has to be the strongest isolation Supabase offers.
+
+| Concern                | Per-tenant Supabase           | Shared DB + RLS                     |
+|------------------------|-------------------------------|-------------------------------------|
+| Data isolation         | **Physical** — different DB   | Logical — one RLS bug = leak        |
+| Compliance story       | "Your data, your database"    | "Trust our RLS policies"            |
+| Blast radius of a bug  | One customer                  | All customers                       |
+| Cost                   | $25/mo per customer (Pro tier)| Cheaper                             |
+| Onboarding ops         | Per-customer project creation | Insert a `tenant_id` row            |
+| Cross-tenant analytics | Impossible (intentional)      | Easy                                |
+
+For EQ at trade-subbie scale (one customer, then a friend's business,
+then a handful more), per-tenant economics work fine. When customer
+count reaches 20+ and manual provisioning becomes the bottleneck, we
+automate via Supabase Management API. Not before.
+
+We're explicitly NOT a SaaS platform aggregating data across customers.
+We're a conduit each customer owns end-to-end. The architecture should
+reflect that.
+
+## Bundle / deployment shape — EQ Shell + lazy-loaded modules
+
+**Decision logged 2026-05-18 (revised from the original "Netlify per
+module" sketch):** EQ ships as a single **shell app** per tenant, with
+modules lazy-loaded into routes inside the shell. One URL per tenant,
+one login, modules turn on/off via per-tenant env-var config.
+
+```
+                   ┌──────────────────────────────────┐
+                   │  EQ Shell    (sks.eq.solutions)  │
+                   │  ────────                        │
+                   │  • Auth (one Supabase session)   │
+                   │  • Navigation                    │
+                   │  • Tenant config:                │
+                   │      VITE_TENANT=sks             │
+                   │      VITE_ENABLED_MODULES=       │
+                   │        cards,intake,quotes,field │
+                   └────┬──────┬──────┬──────┬────────┘
+                        │      │      │      │
+                  ┌─────┘      │      │      └─────┐
+                  ▼            ▼      ▼            ▼
+              [Cards]      [Intake] [Quotes]   [Service]
+              lazy-loaded routes inside the shell
+              each module is its own buildable React package
+              (eq-platform/packages/eq-<module>/)
+              the shell mounts them via React Router lazy
+```
+
+Why this over standalone-per-module:
+- **One login per tenant.** SKS users sign into the shell once,
+  navigate freely between modules in the same session. Standalone
+  would mean re-login per module or a fragile SSO setup.
+- **Scales for multi-tenant.** Tenant Y wants only Cards + Intake?
+  Same shell repo, different `VITE_ENABLED_MODULES`. No N-Netlify-
+  projects-per-tenant ops overhead.
+- **Failure isolation kept** via lazy loading — a broken module
+  doesn't block load of other modules' routes.
+- **Modules stay independently developable.** Each lives in its own
+  package with its own build, tests, types. The shell just imports +
+  mounts them.
+- **Per-tenant branding** via shell config — SKS gets dark blue +
+  purple, future tenants get their own palette by env var.
+
+For SKS today:
+- Deploy ONE shell at (say) `sks.eq.solutions`
+- `VITE_TENANT=sks`, `VITE_ENABLED_MODULES=intake` (then add quotes /
+  field / cards as those modules come online)
+- Auth via Supabase (the same Supabase project that becomes the SKS
+  canonical when the master plan resumes)
+
+For tenant Y later: clone deploy, new env vars, new Supabase. One
+build artefact, N tenant deployments.
+
+Module addition flow: build the new module as a package, export its
+mountable component + route from its package barrel, register it in
+the shell's module registry, done. No shell-internal changes per
+module beyond a one-line registration.
+
+## The current EQ apps + their tenancy status (as of 2026-05-18)
+
+| App              | State                               | Supabase                     |
+|------------------|-------------------------------------|------------------------------|
+| EQ Field DEMO    | Active R&D, features forging ahead  | Field demo Supabase          |
+| SKS Field LIVE   | Live, 50+ staff weekly              | **SKS Field LIVE Supabase**  |
+| EQ Service       | Built for SKS, live within weeks    | (currently EQ-service Supabase) |
+| EQ Intake        | Built for SKS, in active dev        | **No Supabase yet**          |
+| EQ Quotes        | Built for SKS                       | No Supabase yet              |
+| EQ Cards         | Live (pause-and-polish)             | EQ Cards Supabase            |
+
+**The current state is fragmented** — multiple Supabase projects, no
+single SKS canonical. The path forward is to consolidate.
+
+## Current implementation status (2026-05-18)
+
+What's BUILT and working:
+- `@eq/schemas` — 12 canonical JSON Schemas including new `customer` +
+  `contact`, with full `x-eq-source-aliases` for SimPRO/MYOB/Xero
+- `@eq/schemas` SQL codegen — emits `CREATE TABLE` per entity with FKs,
+  RLS-enabled, indexes. Run via `pnpm --filter @eq/schemas generate:sql`.
+- Migration sequencer (`pnpm db:apply` from repo root) — produces a
+  single 154 KB SQL file at `eq-platform/.generated/all-migrations.sql`
+  ready to paste into the Supabase SQL editor
+- `@eq/shell` — Vite + React + Router app with Supabase Auth wrapper,
+  lazy-loaded modules, per-tenant config (`VITE_TENANT` /
+  `VITE_ENABLED_MODULES` / palette), SKS palette pre-wired
+- `@eq/intake-demo` — Intake module exposing `IntakeModule` for mount
+  in the shell, plus standalone dev playground at `localhost:5174`
+- Tests: 293 passing + 1 skipped across all packages
+- `apps/eq-shell/DEPLOY.md` — step-by-step deployment guide
+
+What's READY to wire (waiting on Royce — Option C, two-Supabase plan):
+- Provision `eq-demo-canonical` Supabase project (Sydney region) — proving
+  ground for the shell + commit RPC + intake flow. ~5 min.
+- Provision `sks-canonical-eq` Supabase project (Sydney region) — live
+  SKS canonical, fed by the same migration SQL once demo is proven. ~5 min.
+- Drop demo credentials in `eq-platform/apps/eq-shell/.env.local` for
+  local dev. SKS credentials go into SKS Netlify env vars only.
+- Paste `eq-platform/.generated/all-migrations.sql` into BOTH SQL editors
+  → Run — ~1 min each.
+- Add first user via Supabase dashboard (one per project).
+
+What I'll do once demo credentials arrive (~30-45 min):
+- Wire `IntakeModule`'s commit fn to call real `eq_intake_commit_batch` RPC
+- Add "commit canonical + download CSV" to the bundle flow
+- Smoke-test end-to-end against `eq-demo-canonical`
+- Hand to Royce for live testing on demo first, then SKS once proven
+
+What's DEFERRED:
+- Phase 3 — SKS Field LIVE migration onto canonical (after Intake/Quotes
+  are stable in production use)
+- Phase 4 — Cards bridge (per EQ-CARDS-INTAKE-BRIDGE.md)
+- EQ Quotes module proper (currently a placeholder stub in the shell)
+- EQ Service module wiring to canonical
+- Microsoft Graph integration for direct SharePoint write
+- Automated tenant provisioning via Supabase Management API (current is
+  manual; automate when customer count grows past ~20)
+
+## SKS-specific path (Option B — committed 2026-05-18)
+
+After reviewing the trade-offs, the decision is **Option B — fresh SKS
+canonical, migrate Field LIVE later** (NOT the "extend Field LIVE as
+canonical" option, which was Royce's initial instinct but carried real
+risk of breaking the live system during active dev).
+
+### Demo-first split (Option C, committed 2026-05-18)
+
+Layered on top of Option B: provision `eq-demo-canonical` alongside
+`sks-canonical-eq` from day one. Demo is where shell + commit RPC + intake
+flow get proven against real-shaped data; SKS is where Royce + the
+bookkeeper run live work once demo is solid. Same migration SQL runs
+against both. Local Vite always points at demo so iteration never
+touches SKS.
+
+Matches the existing pattern from global CLAUDE.md: `eq-solves-field`
+(demo branch) + `sks-nsw-labour` (main) are two Netlify sites against
+two backends. EQ Shell follows the same shape.
+
+### Phase 1 — Build the canonical (next session)
+
+1. Provision new Supabase project `sks-canonical-eq` (region: Sydney /
+   ap-southeast-2). Royce creates, drops credentials in
+   `eq-platform/.env.local`.
+2. SQL codegen from `@eq/schemas` produces `CREATE TABLE` per entity.
+3. Apply in order:
+   - Per-entity canonical tables (codegen output)
+   - `001_intake_spine.sql`
+   - `002_intake_module_columns.sql` (adds imported_at/imported_from/
+     intake_id/tenant_id to each entity)
+   - `003_schema_version_columns.sql`
+   - Seed `eq_schema_registry` with the JSON schemas
+4. Promote demo's `customer` / `contact` / `site` schemas (currently
+   in `eq-intake-demo/src/simpro-schemas.ts`) to real `@eq/schemas`
+   entries with cross-field rules + source-aliases + descriptions.
+5. Wire EQ Intake's commit fn to call `eq_intake_commit_batch` against
+   `sks-canonical-eq` instead of console.log.
+6. End-to-end test: drop a SimPRO export → canonical rows land in
+   Supabase → verify via dashboard query.
+
+### Phase 2 — Build EQ Service + EQ Quotes against the canonical
+
+Both modules read/write SKS canonical from day one. No separate
+Supabase for either.
+
+### Phase 3 — Field LIVE cutover (after Phase 1 + 2 stable)
+
+Planned event, not an emergency. Approximate steps:
+- Map Field LIVE's existing schema to canonical schema (column rename
+  + data transform plan)
+- Build a one-time migration script (Field LIVE → SKS canonical)
+- Stage on a Field-LIVE backup first
+- Out-of-hours cutover window
+- Field's frontend repointed to SKS canonical Supabase URL
+- Old Field-only Supabase deprecated after a verification window
+
+### Phase 4 — EQ Cards cutover (later, per EQ-CARDS-INTAKE-BRIDGE.md)
+
+Path A from the bridge doc: Cards data eventually migrates onto SKS
+canonical. Same shape as Phase 3, different module.
+
+## What this means for future tenants
+
+When the next customer signs up (let's call them Tenant Y):
+
+1. Provision `tenant-y-canonical-eq` Supabase project (manual today,
+   API-driven once we hit ~20 tenants)
+2. Apply the same migrations (one command via the sequencer)
+3. Deploy each EQ module to tenant-y subdomains (or one shared
+   deployment with runtime tenant switching — TBD when relevant)
+4. Set env vars per deployment to point at tenant-y's Supabase
+5. Onboard tenant-y's users via Supabase Auth in that project
+
+No code change. New Supabase + new deployments. The canonical schema
+is the same, the data is theirs, the isolation is physical.
+
+## What's NOT in scope yet
+
+- **Microsoft Graph / direct SharePoint write-back.** The export side
+  produces CSVs that paste manually for now. Real Graph integration
+  happens when a customer hits that workflow weekly+.
+- **Cross-module SSO.** Each module currently signs in independently
+  via Supabase Auth. Single sign-on across Field / Service / Intake
+  is a polish item.
+- **Per-tenant branding.** Each tenant could theoretically have
+  custom Sky / Deep colours per their company — out of scope until
+  a customer asks for it.
+- **Cross-tenant admin / billing.** No central "Royce's admin
+  dashboard" listing all customers' usage. Each tenant is independent.
+  When this becomes useful, it's a separate app reading metrics from
+  each Supabase via service-role credentials.
+
+## Where this doc lives in the bundle
+
+- `EQ-AS-CONDUIT.md` — the why
+- `HOW-WE-WORK-WITH-AI.md` — the working principles
+- `EQ-INTAKE-ARCHITECTURE.md` — the technical shape of the intake stack
+- **`EQ-TENANCY-MODEL.md`** ← this doc — the tenancy + deployment shape
+- `EQ-CARDS-INTAKE-BRIDGE.md` — Cards-specific migration to canonical
+- `EQ-FORMAT.md` — the bidirectional sheet wrangler
+
+If the tenancy decisions drift from this doc, the doc wins. Update
+this doc to match new decisions; don't drift silently.

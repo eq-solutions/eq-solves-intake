@@ -1,0 +1,46 @@
+# Defensive .gitignore at the eq-intake root.
+#
+# This directory is currently the EQ Phase 1 build bundle (docs + source
+# staging + the eq-platform monorepo). If you `git init` here later, this
+# file makes sure secrets and build junk don't accidentally land in a
+# commit before you've thought about a proper .gitignore.
+
+# Secrets — never commit any of these
+key.txt
+*.key
+*.pem
+.env
+.env.local
+.env.*
+**/.env
+**/.env.local
+**/.env.*
+
+# Dependencies + build output
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+.pnpm-store/
+**/src/generated/
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Real customer data — SimPRO exports + derived rollups.
+# Contains live Equinix/NEXTDC/etc. contacts (names, emails, mobile numbers,
+# ABNs). Must not land on any remote, even a private one.
+simpro/
+demos/simpro-customer-rollup/customer-rollup.csv
+demos/simpro-customer-rollup/eq-quotes-by-site.csv
+
+# Overnight review reports + ephemeral working files
+OVERNIGHT-REVIEW-*.md
+

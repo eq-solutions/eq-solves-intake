@@ -1,0 +1,21 @@
+asset_id,site,region,asset_type,asset_name,make,model,circuits_qty,location,ppm_frequency,last_thermal,last_rcd_test,last_service,condition,defects_outstanding
+AST-ALP-MSB-01,Site-Alpha,Metro,Main Switchboard,MSB-Main,Schneider,Prisma,1,Plant Room,6-Monthly May/Nov,2025-11-12,2025-11-12,2025-11-12,good,
+AST-ALP-DB-01,Site-Alpha,Metro,Distribution Board,DB-L1,Schneider,IC60,42,Level 1 Riser,6-Monthly May/Nov,2025-11-12,2025-11-12,2025-11-12,good,
+AST-ALP-DB-02,Site-Alpha,Metro,Distribution Board,DB-L2,Schneider,IC60,38,Level 2 Riser,6-Monthly May/Nov,2025-11-12,2025-11-12,2025-11-12,good,
+AST-ALP-UPS-01,Site-Alpha,Metro,UPS Distribution Board,DB-UPS,NHP,DIN-T,18,Plant Room,6-Monthly May/Nov,2025-11-12,2025-11-12,2025-11-12,good,
+AST-ALP-GEN-01,Site-Alpha,Metro,Generator,GEN-1,FG Wilson,P220HE2,1,Generator Yard,Monthly,2025-11-12,,2026-04-01,good,
+AST-BRV-MSB-01,Site-Bravo,Metro,Main Switchboard,MSB-Main,Hager,VR,1,Plant Room,6-Monthly May/Nov,2025-11-15,2025-11-15,2025-11-15,fair,Main isolator handle stiff
+AST-BRV-DB-01,Site-Bravo,Metro,Distribution Board,DB-1,Hager,VR,24,Office Area,6-Monthly May/Nov,2025-11-15,2025-11-15,2025-11-15,good,
+AST-BRV-DB-02,Site-Bravo,Metro,Distribution Board,DB-2,Hager,VR,16,Workshop,6-Monthly May/Nov,2025-11-15,2025-11-15,2025-11-15,good,
+AST-BRV-DB-03,Site-Bravo,Metro,Distribution Board,DB-3,Hager,VR,12,Storage,6-Monthly May/Nov,2025-11-15,2025-11-15,2025-11-15,poor,RCD 3 trips on test - replace
+AST-BRV-UPS-01,Site-Bravo,Metro,UPS Distribution Board,DB-UPS,NHP,DIN-T,8,Comms Room,6-Monthly May/Nov,2025-11-15,2025-11-15,2025-11-15,good,
+AST-CHA-MSB-01,Site-Charlie,Regional,Main Switchboard,MSB-Main,Schneider,Prisma,1,Plant Room,6-Monthly May/Nov,2025-11-18,2025-11-18,2025-11-18,good,
+AST-CHA-DB-01,Site-Charlie,Regional,Distribution Board,DB-Office,Schneider,IC60,30,Office,6-Monthly May/Nov,2025-11-18,2025-11-18,2025-11-18,good,
+AST-CHA-DB-02,Site-Charlie,Regional,Distribution Board,DB-Yard,Schneider,IC60,8,External,6-Monthly May/Nov,2025-11-18,2025-11-18,2025-11-18,fair,Door hinge corroded
+AST-CHA-UPS-01,Site-Charlie,Regional,UPS Distribution Board,DB-UPS,NHP,DIN-T,12,Comms Room,6-Monthly May/Nov,2025-11-18,2025-11-18,2025-11-18,good,
+AST-CHA-GEN-01,Site-Charlie,Regional,Generator,GEN-1,FG Wilson,P220HE2,1,Generator Yard,Monthly,2025-11-18,,2026-04-01,good,
+AST-DEL-MSB-01,Site-Delta,Regional,Main Switchboard,MSB-Main,ABB,System Pro,1,Plant Room,6-Monthly May/Nov,2025-11-22,2025-11-22,2025-11-22,good,
+AST-DEL-DB-01,Site-Delta,Regional,Distribution Board,DB-A,ABB,SR,22,Building A,6-Monthly May/Nov,2025-11-22,2025-11-22,2025-11-22,good,
+AST-DEL-DB-02,Site-Delta,Regional,Distribution Board,DB-B,ABB,SR,18,Building B,6-Monthly May/Nov,2025-11-22,2025-11-22,2025-11-22,good,
+AST-DEL-DB-03,Site-Delta,Regional,Distribution Board,DB-C,ABB,SR,10,Carpark,6-Monthly May/Nov,2025-11-22,2025-11-22,2025-11-22,good,
+AST-DEL-DB-04,Site-Delta,Regional,Distribution Board,DB-D,ABB,SR,6,Sub-station,6-Monthly May/Nov,2025-11-22,2025-11-22,2025-11-22,good,

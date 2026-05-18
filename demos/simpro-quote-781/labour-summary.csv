@@ -1,0 +1,9 @@
+section,cost_centre,description,hours,unit_cost,unit_sell,line_total
+Option 1 Stair Light,LIght fitting(3668),Labour,0,75.00,100.00,0.00
+Option 1 Stair Light,Install Costs(3669),Labour,57,75.00,100.00,5700.00
+Option 2 Stair light,Light Fitting(3670),Labour,0,75.00,100.00,0.00
+Option 2 Stair light,Install Costs(3671),Labour,57,75.00,100.00,5700.00
+Option 2 Stair light,KNX Programming and Equipment(3672),Labour,9.5,75.00,160.00,1520.00
+Travel,Sealink(3673),Labour,0,75.00,100.00,0.00
+Travel,Travel(3674),Labour,20,75.00,80.00,1600.00
+Travel,Travel(3674),Apprentice Rate - Second Year,20,28.33,60.00,1200.00

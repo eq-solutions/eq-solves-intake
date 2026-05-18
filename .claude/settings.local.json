@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm --filter @eq/validation typecheck)",
+      "Bash(sort -t: -k2,2n)",
+      "Bash(sort -t: -k1,2)",
+      "Bash(pnpm -r test)",
+      "Bash(node derive.mjs)",
+      "Bash(pnpm --filter @eq/format-ui typecheck)",
+      "Bash(pnpm -r build)",
+      "Bash(awk '{sum+=$1} END {print sum, \"passed\"}')"
+    ]
+  }
+}
