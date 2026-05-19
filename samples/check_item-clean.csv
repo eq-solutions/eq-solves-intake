@@ -1,0 +1,10 @@
+check_id,sort_order,description,result,notes,completed_by_user_id
+eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01,1,Check earth connections,pass,torqued to 30Nm,11111111-2222-3333-4444-555555555501
+eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01,2,Visual inspection of arc chutes,pass,no carbon tracking,11111111-2222-3333-4444-555555555501
+eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01,3,Insulation resistance L1-N,fail,1.2 MΩ — below 100MΩ acceptance,11111111-2222-3333-4444-555555555501
+eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01,4,Trip test at 5x In,pass,42ms,11111111-2222-3333-4444-555555555501
+eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01,5,Lubricate operating mechanism,na,no access this visit,
+eeeeeeee-eeee-eeee-eeee-eeeeeeeeee02,1,RCD test button,pass,,11111111-2222-3333-4444-555555555502
+eeeeeeee-eeee-eeee-eeee-eeeeeeeeee02,2,Trip time at 1x IΔn (no trip expected),pass,,11111111-2222-3333-4444-555555555502
+eeeeeeee-eeee-eeee-eeee-eeeeeeeeee03,1,Earth fault test,pass,,11111111-2222-3333-4444-555555555503
+eeeeeeee-eeee-eeee-eeee-eeeeeeeeee04,1,Thermal imaging — hot spot survey,fail,2 hot spots identified — defect raised,11111111-2222-3333-4444-555555555505

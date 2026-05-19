@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/service/maintenance-check/v1.json",
+  "title": "Maintenance Check",
+  "description": "A scheduled execution of a maintenance plan at a site. The unit of work a technician is assigned to. Carries the schedule state (status, due_date, started, completed) and an optional frequency override. Source codes (Delta WO, Maximo) often encode the frequency as a suffix on the plan code (e.g. 'LVACB-A' = LVACB plan, A=annual frequency) — the suffix should be parsed off and stored here on the check.",
+  "type": "object",
+  "x-eq-entity": "maintenance_check",
+  "x-eq-module": "service",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "maintenance_checks",
+  "required": ["check_id", "tenant_id", "site_id", "status", "due_date"],
+  "properties": {
+    "check_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-source-aliases": ["id", "check_id", "maintenance_check_id"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-system-managed": true
+    },
+    "external_id": {
+      "type": ["string", "null"],
+      "description": "External system reference. For Maximo, use maximo_wo_number instead.",
+      "x-eq-source-aliases": ["external_ref", "ref"],
+      "maxLength": 64
+    },
+    "plan_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Maintenance plan this check executes. Optional — ad-hoc checks may have no plan.",
+      "x-eq-foreign-key": "maintenance_plan.plan_id",
+      "x-eq-fk-fuzzy-match-on": ["maintenance_plan.code", "maintenance_plan.name"],
+      "x-eq-source-aliases": ["job_plan_id", "plan", "plan_code", "jp_code"]
+    },
+    "site_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Site this check is at.",
+      "x-eq-foreign-key": "site.site_id",
+      "x-eq-fk-fuzzy-match-on": ["site.name", "site.code", "site.external_id"],
+      "x-eq-source-aliases": ["site", "site_name", "location"]
+    },
+    "assigned_to_user_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Technician this check is assigned to. Resolves against staff via the auth user mapping.",
+      "x-eq-foreign-key": "staff.user_id",
+      "x-eq-fk-fuzzy-match-on": ["staff.full_name", "staff.email"],
+      "x-eq-source-aliases": ["assigned_to", "technician", "tech", "assignee", "assigned"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["scheduled", "in_progress", "complete", "overdue", "cancelled"],
+      "description": "Workflow state. 'overdue' is derived (due_date < today AND status='scheduled'); imports may pre-set it.",
+      "x-eq-source-aliases": ["state", "wo_status", "check_status"],
+      "x-eq-enum-aliases": {
+        "scheduled": ["pending", "open", "new", "wapprov", "approved"],
+        "in_progress": ["inprog", "in progress", "started", "running", "wmatl", "wsched"],
+        "complete": ["completed", "closed", "done", "comp", "clo", "finished"],
+        "overdue": ["late", "past_due"],
+        "cancelled": ["canc", "cancel", "void", "voided"]
+      },
+      "default": "scheduled"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date",
+      "description": "When the check is required to be performed by.",
+      "x-eq-source-aliases": ["due", "scheduled_date", "target_date", "wo_due_date", "target_finish"],
+      "x-eq-coerce": "date"
+    },
+    "start_date": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "Planned start date (window opens). Distinct from started_at which is the actual start timestamp.",
+      "x-eq-source-aliases": ["planned_start", "target_start", "scheduled_start"],
+      "x-eq-coerce": "date"
+    },
+    "started_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Actual timestamp the technician started work.",
+      "x-eq-source-aliases": ["start_time", "actual_start", "start_timestamp"],
+      "x-eq-coerce": "date"
+    },
+    "completed_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Actual timestamp the check was closed.",
+      "x-eq-source-aliases": ["complete_time", "actual_finish", "finish_timestamp", "completed", "actual_end"],
+      "x-eq-coerce": "date"
+    },
+    "frequency": {
+      "type": ["string", "null"],
+      "enum": [null, "weekly", "monthly", "quarterly", "semi_annual", "annual", "2yr", "3yr", "5yr", "8yr", "10yr", "ad_hoc"],
+      "description": "Frequency for this specific check, often parsed from the plan code suffix. Delta/Maximo encode suffixes A/Q/M/S/W/2/3/5/8/10 (e.g. 'LVACB-A' → frequency=annual). Falls back to maintenance_plan.frequency if not set.",
+      "x-eq-source-aliases": ["frequency_text", "freq", "cycle", "interval"],
+      "x-eq-enum-aliases": {
+        "weekly": ["w", "wk", "1w"],
+        "monthly": ["m", "1m"],
+        "quarterly": ["q", "3", "3m", "qtr"],
+        "semi_annual": ["s", "6", "6m", "biannual", "semi-annual", "half_yearly"],
+        "annual": ["a", "1y", "12m", "yearly"],
+        "2yr": ["2", "2y", "24m", "biennial"],
+        "3yr": ["3y", "36m", "triennial"],
+        "5yr": ["5", "5y", "60m", "quinquennial"],
+        "8yr": ["8", "8y", "96m"],
+        "10yr": ["10", "10y", "120m", "decadal"],
+        "ad_hoc": ["adhoc", "ad-hoc", "on_demand"]
+      }
+    },
+    "is_dark_site": {
+      "type": "boolean",
+      "description": "Whether this check is a dark-site (no live electrical work) visit.",
+      "x-eq-source-aliases": ["dark_site", "dark", "is_dark"],
+      "x-eq-coerce": "boolean",
+      "default": false
+    },
+    "custom_name": {
+      "type": ["string", "null"],
+      "description": "Override display name for this specific check (defaults to plan name if null).",
+      "x-eq-source-aliases": ["title", "check_name", "name", "description_override"],
+      "maxLength": 200
+    },
+    "maximo_wo_number": {
+      "type": ["string", "null"],
+      "description": "Maximo work order number. Often the most stable cross-system ID.",
+      "x-eq-source-aliases": ["wo_number", "work_order_no", "work_order", "wo_no", "maximo_wo"],
+      "maxLength": 64
+    },
+    "maximo_pm_number": {
+      "type": ["string", "null"],
+      "description": "Maximo PM number (the recurring schedule that generated the WO).",
+      "x-eq-source-aliases": ["pm_number", "pm_no", "maximo_pm"],
+      "maxLength": 64
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["comment", "comments", "remarks", "note", "wo_notes"],
+      "maxLength": 4000
+    },
+    "imported_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-eq-system-managed": true
+    },
+    "imported_from": {
+      "type": ["string", "null"],
+      "x-eq-system-managed": true
+    }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "completed_after_started",
+      "rule": "completed_at == null OR started_at == null OR completed_at >= started_at",
+      "message": "completed_at is before started_at.",
+      "severity": "error"
+    },
+    {
+      "id": "complete_status_has_completed_at",
+      "rule": "status != 'complete' OR completed_at != null",
+      "message": "Status is 'complete' but completed_at is null.",
+      "severity": "warning"
+    },
+    {
+      "id": "frequency_from_plan_code_suffix",
+      "rule": "frequency != null OR plan_id == null",
+      "message": "Frequency could be derived from the plan code suffix (e.g. 'LVACB-A' → annual). Importer should parse the trailing suffix off the plan_code and set frequency here.",
+      "severity": "info",
+      "hint": "Parse trailing -X off the plan code: A=annual, Q=quarterly, M=monthly, S=semi_annual, W=weekly, 2=2yr, 3=quarterly, 5=5yr, 6=semi_annual, 8=8yr, 10=10yr. See lib/import/delta-wo-parser.ts FREQUENCY_SUFFIX_MAP in eq-solves-service for the canonical map."
+    }
+  ],
+  "x-eq-import-hints": {
+    "description": "Maintenance checks usually come from a Delta work-order export or a Maximo WO sheet, with one row per (asset, visit). The plan code carries the frequency as a suffix.",
+    "common_sources": [
+      {
+        "name": "Delta work-order export",
+        "typical_columns": ["WO Number", "Site", "Asset", "Job Plan", "Frequency", "Due Date", "Status"],
+        "watchouts": ["Job Plan column is 'CODE-SUFFIX' format — split to plan_id resolution + frequency", "Status values are Maximo-coded (WAPPROV, WSCHED, etc.) — see x-eq-enum-aliases"]
+      },
+      {
+        "name": "Manual schedule spreadsheet",
+        "typical_columns": ["Site", "Plan", "Frequency", "Due", "Tech"],
+        "watchouts": ["No WO number — leave maximo_wo_number null"]
+      }
+    ]
+  }
+}

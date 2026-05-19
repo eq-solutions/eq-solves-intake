@@ -1,0 +1,7 @@
+site_id,title,start_time,end_time,quarter,financial_year,hours,contractor_materials_cost,assigned_to_user_id,status,active
+aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1,SY1 Q ACB walkdown,2026-08-15T08:00:00Z,2026-08-15T17:00:00Z,Q1,2025-2026,8.5,250,11111111-2222-3333-4444-555555555501,scheduled,true
+aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1,SY1 Annual ACB service,2026-08-15T08:00:00Z,2026-08-15T17:00:00Z,Q1,2025-2026,8,1200,11111111-2222-3333-4444-555555555502,scheduled,true
+aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa9,SY9 RCD Round 1,2026-05-30T00:00:00Z,2026-05-31T00:00:00Z,Q4,2025-2026,16,3500,11111111-2222-3333-4444-555555555510,in_progress,true
+aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaca,CA1 UPS Quarterly,2026-04-10T00:00:00Z,2026-04-10T00:00:00Z,Q3,2025-2026,4,400,11111111-2222-3333-4444-555555555504,completed,true
+aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3,SY3 Generator monthly,2026-06-01T00:00:00Z,2026-06-01T00:00:00Z,,2025-2026,2,80,11111111-2222-3333-4444-555555555508,scheduled,true
+aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa6,SY6 LVACB 2YR deep clean,2027-03-15T00:00:00Z,2027-03-15T00:00:00Z,Q3,2026-2027,12,2200,11111111-2222-3333-4444-555555555507,scheduled,true

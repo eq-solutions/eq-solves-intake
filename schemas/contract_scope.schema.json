@@ -1,0 +1,242 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/service/contract-scope/v1.json",
+  "title": "Contract Scope",
+  "description": "A line in a customer's commercial scope of work, sourced from a contract sheet (DELTA ELCOM 'SCS' tab or equivalent). Carries the structured commercial information: which job plans are in scope, the asset count covered, per-cycle costs (cycle_costs JSONB), per-year base totals (year_totals JSONB, BEFORE CPI), and when assets fall due (due_years JSONB). Audit flags has_bundled_scope and commercial_gap surface walkthrough-discovered anomalies (e.g. T&T delivered inside a fixed JP price, or non-zero labour with zero annual fee).",
+  "type": "object",
+  "x-eq-entity": "contract_scope",
+  "x-eq-module": "service",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "contract_scopes",
+  "required": ["scope_id", "tenant_id", "customer_id", "financial_year", "scope_item", "billing_basis"],
+  "properties": {
+    "scope_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-source-aliases": ["id", "scope_id", "contract_scope_id"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-system-managed": true
+    },
+    "customer_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Customer this scope row belongs to. Denormalised for query speed; the authoritative FK is service_contract_id (a scope hangs off a specific contract). Kept here because most reports group by customer first, contract second.",
+      "x-eq-foreign-key": "customer.customer_id",
+      "x-eq-fk-fuzzy-match-on": ["customer.company_name", "customer.code"],
+      "x-eq-source-aliases": ["customer", "client", "customer_name", "client_name"]
+    },
+    "service_contract_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Authoritative parent contract — a scope belongs to a specific contract, not just to the customer. Nullable for legacy rows that pre-date the v2 contract split; new rows should set it. When set, customer_id should match service_contract.customer_id.",
+      "x-eq-foreign-key": "service_contract.contract_id",
+      "x-eq-fk-fuzzy-match-on": ["service_contract.smca_agreement_number", "service_contract.name"],
+      "x-eq-source-aliases": ["contract_id", "contract", "agreement_id"]
+    },
+    "site_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Site this scope row covers. Null when the scope applies to all customer sites.",
+      "x-eq-foreign-key": "site.site_id",
+      "x-eq-fk-fuzzy-match-on": ["site.name", "site.code"],
+      "x-eq-source-aliases": ["site", "site_name", "location"]
+    },
+    "financial_year": {
+      "type": "string",
+      "description": "Australian FY this scope row applies to (e.g. '2025-2026').",
+      "x-eq-source-aliases": ["fy", "year", "contract_year", "financial_yr"],
+      "pattern": "^[0-9]{4}-[0-9]{4}$",
+      "default": "2025-2026"
+    },
+    "scope_item": {
+      "type": "string",
+      "description": "Free-text description of the scope line (preserved from legacy rows). New imports also populate jp_code + structured fields.",
+      "x-eq-source-aliases": ["item", "description", "scope_description", "work_description"],
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "is_included": {
+      "type": "boolean",
+      "description": "Whether this line is included in scope (true) or explicitly excluded (false).",
+      "x-eq-source-aliases": ["included", "in_scope"],
+      "x-eq-coerce": "boolean",
+      "default": true
+    },
+    "billing_basis": {
+      "type": "string",
+      "enum": ["fixed", "ad_hoc"],
+      "description": "Billing model. 'fixed' = priced as part of the contract (JPs, priced Additional Items). 'ad_hoc' = billed per visit, no fixed annual price (e.g. RCD/T&T at SY9).",
+      "x-eq-source-aliases": ["billing", "basis", "billing_model"],
+      "x-eq-enum-aliases": {
+        "fixed": ["contract", "priced", "annual", "fixed_price"],
+        "ad_hoc": ["adhoc", "ad-hoc", "per_visit", "variable", "tm", "time_and_materials"]
+      },
+      "default": "fixed"
+    },
+    "jp_code": {
+      "type": ["string", "null"],
+      "description": "Job plan code (mirror of maintenance_plan.code, denormalised for CSV import speed). Used to resolve the maintenance_plan FK at commit time.",
+      "x-eq-source-aliases": ["job_plan_code", "plan_code", "jp", "code"],
+      "maxLength": 64
+    },
+    "asset_qty": {
+      "type": ["integer", "null"],
+      "description": "Count of assets at this site / customer covered by this scope row.",
+      "x-eq-source-aliases": ["qty", "quantity", "asset_count", "count"],
+      "x-eq-coerce": "number",
+      "minimum": 0
+    },
+    "intervals_text": {
+      "type": ["string", "null"],
+      "description": "Raw free-text intervals as they appear in the source sheet (e.g. 'A; 5', 'M/Q/A', 'Q/A'). Normalisation happens later.",
+      "x-eq-source-aliases": ["intervals", "frequency_text", "cycles_text"],
+      "maxLength": 100
+    },
+    "cycle_costs": {
+      "type": "object",
+      "description": "Per-asset cost at each cycle frequency, read from the JP tab 'Total cost per asset' row. NEVER reconstruct from labour x rate — each JP tab has its own per-frequency formula. Shape: { '1YR': 31.25, '5YR': 562.50, ... }. Keys: 1YR, 2YR, 3YR, 4YR, 5YR, 8YR, 10YR, M, Q, S.",
+      "x-eq-source-aliases": ["cycle_cost_map", "costs_by_cycle"],
+      "x-eq-coerce": "json",
+      "additionalProperties": {
+        "type": ["number", "null"]
+      },
+      "default": {}
+    },
+    "year_totals": {
+      "type": "object",
+      "description": "Per-year base $ totals from the commercial sheet. BEFORE CPI. Apply CPI at read time using customer.cpi_basis + cpi_rate. Shape: { '2026': 22000, '2027': 11000, '2028': 23000 }.",
+      "x-eq-source-aliases": ["year_totals_base", "annual_totals", "yearly_costs"],
+      "x-eq-coerce": "json",
+      "additionalProperties": {
+        "type": ["number", "null"]
+      },
+      "default": {}
+    },
+    "due_years": {
+      "type": "object",
+      "description": "Per-year asset count due, parsed from the SCS 'Comments' column ('5YR: 14 due in 2026'). Drives the calendar generator. Shape: { '2026': 14, '2027': 3, '2028': 15 }.",
+      "x-eq-source-aliases": ["assets_due_per_year", "due_year_map"],
+      "x-eq-coerce": "json",
+      "additionalProperties": {
+        "type": ["integer", "null"]
+      },
+      "default": {}
+    },
+    "labour_hours_per_asset": {
+      "type": "object",
+      "description": "Per-cycle labour hours per asset. Shape: { 'A': 0.25, '5YR': 4.5 }.",
+      "x-eq-source-aliases": ["labour_map", "hours_per_asset"],
+      "x-eq-coerce": "json",
+      "additionalProperties": {
+        "type": ["number", "null"]
+      },
+      "default": {}
+    },
+    "unit_rate_per_asset": {
+      "type": ["number", "null"],
+      "description": "For additional_items rows: $ per asset (e.g. RCD push @ $8.50).",
+      "x-eq-source-aliases": ["unit_rate", "rate_per_asset", "per_asset_rate"],
+      "x-eq-coerce": "number",
+      "minimum": 0
+    },
+    "has_bundled_scope": {
+      "type": "boolean",
+      "description": "TRUE when this row hides additional work inside its fixed price (e.g. T&T at SY3 delivered for $0 line, costed inside a JP fixed price). Surfaced in year-end deliverables.",
+      "x-eq-source-aliases": ["bundled", "has_bundle", "hidden_scope"],
+      "x-eq-coerce": "boolean",
+      "default": false
+    },
+    "commercial_gap": {
+      "type": "boolean",
+      "description": "TRUE when JP-tab labour is non-zero but SCS Annual is $0 (e.g. E1.25 ACB at AU sites: 0.25 hrs/yr/asset of labour but $0 priced annual). Elevates to audit-hit register for next-year repricing.",
+      "x-eq-source-aliases": ["gap", "commercial_gap_flag", "audit_hit"],
+      "x-eq-coerce": "boolean",
+      "default": false
+    },
+    "status": {
+      "type": "string",
+      "enum": ["staged", "committed", "archived"],
+      "description": "Import lifecycle status. 'staged' = pending review; 'committed' = live; 'archived' = superseded.",
+      "x-eq-source-aliases": ["scope_status", "state", "lifecycle"],
+      "default": "committed"
+    },
+    "source_workbook": {
+      "type": ["string", "null"],
+      "description": "Filename of the source xlsx (audit trail).",
+      "x-eq-source-aliases": ["workbook", "source_file", "filename"],
+      "maxLength": 250
+    },
+    "source_sheet": {
+      "type": ["string", "null"],
+      "description": "Sheet/tab name within the source workbook.",
+      "x-eq-source-aliases": ["sheet", "tab", "worksheet"],
+      "maxLength": 100
+    },
+    "source_row": {
+      "type": ["integer", "null"],
+      "description": "1-based row number in the source sheet for audit/reconciliation.",
+      "x-eq-source-aliases": ["row", "row_number", "source_line"],
+      "x-eq-coerce": "number",
+      "minimum": 1
+    },
+    "source_import_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Groups rows imported in the same xlsx run.",
+      "x-eq-source-aliases": ["import_id", "batch_id"]
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["comment", "comments", "remarks", "note"],
+      "maxLength": 4000
+    },
+    "imported_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-eq-system-managed": true
+    },
+    "imported_from": {
+      "type": ["string", "null"],
+      "x-eq-system-managed": true
+    }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "fy_format",
+      "rule": "financial_year matches '^[0-9]{4}-[0-9]{4}$'",
+      "message": "financial_year must be in the form 'YYYY-YYYY' (e.g. '2025-2026').",
+      "severity": "error"
+    },
+    {
+      "id": "ad_hoc_has_no_year_totals",
+      "rule": "billing_basis != 'ad_hoc' OR year_totals == null OR Object.keys(year_totals).length == 0",
+      "message": "billing_basis is ad_hoc but year_totals is populated — ad-hoc rows are billed per visit with no fixed annual price.",
+      "severity": "warning"
+    },
+    {
+      "id": "fixed_basis_year_totals",
+      "rule": "billing_basis != 'fixed' OR year_totals != null",
+      "message": "billing_basis is fixed but year_totals is empty — fixed scope should have per-year prices.",
+      "severity": "warning"
+    }
+  ],
+  "x-eq-import-hints": {
+    "description": "Contract scope rows come from the commercial sheet of a contract pack — typically the DELTA ELCOM 'SCS' tab plus per-JP tabs. JSONB columns let one row carry the full per-cycle cost matrix without exploding into 7+ numeric columns.",
+    "common_sources": [
+      {
+        "name": "DELTA ELCOM SCS tab",
+        "typical_columns": ["JP Code", "Description", "Qty", "Intervals", "1YR Cost", "5YR Cost", "Y1 Total", "Y2 Total", "Comments"],
+        "watchouts": ["Y1-Y5 columns are BASE values, BEFORE CPI", "Comments column carries due-year info: '5YR: 14 due in 2026' — parse into due_years JSONB", "Cycle costs come from each JP's own tab — never compute from labour x rate"]
+      },
+      {
+        "name": "Additional Items / Ad-hoc rate card",
+        "typical_columns": ["Item", "Unit", "Rate", "Notes"],
+        "watchouts": ["These are billing_basis='ad_hoc' with unit_rate_per_asset set, no year_totals"]
+      }
+    ]
+  }
+}

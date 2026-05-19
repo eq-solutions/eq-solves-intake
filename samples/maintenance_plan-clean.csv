@@ -1,0 +1,11 @@
+code,name,frequency,customer_id,type,active
+LVACB,LV Air Circuit Breaker Annual Service,annual,11111111-1111-1111-1111-111111111111,electrical,true
+LVACB,LV Air Circuit Breaker 6-monthly,semi_annual,11111111-1111-1111-1111-111111111111,electrical,true
+NSX,Moulded Case CB Annual,annual,11111111-1111-1111-1111-111111111111,electrical,true
+RCD,RCD Test 6-Monthly,semi_annual,22222222-2222-2222-2222-222222222222,electrical,true
+M10.13,Annual Switchboard PM,annual,11111111-1111-1111-1111-111111111111,electrical,true
+E1.25,Quarterly Switchboard Walkdown,quarterly,11111111-1111-1111-1111-111111111111,electrical,true
+THERM,Thermal Imaging Annual,annual,11111111-1111-1111-1111-111111111111,electrical,true
+PM-MONTHLY,Generator Monthly Run,monthly,11111111-1111-1111-1111-111111111111,mechanical,true
+UPS,UPS Quarterly Service,quarterly,11111111-1111-1111-1111-111111111111,electrical,true
+LVACB,LV ACB 2-year deep clean,2yr,11111111-1111-1111-1111-111111111111,electrical,true

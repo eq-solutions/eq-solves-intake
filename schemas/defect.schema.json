@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/service/defect/v1.json",
+  "title": "Defect",
+  "description": "A fault or remedial item raised against an asset, typically during a maintenance check or test. Tracked through to resolution with optional work-order linkage. Defects can be auto-raised by the importer when a check_item or test reading fails.",
+  "type": "object",
+  "x-eq-entity": "defect",
+  "x-eq-module": "service",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "defects",
+  "required": ["defect_id", "tenant_id", "title", "severity", "status"],
+  "properties": {
+    "defect_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-source-aliases": ["id", "defect_id"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-system-managed": true
+    },
+    "external_id": {
+      "type": ["string", "null"],
+      "description": "External reference (e.g. customer's CMMS defect number).",
+      "x-eq-source-aliases": ["defect_no", "fault_no", "ref"],
+      "maxLength": 64
+    },
+    "check_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Maintenance check the defect was raised from.",
+      "x-eq-foreign-key": "maintenance_check.check_id",
+      "x-eq-source-aliases": ["maintenance_check_id", "check"]
+    },
+    "check_asset_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Specific (check, asset) row the defect was raised against.",
+      "x-eq-foreign-key": "check_asset.check_asset_id",
+      "x-eq-source-aliases": ["check_asset"]
+    },
+    "asset_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "x-eq-foreign-key": "asset.asset_id",
+      "x-eq-fk-fuzzy-match-on": ["asset.external_id", "asset.name"],
+      "x-eq-source-aliases": ["asset", "asset_tag", "tag"]
+    },
+    "site_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "x-eq-foreign-key": "site.site_id",
+      "x-eq-fk-fuzzy-match-on": ["site.name", "site.code"],
+      "x-eq-source-aliases": ["site", "site_name", "location"]
+    },
+    "title": {
+      "type": "string",
+      "description": "Short summary of the defect.",
+      "x-eq-source-aliases": ["summary", "subject", "defect_title", "issue"],
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "description": {
+      "type": ["string", "null"],
+      "description": "Detailed description of the fault.",
+      "x-eq-source-aliases": ["details", "defect_description", "fault_description", "long_description"],
+      "maxLength": 4000
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "critical"],
+      "x-eq-source-aliases": ["priority", "impact", "rating", "level"],
+      "x-eq-enum-aliases": {
+        "low": ["l", "4", "p4", "minor"],
+        "medium": ["m", "med", "3", "p3", "moderate"],
+        "high": ["h", "2", "p2", "major"],
+        "critical": ["c", "1", "p1", "extreme", "very_high"]
+      },
+      "default": "medium"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["open", "in_progress", "resolved", "closed"],
+      "x-eq-source-aliases": ["state", "defect_status"],
+      "x-eq-enum-aliases": {
+        "open": ["new", "raised", "pending", "logged"],
+        "in_progress": ["inprog", "in progress", "active", "wip"],
+        "resolved": ["fixed", "done", "complete", "remediated"],
+        "closed": ["closed_out", "finalised", "archived"]
+      },
+      "default": "open"
+    },
+    "raised_by_user_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "x-eq-foreign-key": "staff.user_id",
+      "x-eq-fk-fuzzy-match-on": ["staff.full_name", "staff.email"],
+      "x-eq-source-aliases": ["raised_by", "reported_by", "logged_by", "tech"]
+    },
+    "assigned_to_user_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "x-eq-foreign-key": "staff.user_id",
+      "x-eq-fk-fuzzy-match-on": ["staff.full_name", "staff.email"],
+      "x-eq-source-aliases": ["assigned_to", "assignee", "owner"]
+    },
+    "resolved_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-eq-source-aliases": ["resolution_time", "fixed_at", "closed_at"],
+      "x-eq-coerce": "date"
+    },
+    "resolved_by_user_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "x-eq-foreign-key": "staff.user_id",
+      "x-eq-fk-fuzzy-match-on": ["staff.full_name", "staff.email"],
+      "x-eq-source-aliases": ["resolved_by", "fixed_by", "closed_by"]
+    },
+    "resolution_notes": {
+      "type": ["string", "null"],
+      "description": "What was done to resolve the defect.",
+      "x-eq-source-aliases": ["resolution", "fix_description", "remedy", "close_notes"],
+      "maxLength": 4000
+    },
+    "work_order_number": {
+      "type": ["string", "null"],
+      "description": "External work order number raised to action the defect.",
+      "x-eq-source-aliases": ["wo_number", "wo_no", "work_order"],
+      "maxLength": 64
+    },
+    "work_order_date": {
+      "type": ["string", "null"],
+      "format": "date",
+      "x-eq-source-aliases": ["wo_date", "work_order_raised"],
+      "x-eq-coerce": "date"
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["comment", "comments", "remarks", "note"],
+      "maxLength": 4000
+    },
+    "imported_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-eq-system-managed": true
+    },
+    "imported_from": {
+      "type": ["string", "null"],
+      "x-eq-system-managed": true
+    }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "resolved_status_has_resolution",
+      "rule": "status NOT IN ('resolved','closed') OR resolved_at != null",
+      "message": "Status is resolved/closed but resolved_at is null.",
+      "severity": "warning"
+    },
+    {
+      "id": "resolved_by_when_resolved",
+      "rule": "resolved_at == null OR resolved_by_user_id != null",
+      "message": "Defect has resolved_at but no resolved_by_user_id — who closed it?",
+      "severity": "warning"
+    }
+  ],
+  "x-eq-import-hints": {
+    "description": "Defect registers come either standalone (one row per defect) or inline on a maintenance check export (defect columns appended to a failed check_item row).",
+    "common_sources": [
+      {
+        "name": "Standalone defect register",
+        "typical_columns": ["Defect No", "Site", "Asset", "Description", "Severity", "Status", "Raised By", "Resolved Date"],
+        "watchouts": ["Severity often free-text — see x-eq-enum-aliases", "Resolved Date present but Status='Open' indicates a stale row — flag for review"]
+      },
+      {
+        "name": "Inline on a failed check item",
+        "typical_columns": ["Task", "Result", "Defect Description", "Severity"],
+        "watchouts": ["When Result=Fail and Defect Description is populated, emit a defect row + the check_item row"]
+      }
+    ]
+  }
+}

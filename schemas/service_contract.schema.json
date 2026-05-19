@@ -1,0 +1,374 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/service/service-contract/v1.json",
+  "title": "Service Contract",
+  "description": "A signed (or proposed) commercial agreement between a tenant and a customer — the contract under which SKS bills the customer for maintenance work. A customer can have many service_contracts over time (initial 3-year + extensions, or a new contract on renewal); at most one is `status: active` at a time. Contract scopes (contract_scope rows) hang off a specific service_contract, not directly off the customer.\n\nIntroduced 2026-05-20 in the Door C schema split. The fields here used to live on customer.schema.json v1; they were lifted out so the customer entity could represent the CRM lifecycle (lead → prospect → active → churned) cleanly.",
+  "type": "object",
+  "x-eq-entity": "service_contract",
+  "x-eq-module": "service",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "service_contracts",
+  "required": ["contract_id", "tenant_id", "customer_id", "status"],
+  "properties": {
+    "contract_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-source-aliases": ["id", "contract_id", "service_contract_id"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-system-managed": true
+    },
+    "customer_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Customer this contract is with.",
+      "x-eq-foreign-key": "customer.customer_id",
+      "x-eq-fk-fuzzy-match-on": ["customer.company_name", "customer.code", "customer.customer_entity_legal_name"],
+      "x-eq-source-aliases": ["customer", "client", "customer_name", "client_name", "company"]
+    },
+    "external_id": {
+      "type": ["string", "null"],
+      "description": "Customer-side or external system reference (PO number, contract reference).",
+      "x-eq-source-aliases": ["contract_no", "contract_number", "ref", "external_ref", "po_number"],
+      "maxLength": 64
+    },
+    "name": {
+      "type": ["string", "null"],
+      "description": "Short label for this contract (e.g. 'Equinix AU SMCA 2024-2026', 'Jemena RCD Program 2024-2027'). Falls back to '{customer.display_name} — {term_start} to {term_end}' if null.",
+      "x-eq-source-aliases": ["contract_name", "title", "label"],
+      "maxLength": 200
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "active", "expired", "superseded", "cancelled"],
+      "description": "Lifecycle of this specific contract. draft = pre-signature; active = currently billable; expired = ran out, not renewed; superseded = replaced by a newer contract with the same customer; cancelled = terminated early.",
+      "x-eq-source-aliases": ["contract_status", "state"],
+      "x-eq-enum-aliases": {
+        "draft": ["draft", "proposed", "negotiating", "pending"],
+        "active": ["active", "current", "live", "signed", "in_force"],
+        "expired": ["expired", "ended", "elapsed", "ran_out"],
+        "superseded": ["superseded", "replaced", "renewed_to_new", "rolled_over"],
+        "cancelled": ["cancelled", "canceled", "terminated", "void"]
+      },
+      "default": "draft"
+    },
+    "contract_template": {
+      "type": ["string", "null"],
+      "enum": [null, "au_smca_v1", "hyperscale_v1", "jemena_v1", "generic"],
+      "description": "Which contract template was used. Drives derivation logic for year-fees, CPI, scope-coverage rules.",
+      "x-eq-source-aliases": ["template", "contract_type", "type"],
+      "x-eq-enum-aliases": {
+        "au_smca_v1": ["au smca", "smca", "au_smca", "equinix au smca"],
+        "hyperscale_v1": ["hyperscale", "hs", "equinix hyperscale"],
+        "jemena_v1": ["jemena"],
+        "generic": ["other", "default", "custom"]
+      }
+    },
+    "smca_agreement_number": {
+      "type": ["string", "null"],
+      "description": "SMCA / Master Services Agreement reference number.",
+      "x-eq-source-aliases": ["smca_no", "msa_no", "agreement_no"],
+      "maxLength": 64
+    },
+    "schedule_agreement_number": {
+      "type": ["string", "null"],
+      "description": "Schedule agreement reference number (attached to a master agreement).",
+      "x-eq-source-aliases": ["schedule_no", "schedule_agreement_no"],
+      "maxLength": 64
+    },
+    "term_start": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "Start of the contract term. Used as Y1 base for CPI calculations.",
+      "x-eq-source-aliases": ["start", "contract_start", "effective_from", "term_start"],
+      "x-eq-coerce": "date"
+    },
+    "term_end": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "End of the current contract term (before any renewal options).",
+      "x-eq-source-aliases": ["end", "contract_end", "effective_to", "term_end", "expires"],
+      "x-eq-coerce": "date"
+    },
+    "options": {
+      "type": ["string", "null"],
+      "description": "Free-text renewal option encoding, e.g. '+1+1' (two one-year options).",
+      "x-eq-source-aliases": ["renewal_options", "extension_options", "contract_options"],
+      "maxLength": 64
+    },
+    "visit_cadence": {
+      "type": ["string", "null"],
+      "enum": [null, "monthly", "quarterly", "biannual", "annual", "ad_hoc"],
+      "description": "How often the tenant attends this customer's sites under this contract. Drives the calendar coverage check at xlsx import.",
+      "x-eq-source-aliases": ["cadence", "visit_frequency", "service_frequency"],
+      "x-eq-enum-aliases": {
+        "monthly": ["m", "month", "monthly_visit"],
+        "quarterly": ["q", "qtr", "quarter", "3_monthly"],
+        "biannual": ["semi_annual", "semi-annual", "6_monthly", "half_yearly", "s"],
+        "annual": ["a", "yearly", "annual_visit"],
+        "ad_hoc": ["adhoc", "ad-hoc", "on_demand", "as_needed"]
+      }
+    },
+    "cpi_basis": {
+      "type": ["string", "null"],
+      "enum": [null, "simple_on_y1_base", "compound_annual", "none"],
+      "description": "How CPI is applied year-over-year. Equinix AU SMCA = simple_on_y1_base (Y_n = Y1*(1+rate*(n-1))) — NOT compound.",
+      "x-eq-source-aliases": ["cpi_method", "cpi_rule", "escalation_basis"],
+      "x-eq-enum-aliases": {
+        "simple_on_y1_base": ["simple", "linear", "simple_on_base"],
+        "compound_annual": ["compound", "compounding"],
+        "none": ["no_cpi", "fixed"]
+      }
+    },
+    "cpi_rate": {
+      "type": ["number", "null"],
+      "description": "Annual CPI rate as a decimal fraction (0.05 = 5%).",
+      "x-eq-source-aliases": ["cpi", "cpi_pct", "escalation_rate"],
+      "x-eq-coerce": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0.05
+    },
+    "fiscal_year_basis": {
+      "type": ["string", "null"],
+      "enum": [null, "au_fy", "calendar"],
+      "description": "Whether contract years align to Australian FY (1 Jul - 30 Jun) or calendar year (1 Jan - 31 Dec, Equinix).",
+      "x-eq-source-aliases": ["fy_basis", "year_basis"],
+      "x-eq-enum-aliases": {
+        "au_fy": ["fy", "financial_year", "aufy", "1_july", "july_to_june"],
+        "calendar": ["cy", "calendar_year", "jan_to_dec"]
+      },
+      "default": "au_fy"
+    },
+    "payment_terms_days": {
+      "type": ["integer", "null"],
+      "description": "Days from invoice to payment due (45 = Equinix Net 45).",
+      "x-eq-source-aliases": ["payment_terms", "net_days", "terms"],
+      "x-eq-coerce": "number",
+      "minimum": 0,
+      "maximum": 365
+    },
+    "hourly_rate_normal": {
+      "type": ["number", "null"],
+      "description": "Standard business-hours rate ($/hr).",
+      "x-eq-source-aliases": ["rate_normal", "normal_rate", "rate_business_hours"],
+      "x-eq-coerce": "number",
+      "minimum": 0
+    },
+    "hourly_rate_after_hours": {
+      "type": ["number", "null"],
+      "description": "After-hours rate ($/hr).",
+      "x-eq-source-aliases": ["rate_after_hours", "after_hours_rate", "rate_oot"],
+      "x-eq-coerce": "number",
+      "minimum": 0
+    },
+    "hourly_rate_weekend": {
+      "type": ["number", "null"],
+      "description": "Weekend rate ($/hr).",
+      "x-eq-source-aliases": ["rate_weekend", "weekend_rate"],
+      "x-eq-coerce": "number",
+      "minimum": 0
+    },
+    "hourly_rate_public_holiday": {
+      "type": ["number", "null"],
+      "description": "Public holiday rate ($/hr).",
+      "x-eq-source-aliases": ["rate_public_holiday", "public_holiday_rate", "rate_pubhol"],
+      "x-eq-coerce": "number",
+      "minimum": 0
+    },
+    "min_hours_after_hours": {
+      "type": ["number", "null"],
+      "description": "Minimum charge in hours for an after-hours call-out.",
+      "x-eq-source-aliases": ["min_after_hours", "after_hours_min"],
+      "x-eq-coerce": "number",
+      "minimum": 0,
+      "default": 4
+    },
+    "min_hours_weekend": {
+      "type": ["number", "null"],
+      "description": "Minimum charge in hours for a weekend call-out.",
+      "x-eq-source-aliases": ["min_weekend", "weekend_min"],
+      "x-eq-coerce": "number",
+      "minimum": 0,
+      "default": 4
+    },
+    "hourly_rate_effective_from": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "Date from which the current hourly rates apply.",
+      "x-eq-source-aliases": ["rate_effective_from", "rates_from"],
+      "x-eq-coerce": "date"
+    },
+    "sla_response_minutes": {
+      "type": ["integer", "null"],
+      "description": "Maximum minutes to acknowledge a reactive call (15 for Equinix Premium).",
+      "x-eq-source-aliases": ["sla_response", "response_sla", "response_time_min"],
+      "x-eq-coerce": "number",
+      "minimum": 0
+    },
+    "sla_onsite_hours": {
+      "type": ["integer", "null"],
+      "description": "Maximum hours to be on-site after a reactive call (2 for Equinix).",
+      "x-eq-source-aliases": ["sla_onsite", "onsite_sla", "onsite_time_hr"],
+      "x-eq-coerce": "number",
+      "minimum": 0
+    },
+    "sla_resolution_hours": {
+      "type": ["integer", "null"],
+      "description": "Maximum hours to fully resolve a reactive call (24 for Equinix).",
+      "x-eq-source-aliases": ["sla_resolution", "resolution_sla", "resolve_hr"],
+      "x-eq-coerce": "number",
+      "minimum": 0
+    },
+    "monthly_report_due_day": {
+      "type": ["integer", "null"],
+      "description": "Day of month by which the monthly performance report must be issued (Equinix = 7).",
+      "x-eq-source-aliases": ["report_due_day", "monthly_report_day"],
+      "x-eq-coerce": "number",
+      "minimum": 1,
+      "maximum": 31
+    },
+    "pm_reschedule_notice_days": {
+      "type": ["integer", "null"],
+      "description": "Notice required (days) before rescheduling a PM visit. Equinix = 30.",
+      "x-eq-source-aliases": ["reschedule_notice", "pm_notice_days"],
+      "x-eq-coerce": "number",
+      "minimum": 0,
+      "default": 30
+    },
+    "service_credit_pm_breach_pct": {
+      "type": ["number", "null"],
+      "description": "Service credit as fraction of annual contract value for PM breach (0.03 = 3%).",
+      "x-eq-source-aliases": ["sc_pm_pct", "pm_credit_pct"],
+      "x-eq-coerce": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "service_credit_reactive_breach_pct": {
+      "type": ["number", "null"],
+      "description": "Service credit as fraction of annual contract value for reactive breach.",
+      "x-eq-source-aliases": ["sc_reactive_pct", "reactive_credit_pct"],
+      "x-eq-coerce": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "service_credit_spares_breach_pct": {
+      "type": ["number", "null"],
+      "description": "Service credit as fraction of annual contract value for spares breach.",
+      "x-eq-source-aliases": ["sc_spares_pct", "spares_credit_pct"],
+      "x-eq-coerce": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "management_hours_per_period": {
+      "type": ["number", "null"],
+      "description": "Standing supervisor/planner overhead allocation absorbed into the contract value (Equinix = 80 hrs/quarter).",
+      "x-eq-source-aliases": ["mgmt_hours", "management_hours", "supervisor_hours"],
+      "x-eq-coerce": "number",
+      "minimum": 0
+    },
+    "management_period_basis": {
+      "type": ["string", "null"],
+      "enum": [null, "quarterly", "monthly", "annual"],
+      "description": "Period that management_hours_per_period covers.",
+      "x-eq-source-aliases": ["mgmt_period", "management_period"],
+      "x-eq-enum-aliases": {
+        "quarterly": ["q", "qtr", "per_quarter"],
+        "monthly": ["m", "per_month"],
+        "annual": ["a", "yearly", "per_year"]
+      }
+    },
+    "smca_doc_attachment_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Reference to the signed SMCA document in the attachments table.",
+      "x-eq-foreign-key": "attachment.attachment_id",
+      "x-eq-source-aliases": ["smca_doc_id", "msa_doc_id"]
+    },
+    "schedule_doc_attachment_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Reference to the signed schedule document in the attachments table.",
+      "x-eq-foreign-key": "attachment.attachment_id",
+      "x-eq-source-aliases": ["schedule_doc_id"]
+    },
+    "supersedes_contract_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "When this contract replaces a previous one (renewal), points at the predecessor. Used to build a contract history per customer.",
+      "x-eq-foreign-key": "service_contract.contract_id",
+      "x-eq-source-aliases": ["previous_contract_id", "renewed_from_id"]
+    },
+    "active": {
+      "type": "boolean",
+      "description": "Whether this contract record is currently active (i.e. not soft-deleted). Distinct from `status=active` which is a lifecycle stage.",
+      "x-eq-source-aliases": ["is_active", "enabled", "not_deleted"],
+      "x-eq-coerce": "boolean",
+      "default": true
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["comment", "comments", "remarks", "note"],
+      "maxLength": 4000
+    },
+    "imported_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-eq-system-managed": true
+    },
+    "imported_from": {
+      "type": ["string", "null"],
+      "x-eq-system-managed": true
+    }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "term_end_after_start",
+      "rule": "term_end == null OR term_start == null OR term_end > term_start",
+      "message": "term_end is not after term_start.",
+      "severity": "error"
+    },
+    {
+      "id": "active_status_has_term",
+      "rule": "status != 'active' OR (term_start != null AND term_end != null)",
+      "message": "Contract status is active but term_start/term_end is missing.",
+      "severity": "error"
+    },
+    {
+      "id": "cpi_rate_when_basis",
+      "rule": "cpi_basis == null OR cpi_basis == 'none' OR cpi_rate != null",
+      "message": "cpi_basis set but no cpi_rate provided.",
+      "severity": "warning"
+    },
+    {
+      "id": "mgmt_period_when_hours",
+      "rule": "management_hours_per_period == null OR management_period_basis != null",
+      "message": "management_hours_per_period set but no management_period_basis to interpret it.",
+      "severity": "warning"
+    },
+    {
+      "id": "expired_after_term_end",
+      "rule": "status != 'expired' OR term_end == null OR term_end < TODAY()",
+      "message": "Contract status is expired but term_end is in the future — should be active.",
+      "severity": "warning"
+    }
+  ],
+  "x-eq-import-hints": {
+    "description": "Contracts are usually entered manually rather than bulk-imported — they're low-frequency, high-value. When bulk-imported, expect one row per (customer, term_start) pair.",
+    "common_sources": [
+      {
+        "name": "Contract register spreadsheet",
+        "typical_columns": ["Customer", "Contract No", "Template", "Start", "End", "CPI %", "Net Days", "Status"],
+        "watchouts": ["CPI may be '5%' or '0.05' or '5' — coerce as fraction (5% → 0.05)", "Net Days often free-text 'Net 45' — coerce to integer", "Customer column resolves to customer_id via FK fuzzy match against company_name / code"]
+      },
+      {
+        "name": "Signed contract metadata extracted at upload time",
+        "typical_columns": ["File", "Customer", "Term Start", "Term End", "Template"],
+        "watchouts": ["Set smca_doc_attachment_id / schedule_doc_attachment_id at import to keep the signed PDF linked"]
+      }
+    ]
+  }
+}

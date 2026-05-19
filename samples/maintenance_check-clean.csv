@@ -1,0 +1,9 @@
+maximo_wo_number,site_id,plan_id,frequency,due_date,status,assigned_to_user_id,notes,is_dark_site
+WO123456,aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1,bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb01,annual,2026-08-15,scheduled,11111111-2222-3333-4444-555555555501,annual ACB service,false
+WO123457,aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1,bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb04,semi_annual,2026-05-30,in_progress,11111111-2222-3333-4444-555555555502,RCD 6-mo,false
+WO123458,aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2,bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb03,annual,2026-07-01,complete,11111111-2222-3333-4444-555555555503,,false
+WO123459,aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa9,bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb07,annual,2026-09-01,scheduled,11111111-2222-3333-4444-555555555505,thermal scan,false
+WO123460,aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaca,bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb09,quarterly,2026-04-10,complete,11111111-2222-3333-4444-555555555504,,false
+WO123461,aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3,bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb08,monthly,2026-06-01,scheduled,,gen monthly,false
+WO123462,aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa6,bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb01,2yr,2027-03-15,scheduled,11111111-2222-3333-4444-555555555507,2yr clean,false
+WO123464,cccccccc-cccc-cccc-cccc-cccccccccc01,bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb04,semi_annual,2026-08-30,scheduled,11111111-2222-3333-4444-555555555510,jemena board,false

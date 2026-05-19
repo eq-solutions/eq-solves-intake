@@ -1,0 +1,6 @@
+Site,Asset,Title,Description,Severity,Status,Raised By,WO #,Resolved Date
+SY1,SY1-MSB-A,Insulation low,L1-N IR test failed at 1.2 MΩ - replace,High,open,James Patel,WO123456,
+SY9,SY9-MSB-1,Hot spot at L2 terminal,Thermal scan 78°C vs 22°C ambient - retighten + monitor,Critical,in_progress,Kofi Asante,WO123459-D1,
+SY1,SY1-MSB-B,Door interlock sticky,Mechanical service needed,Medium,RESOLVED,Sarah O'Brien,WO123456-D2,2026-05-02
+Cardiff DB-1,JM-30248,RCD circuit did not trip at 1x,Inspection required,h,open,Aria Singh,,
+SY2,SY2-SB-12,Earth bonding loose,Found during PM,L,closed,Michael Henderson,WO123458-D1,2026-04-15

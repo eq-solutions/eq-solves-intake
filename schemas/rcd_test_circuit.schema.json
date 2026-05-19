@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/service/rcd-test-circuit/v1.json",
+  "title": "RCD Test Circuit",
+  "description": "One row per RCD circuit tested on a board. Belongs to an rcd_test parent (the board + visit). Renders as one row in the Jemena xlsx deliverable. Timing values stored as text to preserve the '' / blank non-trip indicator used by the Jemena template — numeric coercion happens at report-rendering, not storage. Composite uniqueness: (rcd_test_id, section_label, circuit_no) — multi-section boards (e.g. 'Lighting Section' / 'Power Section') can legitimately have the same circuit_no in each section.",
+  "type": "object",
+  "x-eq-entity": "rcd_test_circuit",
+  "x-eq-module": "service",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "rcd_test_circuits",
+  "x-eq-unique": [["rcd_test_id", "section_label", "circuit_no"]],
+  "required": ["circuit_id", "tenant_id", "rcd_test_id", "circuit_no", "normal_trip_current_ma", "trip_test_button_ok"],
+  "properties": {
+    "circuit_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-source-aliases": ["id", "circuit_id"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-system-managed": true
+    },
+    "rcd_test_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Parent RCD test (board + visit).",
+      "x-eq-foreign-key": "rcd_test.rcd_test_id",
+      "x-eq-source-aliases": ["test_id", "rcd_test"]
+    },
+    "section_label": {
+      "type": ["string", "null"],
+      "description": "Optional sub-section within a board (e.g. 'Lighting Section', 'Power Section'). NULL when the board is not sub-sectioned. Part of the composite uniqueness key — multi-section boards can repeat circuit_no across sections.",
+      "x-eq-source-aliases": ["section", "section_name", "subsection", "sub_section"],
+      "maxLength": 100
+    },
+    "circuit_no": {
+      "type": "string",
+      "description": "Circuit identifier as labelled on the board. Stored as text to support non-numeric labels like '3a' or 'L1-7'.",
+      "x-eq-source-aliases": ["circuit", "circuit_number", "ckt", "ckt_no", "circuit_id_label"],
+      "minLength": 1,
+      "maxLength": 50
+    },
+    "normal_trip_current_ma": {
+      "type": "integer",
+      "description": "Trip current rating in mA (Jemena standard = 30 mA).",
+      "x-eq-source-aliases": ["trip_current", "i_delta_n_ma", "rating_ma", "trip_ma"],
+      "x-eq-coerce": "number",
+      "minimum": 1,
+      "default": 30
+    },
+    "x1_no_trip_0_ms": {
+      "type": ["string", "null"],
+      "description": "Trip time at 1×IΔn, 0° phase, expected no trip. Empty/blank when no trip (Jemena convention).",
+      "x-eq-source-aliases": ["x1_0_no_trip", "1x_no_trip_0deg"],
+      "maxLength": 20
+    },
+    "x1_no_trip_180_ms": {
+      "type": ["string", "null"],
+      "description": "Trip time at 1×IΔn, 180° phase, expected no trip.",
+      "x-eq-source-aliases": ["x1_180_no_trip", "1x_no_trip_180deg"],
+      "maxLength": 20
+    },
+    "x1_trip_0_ms": {
+      "type": ["string", "null"],
+      "description": "Trip time at 1×IΔn, 0° phase, expected trip.",
+      "x-eq-source-aliases": ["x1_0_trip", "1x_trip_0deg"],
+      "maxLength": 20
+    },
+    "x1_trip_180_ms": {
+      "type": ["string", "null"],
+      "description": "Trip time at 1×IΔn, 180° phase, expected trip.",
+      "x-eq-source-aliases": ["x1_180_trip", "1x_trip_180deg"],
+      "maxLength": 20
+    },
+    "x5_fast_0_ms": {
+      "type": ["string", "null"],
+      "description": "Trip time at 5×IΔn, 0° phase (fast trip).",
+      "x-eq-source-aliases": ["x5_0", "5x_0deg"],
+      "maxLength": 20
+    },
+    "x5_fast_180_ms": {
+      "type": ["string", "null"],
+      "description": "Trip time at 5×IΔn, 180° phase.",
+      "x-eq-source-aliases": ["x5_180", "5x_180deg"],
+      "maxLength": 20
+    },
+    "trip_test_button_ok": {
+      "type": "boolean",
+      "description": "Whether the physical test button on the RCD operated correctly.",
+      "x-eq-source-aliases": ["test_button", "button_ok", "trip_button"],
+      "x-eq-coerce": "boolean",
+      "default": false
+    },
+    "jemena_circuit_asset_id": {
+      "type": ["string", "null"],
+      "description": "Per-circuit Jemena asset ID (e.g. '30248'). Sub-asset semantics — text marker only, not a FK into assets.",
+      "x-eq-source-aliases": ["jemena_id", "jm_circuit_id", "circuit_asset_id"],
+      "maxLength": 50
+    },
+    "action_taken": {
+      "type": ["string", "null"],
+      "description": "Free-text: e.g. 'N/A', 'Critical Equipment — do not trip', or description of corrective action on a fail.",
+      "x-eq-source-aliases": ["action", "remedy", "result_action", "comments"],
+      "maxLength": 500
+    },
+    "is_critical_load": {
+      "type": "boolean",
+      "description": "When true, the wizard surfaces a guard so the technician doesn't accidentally trip a UPS / ESS feeder.",
+      "x-eq-source-aliases": ["critical", "critical_load", "do_not_trip"],
+      "x-eq-coerce": "boolean",
+      "default": false
+    },
+    "sort_order": {
+      "type": "integer",
+      "x-eq-source-aliases": ["order", "sequence", "seq"],
+      "x-eq-coerce": "number",
+      "minimum": 0,
+      "default": 0
+    },
+    "imported_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-eq-system-managed": true
+    },
+    "imported_from": {
+      "type": ["string", "null"],
+      "x-eq-system-managed": true
+    }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "unique_within_section",
+      "rule": "UNIQUE(rcd_test_id, section_label, circuit_no)",
+      "message": "A board cannot have two circuits with the same number in the same section. Different sections may reuse circuit numbers (e.g. Lighting Section #1 vs Power Section #1).",
+      "severity": "error"
+    }
+  ],
+  "x-eq-import-hints": {
+    "description": "One row per RCD circuit. Jemena's template uses blank cells for 'no trip' rather than zero — preserve as text. Multi-section boards (Cardiff DB-1) repeat circuit numbers across sections.",
+    "common_sources": [
+      {
+        "name": "Jemena RCD test tab",
+        "typical_columns": ["Section", "Circuit", "Trip mA", "x1 0° No Trip", "x1 180° No Trip", "x1 0° Trip", "x1 180° Trip", "x5 0°", "x5 180°", "Test Button", "Asset ID", "Action"],
+        "watchouts": ["Empty trip-time cells mean 'did not trip' — preserve as null/empty string, NOT as 0", "Section column may be blank for unsectioned boards", "Critical-load flag often inferred from 'Action' column text ('Do not trip — critical')"]
+      }
+    ]
+  }
+}

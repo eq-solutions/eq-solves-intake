@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/service/pm-calendar/v1.json",
+  "title": "PM Calendar Entry",
+  "description": "A scheduled preventative-maintenance task on a cost-tracking calendar. Distinct from maintenance_check: pm_calendar is the planning view (when work will happen, what it costs, who's notified), maintenance_check is the execution. Carries Australian FY quarter, iCal recurrence rule, and notification settings.",
+  "type": "object",
+  "x-eq-entity": "pm_calendar",
+  "x-eq-module": "service",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "pm_calendar",
+  "required": ["entry_id", "tenant_id", "title", "start_time", "status", "active"],
+  "properties": {
+    "entry_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-source-aliases": ["id", "entry_id", "calendar_id", "pm_id"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-system-managed": true
+    },
+    "site_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Site this entry is at. May be null for cross-site activities (training, supervisor visits).",
+      "x-eq-foreign-key": "site.site_id",
+      "x-eq-fk-fuzzy-match-on": ["site.name", "site.code", "site.external_id"],
+      "x-eq-source-aliases": ["site", "site_name", "location"]
+    },
+    "check_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Optional link to the maintenance_check this calendar entry generated (or vice-versa).",
+      "x-eq-foreign-key": "maintenance_check.check_id",
+      "x-eq-source-aliases": ["maintenance_check_id", "check"]
+    },
+    "title": {
+      "type": "string",
+      "description": "Display title (e.g. 'SY1 Quarterly LVACB PM').",
+      "x-eq-source-aliases": ["name", "event_title", "subject"],
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "location": {
+      "type": ["string", "null"],
+      "description": "Free-text location string (in addition to site_id).",
+      "x-eq-source-aliases": ["where", "place", "venue"],
+      "maxLength": 200
+    },
+    "description": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["details", "long_description"],
+      "maxLength": 4000
+    },
+    "category": {
+      "type": "string",
+      "description": "Free-text category (e.g. 'Quarterly maintenance', 'Annual', 'Reactive', 'Training').",
+      "x-eq-source-aliases": ["type", "event_type", "classification"],
+      "maxLength": 100,
+      "default": "Quarterly maintenance"
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Scheduled start.",
+      "x-eq-source-aliases": ["start", "scheduled_start", "begin", "from"],
+      "x-eq-coerce": "date"
+    },
+    "end_time": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Scheduled end. Null when only start is known.",
+      "x-eq-source-aliases": ["end", "scheduled_end", "to", "finish"],
+      "x-eq-coerce": "date"
+    },
+    "hours": {
+      "type": ["number", "null"],
+      "description": "Planned labour hours for this entry.",
+      "x-eq-source-aliases": ["labour_hours", "planned_hours", "hrs"],
+      "x-eq-coerce": "number",
+      "minimum": 0
+    },
+    "contractor_materials_cost": {
+      "type": ["number", "null"],
+      "description": "Planned $ cost of contractor + materials (excludes labour rate).",
+      "x-eq-source-aliases": ["materials_cost", "contractor_cost", "cost", "materials_$"],
+      "x-eq-coerce": "number",
+      "minimum": 0
+    },
+    "quarter": {
+      "type": ["string", "null"],
+      "enum": [null, "Q1", "Q2", "Q3", "Q4"],
+      "description": "Australian FY quarter. Q1=Jul-Sep, Q2=Oct-Dec, Q3=Jan-Mar, Q4=Apr-Jun.",
+      "x-eq-source-aliases": ["qtr", "fy_quarter", "fiscal_quarter"],
+      "x-eq-enum-aliases": {
+        "Q1": ["1", "q1", "first", "jul_sep"],
+        "Q2": ["2", "q2", "second", "oct_dec"],
+        "Q3": ["3", "q3", "third", "jan_mar"],
+        "Q4": ["4", "q4", "fourth", "apr_jun"]
+      }
+    },
+    "financial_year": {
+      "type": ["string", "null"],
+      "description": "Australian FY (e.g. '2025-2026').",
+      "x-eq-source-aliases": ["fy", "year", "fiscal_year"],
+      "pattern": "^[0-9]{4}-[0-9]{4}$"
+    },
+    "recurrence_rule": {
+      "type": ["string", "null"],
+      "description": "iCal RRULE for recurrence engine (e.g. 'FREQ=MONTHLY;INTERVAL=6').",
+      "x-eq-source-aliases": ["rrule", "recurrence", "recur"],
+      "maxLength": 500
+    },
+    "recurrence_parent_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Parent entry when this is a generated occurrence.",
+      "x-eq-foreign-key": "pm_calendar.entry_id",
+      "x-eq-source-aliases": ["parent_id", "recurrence_parent"]
+    },
+    "reminder_days_before": {
+      "type": ["array", "null"],
+      "description": "Days before start_time to send email reminders (e.g. [7, 1]).",
+      "x-eq-source-aliases": ["reminders", "reminder_offsets"],
+      "items": { "type": "integer", "minimum": 0 },
+      "default": []
+    },
+    "notification_recipients": {
+      "type": ["array", "null"],
+      "description": "Email addresses to notify.",
+      "x-eq-source-aliases": ["recipients", "notify", "email_list"],
+      "items": { "type": "string", "format": "email" },
+      "default": []
+    },
+    "email_template": {
+      "type": ["string", "null"],
+      "description": "Template identifier or custom body.",
+      "x-eq-source-aliases": ["template", "email_template_id"],
+      "maxLength": 200
+    },
+    "last_notified_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-eq-system-managed": true
+    },
+    "assigned_to_user_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Owner of the entry.",
+      "x-eq-foreign-key": "staff.user_id",
+      "x-eq-fk-fuzzy-match-on": ["staff.full_name", "staff.email"],
+      "x-eq-source-aliases": ["assigned_to", "owner", "tech", "supervisor"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["scheduled", "in_progress", "completed", "cancelled"],
+      "x-eq-source-aliases": ["state", "event_status", "calendar_status"],
+      "x-eq-enum-aliases": {
+        "scheduled": ["pending", "planned", "open"],
+        "in_progress": ["inprog", "started", "running"],
+        "completed": ["done", "closed", "complete", "finished"],
+        "cancelled": ["canc", "cancel", "void"]
+      },
+      "default": "scheduled"
+    },
+    "active": {
+      "type": "boolean",
+      "x-eq-source-aliases": ["is_active", "current", "enabled"],
+      "x-eq-coerce": "boolean",
+      "default": true
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["comment", "comments", "remarks", "note"],
+      "maxLength": 4000
+    },
+    "imported_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-eq-system-managed": true
+    },
+    "imported_from": {
+      "type": ["string", "null"],
+      "x-eq-system-managed": true
+    }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "end_after_start",
+      "rule": "end_time == null OR start_time == null OR end_time >= start_time",
+      "message": "end_time is before start_time.",
+      "severity": "error"
+    },
+    {
+      "id": "quarter_and_fy_paired",
+      "rule": "(quarter == null AND financial_year == null) OR (quarter != null AND financial_year != null)",
+      "message": "quarter and financial_year should both be set or both omitted.",
+      "severity": "warning"
+    }
+  ],
+  "x-eq-import-hints": {
+    "description": "Calendar entries usually arrive as a planning spreadsheet — one row per PM visit, with hours + $ columns and a quarter/FY marker. Recurrence is rare in source data (most rows are explicit per-quarter entries).",
+    "common_sources": [
+      {
+        "name": "PM planning sheet",
+        "typical_columns": ["Site", "Title", "Start", "End", "Quarter", "FY", "Hours", "$ Cost", "Tech"],
+        "watchouts": ["Quarter often as 'Q1'/'Q2' or '1'/'2' — coerce via enum-aliases", "FY often as '25/26' or 'FY26' — normalise to '2025-2026' format"]
+      }
+    ]
+  }
+}

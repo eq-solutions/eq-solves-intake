@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/service/acb-electrical-reading/v1.json",
+  "title": "ACB Electrical Reading",
+  "description": "A single quantitative electrical reading from the electrical-test step of an ACB test (e.g. insulation resistance, contact resistance, trip time). Stored in eq-solves-service inside the shared acb_test_readings table — EQ Intake canonicalises this as a distinct child entity because readings carry value + unit + optional pass band, whereas visual checks are bare pass/fail.",
+  "type": "object",
+  "x-eq-entity": "acb_electrical_reading",
+  "x-eq-module": "service",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "acb_test_readings",
+  "x-eq-table-discriminator": { "column": "unit", "predicate": "unit IS NOT NULL" },
+  "required": ["reading_id", "tenant_id", "acb_test_id", "label", "value"],
+  "properties": {
+    "reading_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-source-aliases": ["id", "reading_id"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-system-managed": true
+    },
+    "acb_test_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Parent ACB test.",
+      "x-eq-foreign-key": "acb_test.acb_test_id",
+      "x-eq-source-aliases": ["test_id", "acb_test"]
+    },
+    "label": {
+      "type": "string",
+      "description": "What is being measured (e.g. 'Insulation Resistance L1-N', 'Contact Resistance Pole 1', 'Trip Time at 5x In').",
+      "x-eq-source-aliases": ["measurement", "test_label", "description", "reading_name"],
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "value": {
+      "type": "string",
+      "description": "Recorded reading as text. Kept as text to preserve significant digits and notations like '>2000', '0.45' as the technician entered them.",
+      "x-eq-source-aliases": ["reading", "measured_value", "result", "measurement_value"],
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "unit": {
+      "type": ["string", "null"],
+      "description": "Unit of measure (e.g. 'MΩ', 'mΩ', 'ms', 'V', 'A').",
+      "x-eq-source-aliases": ["units", "uom"],
+      "maxLength": 50
+    },
+    "is_pass": {
+      "type": ["boolean", "null"],
+      "description": "Pass/fail evaluation against expected range (set at report-render time, not at storage). Null if no pass criteria configured.",
+      "x-eq-source-aliases": ["pass", "passed", "in_range"],
+      "x-eq-coerce": "boolean"
+    },
+    "sort_order": {
+      "type": "integer",
+      "x-eq-source-aliases": ["order", "sequence", "seq"],
+      "x-eq-coerce": "number",
+      "minimum": 0,
+      "default": 0
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["comment", "comments", "remarks", "note"],
+      "maxLength": 2000
+    },
+    "imported_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-eq-system-managed": true
+    },
+    "imported_from": {
+      "type": ["string", "null"],
+      "x-eq-system-managed": true
+    }
+  },
+  "x-eq-import-hints": {
+    "description": "Electrical readings appear as a block of labelled value+unit cells on the test sheet. Numeric coercion happens at report-render time, not at storage — preserve technician's exact entry.",
+    "common_sources": [
+      {
+        "name": "ACB test sheet — Electrical Readings block",
+        "typical_columns": ["Measurement", "Value", "Unit", "Pass/Fail"],
+        "watchouts": ["Unit may be in the same cell as value ('1500 MΩ') — split on import", "Special values like '>2000', 'OL' (overload), '-' preserve as-is"]
+      }
+    ]
+  }
+}

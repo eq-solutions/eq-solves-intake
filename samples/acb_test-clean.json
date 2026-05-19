@@ -1,0 +1,117 @@
+{
+  "acb_test_id": "f0000001-0000-0000-0000-000000000001",
+  "tenant_id": "ccca00fc-cbc8-442e-9489-0f1f216ddca8",
+  "asset_id": "dddddddd-dddd-dddd-dddd-dddddddddd01",
+  "site_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
+  "check_id": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01",
+  "test_date": "2026-08-15",
+  "tested_by_user_id": "11111111-2222-3333-4444-555555555501",
+  "test_type": "Routine",
+  "brand": "Schneider Electric",
+  "breaker_type": "Masterpact NW",
+  "name_location": "MSB-A Incomer / Level 1 Plant Room",
+  "performance_level": "H1",
+  "protection_unit_fitted": true,
+  "trip_unit_model": "Micrologic 5.0H",
+  "current_in": "1600A",
+  "fixed_withdrawable": "Withdrawable",
+  "cb_make": "Schneider Electric",
+  "cb_model": "NW16H1",
+  "cb_serial": "SE-NW-2019-04437",
+  "cb_rating": "1600A",
+  "cb_poles": "3P",
+  "trip_unit": "Micrologic 5.0H",
+  "long_time_ir": "0.9 x In",
+  "long_time_delay_tr": "16s",
+  "short_time_pickup_isd": "8 x Ir",
+  "short_time_delay_tsd": "0.2s",
+  "instantaneous_pickup": "12 x In",
+  "earth_fault_pickup": "0.3 x In",
+  "earth_fault_delay": "0.2s",
+  "motor_charge": "240V AC",
+  "shunt_trip_mx1": "24V DC",
+  "undervoltage_mn": "240V AC",
+  "overall_result": "Pass",
+  "step1_status": "complete",
+  "step2_status": "complete",
+  "step3_status": "complete",
+  "active": true,
+  "notes": "Routine annual service. All readings within spec.",
+  "visual_check_items": [
+    {
+      "item_id": "f0000001-0000-0000-0000-000000000011",
+      "tenant_id": "ccca00fc-cbc8-442e-9489-0f1f216ddca8",
+      "acb_test_id": "f0000001-0000-0000-0000-000000000001",
+      "label": "Earth connections torqued and labelled",
+      "is_pass": true,
+      "sort_order": 1
+    },
+    {
+      "item_id": "f0000001-0000-0000-0000-000000000012",
+      "tenant_id": "ccca00fc-cbc8-442e-9489-0f1f216ddca8",
+      "acb_test_id": "f0000001-0000-0000-0000-000000000001",
+      "label": "Arc chutes intact, no carbon tracking",
+      "is_pass": true,
+      "sort_order": 2
+    },
+    {
+      "item_id": "f0000001-0000-0000-0000-000000000013",
+      "tenant_id": "ccca00fc-cbc8-442e-9489-0f1f216ddca8",
+      "acb_test_id": "f0000001-0000-0000-0000-000000000001",
+      "label": "Operating mechanism lubricated",
+      "is_pass": null,
+      "sort_order": 3,
+      "notes": "N/A — no access this visit"
+    },
+    {
+      "item_id": "f0000001-0000-0000-0000-000000000014",
+      "tenant_id": "ccca00fc-cbc8-442e-9489-0f1f216ddca8",
+      "acb_test_id": "f0000001-0000-0000-0000-000000000001",
+      "label": "Cradle cassette interlocks functional",
+      "is_pass": true,
+      "sort_order": 4
+    }
+  ],
+  "electrical_readings": [
+    {
+      "reading_id": "f0000001-0000-0000-0000-000000000021",
+      "tenant_id": "ccca00fc-cbc8-442e-9489-0f1f216ddca8",
+      "acb_test_id": "f0000001-0000-0000-0000-000000000001",
+      "label": "Insulation Resistance L1-N",
+      "value": "1500",
+      "unit": "MΩ",
+      "is_pass": true,
+      "sort_order": 1
+    },
+    {
+      "reading_id": "f0000001-0000-0000-0000-000000000022",
+      "tenant_id": "ccca00fc-cbc8-442e-9489-0f1f216ddca8",
+      "acb_test_id": "f0000001-0000-0000-0000-000000000001",
+      "label": "Contact Resistance Pole 1",
+      "value": "45",
+      "unit": "µΩ",
+      "is_pass": true,
+      "sort_order": 2
+    },
+    {
+      "reading_id": "f0000001-0000-0000-0000-000000000023",
+      "tenant_id": "ccca00fc-cbc8-442e-9489-0f1f216ddca8",
+      "acb_test_id": "f0000001-0000-0000-0000-000000000001",
+      "label": "Trip Time at 5x In",
+      "value": "42",
+      "unit": "ms",
+      "is_pass": true,
+      "sort_order": 3
+    },
+    {
+      "reading_id": "f0000001-0000-0000-0000-000000000024",
+      "tenant_id": "ccca00fc-cbc8-442e-9489-0f1f216ddca8",
+      "acb_test_id": "f0000001-0000-0000-0000-000000000001",
+      "label": "Insulation Resistance L2-N",
+      "value": ">2000",
+      "unit": "MΩ",
+      "is_pass": true,
+      "sort_order": 4
+    }
+  ]
+}

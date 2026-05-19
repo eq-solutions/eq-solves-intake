@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/service/check-asset/v1.json",
+  "title": "Check Asset",
+  "description": "Junction row linking a maintenance_check to each asset it covers. One maintenance_check may cover many assets (e.g. an LVACB-A check visits 14 ACBs at SY1). This row carries per-asset Maximo work-order metadata (priority, work_type, target dates, failure codes) and the IR scan result.",
+  "type": "object",
+  "x-eq-entity": "check_asset",
+  "x-eq-module": "service",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "check_assets",
+  "required": ["check_asset_id", "tenant_id", "check_id", "asset_id", "status"],
+  "properties": {
+    "check_asset_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-source-aliases": ["id", "check_asset_id"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-system-managed": true
+    },
+    "check_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Parent maintenance check.",
+      "x-eq-foreign-key": "maintenance_check.check_id",
+      "x-eq-source-aliases": ["maintenance_check_id", "check", "wo_id"]
+    },
+    "asset_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Asset being checked.",
+      "x-eq-foreign-key": "asset.asset_id",
+      "x-eq-fk-fuzzy-match-on": ["asset.external_id", "asset.name"],
+      "x-eq-source-aliases": ["asset", "asset_tag", "tag", "equipment_no", "asset_no"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "in_progress", "complete", "skipped", "failed"],
+      "description": "Per-asset status within the check. A check is complete only when all its check_assets are complete or skipped.",
+      "x-eq-source-aliases": ["asset_status", "wo_asset_status", "state"],
+      "x-eq-enum-aliases": {
+        "pending": ["open", "scheduled", "not_started", "new"],
+        "in_progress": ["inprog", "started", "running"],
+        "complete": ["completed", "done", "closed", "comp", "finished"],
+        "skipped": ["na", "n/a", "not_applicable", "skip"],
+        "failed": ["fail", "defect", "non_compliant"]
+      },
+      "default": "pending"
+    },
+    "work_order_number": {
+      "type": ["string", "null"],
+      "description": "Per-asset WO number when one WO is issued per asset (Delta pattern).",
+      "x-eq-source-aliases": ["wo_number", "wo_no", "work_order"],
+      "maxLength": 64
+    },
+    "priority": {
+      "type": ["string", "null"],
+      "enum": [null, "low", "medium", "high", "urgent"],
+      "description": "Maximo work order priority.",
+      "x-eq-source-aliases": ["wo_priority", "task_priority"],
+      "x-eq-enum-aliases": {
+        "low": ["l", "4", "p4", "low_priority"],
+        "medium": ["m", "med", "3", "p3", "normal"],
+        "high": ["h", "2", "p2"],
+        "urgent": ["u", "1", "p1", "critical"]
+      }
+    },
+    "work_type": {
+      "type": ["string", "null"],
+      "enum": [null, "PM", "CM", "EM", "CAL", "INSP"],
+      "description": "Maximo work type: PM (preventive), CM (corrective), EM (emergency), CAL (calibration), INSP (inspection).",
+      "x-eq-source-aliases": ["wo_type", "work_order_type", "task_type"],
+      "x-eq-enum-aliases": {
+        "PM": ["preventive", "preventative", "preventive_maintenance"],
+        "CM": ["corrective", "corrective_maintenance"],
+        "EM": ["emergency", "emergency_maintenance"],
+        "CAL": ["calibration", "calibrate"],
+        "INSP": ["inspection", "inspect"]
+      }
+    },
+    "crew_id": {
+      "type": ["string", "null"],
+      "description": "Maximo crew or resource identifier.",
+      "x-eq-source-aliases": ["crew", "team", "resource_id"],
+      "maxLength": 64
+    },
+    "target_start": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Maximo target start date/time.",
+      "x-eq-source-aliases": ["planned_start", "scheduled_start"],
+      "x-eq-coerce": "date"
+    },
+    "target_finish": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Maximo target completion date/time.",
+      "x-eq-source-aliases": ["planned_finish", "scheduled_finish", "target_completion"],
+      "x-eq-coerce": "date"
+    },
+    "completed_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Actual per-asset completion timestamp.",
+      "x-eq-source-aliases": ["actual_finish", "complete_time", "completion_date"],
+      "x-eq-coerce": "date"
+    },
+    "failure_code": {
+      "type": ["string", "null"],
+      "description": "Maximo failure classification code.",
+      "x-eq-source-aliases": ["fail_code", "failure_class", "fc"],
+      "maxLength": 64
+    },
+    "problem": {
+      "type": ["string", "null"],
+      "description": "Problem statement from the work order.",
+      "x-eq-source-aliases": ["problem_description", "issue", "fault_description"],
+      "maxLength": 2000
+    },
+    "cause": {
+      "type": ["string", "null"],
+      "description": "Root cause of the failure.",
+      "x-eq-source-aliases": ["root_cause", "cause_description"],
+      "maxLength": 2000
+    },
+    "remedy": {
+      "type": ["string", "null"],
+      "description": "Remedy or corrective action taken.",
+      "x-eq-source-aliases": ["fix", "corrective_action", "remedy_description", "resolution"],
+      "maxLength": 2000
+    },
+    "classification": {
+      "type": ["string", "null"],
+      "description": "Maximo asset classification path (e.g. 'ELEC \\ TRNSFMR').",
+      "x-eq-source-aliases": ["asset_classification", "class_path"],
+      "maxLength": 200
+    },
+    "ir_scan_result": {
+      "type": ["string", "null"],
+      "enum": [null, "pass", "fail", "na", "not_done"],
+      "description": "Infrared thermal scan result.",
+      "x-eq-source-aliases": ["thermal_result", "ir_result", "thermal_scan"],
+      "x-eq-enum-aliases": {
+        "pass": ["p", "ok", "passed", "green"],
+        "fail": ["f", "failed", "red"],
+        "na": ["n/a", "not_applicable"],
+        "not_done": ["pending", "skipped", "incomplete"]
+      }
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["comment", "comments", "remarks", "note"],
+      "maxLength": 4000
+    },
+    "imported_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-eq-system-managed": true
+    },
+    "imported_from": {
+      "type": ["string", "null"],
+      "x-eq-system-managed": true
+    }
+  },
+  "x-eq-cross-field-rules": [],
+  "x-eq-import-hints": {
+    "description": "Each Delta WO export row is typically one check_asset. Group rows by (site, plan code, due date) to form the parent maintenance_check, then keep one check_asset row per (wo_number, asset).",
+    "common_sources": [
+      {
+        "name": "Delta WO export",
+        "typical_columns": ["WO #", "Asset Tag", "Job Plan", "Priority", "Work Type", "Target Start", "Target Finish", "Status"],
+        "watchouts": ["Asset Tag resolves to asset_id via fuzzy match against asset.external_id, NOT name", "Status mapping: COMP/CLO → complete, INPRG → in_progress, WAPPROV/WSCHED → pending"]
+      }
+    ]
+  }
+}
