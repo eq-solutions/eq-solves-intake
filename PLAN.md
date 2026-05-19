@@ -44,8 +44,8 @@ While exploring, I found that **`C:\Projects\eq-intake\eq-platform\packages\eq-s
 - [x] **Tick 2 — ajv test harness** (`eq-platform/packages/eq-validation/test/samples-validation.test.ts` — 15/15 fixtures pass; full eq-validation suite 173/173 green)
 - [x] **Tick 3 — Port parser pure-fns from eq-solves-service into eq-validation** (4 modules: `parse-frequency-suffix`, `parse-job-plan-code`, `parse-site-prefix`, `parse-jemena-asset-id`; 58 new tests; full suite 231/231 green)
 - [x] **Tick 4 — eq-service `/admin/export` endpoint** — draft PR https://github.com/Milmlow/eq-solves-service/pull/176, branch `claude-overnight/admin-export` (~8 entities fully wired, 8 stubs, clean tsc + eslint)
-- [ ] **Tick 5/6 — ACB round-trip prototype (`scripts/round-trip-acb.mjs`)**
-- [ ] **Last tick — SUMMARY.md + commit + draft PR for eq-intake worktree**
+- [x] **Tick 5 — ACB round-trip prototype** (`scripts/round-trip-acb.mjs` — fixture + live modes; fixture run validates 1 parent + 4 visual + 4 electrical, exit 0)
+- [x] **Tick 5 — SUMMARY.md + commit + draft PR for eq-intake worktree** (this tick — see SUMMARY.md for landing summary + open questions)
 
 ### Tick 2 (start ~22:25, ~10 min compute)
 
@@ -81,6 +81,15 @@ While exploring, I found that **`C:\Projects\eq-intake\eq-platform\packages\eq-s
 - One typecheck rev: Supabase typed-select returns `Row[] | GenericStringError` union; added `asRows()` helper that casts. After that: `npx tsc --noEmit` clean, eslint clean.
 - Pushed to origin, opened draft PR #176. Title prefix `[claude-overnight]` per brief.
 - Scheduling Tick 5 in ~20 min. Next: ACB round-trip prototype — uses this endpoint.
+
+### Tick 5 (start ~23:51, ~10 min compute)
+
+- Wrote `scripts/round-trip-acb.mjs`. Two modes: `--fixture` (offline, reads `samples/acb_test-clean.json` and reshapes it into an export envelope; what CI runs) and `--url <endpoint>` (hits the deployed /api/admin/export, requires `$EQ_SERVICE_TOKEN` from a Supabase auth session).
+- Resolves ajv from `eq-platform/node_modules` via `createRequire` (same pattern as scripts/gen-types.mjs — no separate install needed).
+- Validates each ACB test row against the parent acb_test schema with child arrays stripped, then validates each visual_check_item + electrical_reading separately against its child schema. Prints a structured report with parent/child counts, overall_result breakdown, and the first 10 failures with ajv-formatted errors.
+- Fixture run output: 1 parent ✓, 4 visual ✓, 4 electrical ✓, exit 0.
+- Stayed in-tick to write SUMMARY.md and push the eq-intake worktree PR — context budget allowed it, no point burning a 20-min wake just to write a doc.
+- Final commit + draft PR for eq-intake (this tick) — loop ENDS here.
 
 ## Hard limits (from the loop brief)
 
