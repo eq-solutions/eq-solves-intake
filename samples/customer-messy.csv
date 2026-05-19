@@ -1,0 +1,8 @@
+Customer,Account No,ABN,Contract Type,Term Start,Term End,CPI %,Net Days,Billing Email,Phone
+Equinix Australia Pty Ltd,EQX-AU,12 345 678 901,AU SMCA,1/1/2024,31/12/2026,5%,Net 45,billing@equinix.com,+61 2 9999 8888
+Metronode NSW Pty Ltd,EQX-MN,98 765 432 109,au_smca_v1,2024-01-01,2026-12-31,0.05,45,ap@metronode.com,02 8888 7777
+Equinix Hyperscale,EQX-HS,12 345 678 901,Hyperscale,Jan 1 2024,Dec 31 2028,5,30,hs-billing@equinix.com,0299998888
+Jemena,JEM,11 222 333 444,jemena,1-Jul-2024,30-Jun-2027,5.0%,30,suppliers@jemena.com.au,1300 555 666
+Ramsay Health,RHC,55 666 777 888,Generic,2024/01/01,2027/01/01,0,60,accounts@ramsay.com.au,(03) 8888 9999
+NEXTDC,NDC,67 890 123 456,SMCA,1.7.2024,30.6.2027,3.5%,Net 30,billing@nextdc.com,1800 888 999
+"Pacific Hydro, Australia",PH-AU,,Generic,,,, ,info@pacifichydro.com.au,0398765432

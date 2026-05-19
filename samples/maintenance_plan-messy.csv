@@ -1,0 +1,11 @@
+JP Code,Description,Frequency,Customer,Asset Class
+LVACB-A,LV Air Circuit Breaker Annual Service,Annual,Equinix Australia Pty Ltd,switchboard
+LVACB-S,LV Air Circuit Breaker 6-monthly,S,Equinix Australia Pty Ltd,switchboard
+NSX-A,Moulded Case CB Annual,1Y,Equinix Australia Pty Ltd,switchboard
+RCD-S,RCD Test 6-Monthly,6M,Jemena,distribution_board
+M10.13,Annual Switchboard PM,A,Equinix Hyperscale,switchboard
+E1.25,Quarterly Switchboard Walkdown,Q,Equinix Australia Pty Ltd,switchboard
+THERM-A,Thermal Imaging Annual,A,Equinix Australia Pty Ltd,switchboard
+PM-MONTHLY,Generator Monthly Run,m,Equinix Australia Pty Ltd,generator
+UPS-Q,UPS Quarterly Service,3,Equinix Australia Pty Ltd,ups
+LVACB-2,LV ACB 2-year deep clean,2,Equinix Australia Pty Ltd,switchboard

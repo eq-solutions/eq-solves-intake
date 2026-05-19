@@ -1,0 +1,58 @@
+{
+  "nsx_test_id": "f0000002-0000-0000-0000-000000000001",
+  "tenant_id": "ccca00fc-cbc8-442e-9489-0f1f216ddca8",
+  "asset_id": "dddddddd-dddd-dddd-dddd-dddddddddd05",
+  "site_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2",
+  "test_date": "2026-07-01",
+  "tested_by_user_id": "11111111-2222-3333-4444-555555555503",
+  "test_type": "Routine",
+  "cb_make": "Schneider Electric",
+  "cb_model": "NSX250F",
+  "cb_serial": "SE-NSX-2021-78812",
+  "cb_rating": "250A",
+  "cb_poles": "3P",
+  "trip_unit": "Micrologic 2.2",
+  "overall_result": "Pass",
+  "active": true,
+  "notes": "MCCB routine — clean.",
+  "visual_check_items": [
+    {
+      "item_id": "f0000002-0000-0000-0000-000000000011",
+      "tenant_id": "ccca00fc-cbc8-442e-9489-0f1f216ddca8",
+      "nsx_test_id": "f0000002-0000-0000-0000-000000000001",
+      "label": "Body intact, no cracks",
+      "is_pass": true,
+      "sort_order": 1
+    },
+    {
+      "item_id": "f0000002-0000-0000-0000-000000000012",
+      "tenant_id": "ccca00fc-cbc8-442e-9489-0f1f216ddca8",
+      "nsx_test_id": "f0000002-0000-0000-0000-000000000001",
+      "label": "Trip indicator operational",
+      "is_pass": true,
+      "sort_order": 2
+    }
+  ],
+  "electrical_readings": [
+    {
+      "reading_id": "f0000002-0000-0000-0000-000000000021",
+      "tenant_id": "ccca00fc-cbc8-442e-9489-0f1f216ddca8",
+      "nsx_test_id": "f0000002-0000-0000-0000-000000000001",
+      "label": "Insulation Resistance",
+      "value": "850",
+      "unit": "MΩ",
+      "is_pass": true,
+      "sort_order": 1
+    },
+    {
+      "reading_id": "f0000002-0000-0000-0000-000000000022",
+      "tenant_id": "ccca00fc-cbc8-442e-9489-0f1f216ddca8",
+      "nsx_test_id": "f0000002-0000-0000-0000-000000000001",
+      "label": "Trip Time at 6x In",
+      "value": "65",
+      "unit": "ms",
+      "is_pass": true,
+      "sort_order": 2
+    }
+  ]
+}

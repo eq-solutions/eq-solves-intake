@@ -1,0 +1,7 @@
+check_id,asset_id,work_order_number,priority,work_type,target_start,target_finish,status,ir_scan_result
+eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01,dddddddd-dddd-dddd-dddd-dddddddddd01,WO123456,high,PM,2026-08-15T08:00:00Z,2026-08-15T17:00:00Z,pending,
+eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01,dddddddd-dddd-dddd-dddd-dddddddddd02,WO123456,high,PM,2026-08-15T00:00:00Z,2026-08-16T00:00:00Z,pending,pass
+eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01,dddddddd-dddd-dddd-dddd-dddddddddd03,WO123456,medium,PM,2026-08-15T00:00:00Z,2026-08-16T00:00:00Z,pending,
+eeeeeeee-eeee-eeee-eeee-eeeeeeeeee02,dddddddd-dddd-dddd-dddd-dddddddddd04,WO123457,medium,PM,2026-05-30T00:00:00Z,2026-05-30T00:00:00Z,in_progress,
+eeeeeeee-eeee-eeee-eeee-eeeeeeeeee03,dddddddd-dddd-dddd-dddd-dddddddddd05,WO123458,urgent,EM,2026-07-01T09:00:00Z,2026-07-01T12:00:00Z,complete,pass
+eeeeeeee-eeee-eeee-eeee-eeeeeeeeee04,dddddddd-dddd-dddd-dddd-dddddddddd06,WO123459,medium,PM,2026-09-01T00:00:00Z,2026-09-01T00:00:00Z,pending,not_done

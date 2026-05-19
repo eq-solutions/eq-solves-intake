@@ -1,0 +1,6 @@
+entity_type,entity_id,file_name,file_size,content_type,storage_path,uploaded_by_user_id,category
+maintenance_check,eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01,SY1-MSB-A-front-photo.jpg,2450123,image/jpeg,ccca00fc-cbc8-442e-9489-0f1f216ddca8/maintenance_check/eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01/SY1-MSB-A-front-photo.jpg,11111111-2222-3333-4444-555555555501,photo
+maintenance_check,eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01,signed-handover.pdf,124567,application/pdf,ccca00fc-cbc8-442e-9489-0f1f216ddca8/maintenance_check/eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01/signed-handover.pdf,11111111-2222-3333-4444-555555555501,signature
+acb_test,f0000001-0000-0000-0000-000000000001,acb-test-report.pdf,890123,application/pdf,ccca00fc-cbc8-442e-9489-0f1f216ddca8/acb_test/f0000001-0000-0000-0000-000000000001/acb-test-report.pdf,11111111-2222-3333-4444-555555555501,report
+defect,99999999-9999-9999-9999-999999999901,thermal-hot-spot.jpg,1450000,image/jpeg,ccca00fc-cbc8-442e-9489-0f1f216ddca8/defect/99999999-9999-9999-9999-999999999901/thermal-hot-spot.jpg,11111111-2222-3333-4444-555555555505,photo
+customer,11111111-1111-1111-1111-111111111111,equinix-logo.svg,12000,image/svg+xml,ccca00fc-cbc8-442e-9489-0f1f216ddca8/customer/11111111-1111-1111-1111-111111111111/equinix-logo.svg,11111111-2222-3333-4444-555555555501,logo

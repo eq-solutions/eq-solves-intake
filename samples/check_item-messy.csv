@@ -1,0 +1,10 @@
+WO #,Step,Description,Result,Notes,Tech
+WO123456,1,Check earth connections,P,torqued to 30Nm,James
+WO123456,2,Visual inspection of arc chutes,Pass,no carbon tracking,James
+WO123456,3,Insulation resistance L1-N,F,1.2 MΩ — below 100MΩ acceptance,James
+WO123456,4,Trip test at 5x In,P,42ms,James
+WO123456,5,Lubricate operating mechanism,N/A,no access this visit,
+WO123457,1,RCD test button,P,,Sarah
+WO123457,2,Trip time at 1x IΔn (no trip expected),pass,,Sarah
+WO123458,1,Earth fault test,passed,,Michael
+WO123459,1,Thermal imaging — hot spot survey,fail,2 hot spots identified — defect raised,Kofi

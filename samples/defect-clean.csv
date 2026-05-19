@@ -1,0 +1,6 @@
+site_id,asset_id,title,description,severity,status,raised_by_user_id,work_order_number,resolved_at
+aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1,dddddddd-dddd-dddd-dddd-dddddddddd01,Insulation low,L1-N IR test failed at 1.2 MΩ - replace,high,open,11111111-2222-3333-4444-555555555501,WO123456,
+aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa9,dddddddd-dddd-dddd-dddd-dddddddddd06,Hot spot at L2 terminal,Thermal scan 78°C vs 22°C ambient - retighten + monitor,critical,in_progress,11111111-2222-3333-4444-555555555505,WO123459-D1,
+aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1,dddddddd-dddd-dddd-dddd-dddddddddd02,Door interlock sticky,Mechanical service needed,medium,resolved,11111111-2222-3333-4444-555555555502,WO123456-D2,2026-05-02T00:00:00Z
+cccccccc-cccc-cccc-cccc-cccccccccc01,dddddddd-dddd-dddd-dddd-dddddddddd04,RCD circuit did not trip at 1x,Inspection required,high,open,11111111-2222-3333-4444-555555555510,,
+aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2,dddddddd-dddd-dddd-dddd-dddddddddd05,Earth bonding loose,Found during PM,low,closed,11111111-2222-3333-4444-555555555503,WO123458-D1,2026-04-15T00:00:00Z

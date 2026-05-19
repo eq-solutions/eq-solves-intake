@@ -1,0 +1,10 @@
+plan_id,description,sort_order,is_required,dark_site,freq_monthly,freq_quarterly,freq_semi_annual,freq_annual,freq_2yr,freq_5yr
+bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb01,Check earth connections,1,true,false,false,false,false,true,false,false
+bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb01,Visual inspection of arc chutes,2,true,false,false,false,false,true,false,false
+bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb01,Insulation resistance L1-N,3,true,false,false,false,false,true,true,true
+bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb01,Trip test at 5x In,4,true,false,false,false,false,true,false,false
+bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb01,Lubricate operating mechanism,5,true,true,false,false,false,true,false,false
+bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb01,Replace contact tips,6,false,false,false,false,false,false,false,true
+bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb04,RCD test button,1,true,false,false,false,true,false,false,false
+bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb04,Trip time at 1x IΔn (no trip expected),2,true,false,false,false,true,false,false,false
+bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb04,Trip time at 5x IΔn (fast trip),3,true,false,false,false,true,false,false,false

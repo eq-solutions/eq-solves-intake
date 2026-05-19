@@ -1,0 +1,7 @@
+Customer,Site,FY,JP Code,Description,Qty,Intervals,Y1 Total,Y2 Total,Y3 Total,1YR Cost,5YR Cost,Comments,Billing
+Equinix Australia Pty Ltd,SY1,2025-2026,E1.25,Q ACB walkdown,14,Q,22000,22000,22000,, ,,fixed
+Equinix Australia Pty Ltd,SY1,2025-2026,LVACB-A,Annual ACB service,14,A,11000,11000,11000,31.25,, "5YR: 14 due in 2026",fixed
+Equinix Australia Pty Ltd,SY1,2025-2026,LVACB-5,5YR ACB deep service,14,5,, , ,, 562.50,"5YR: 14 due in 2026, 3 due 2027",fixed
+Equinix Hyperscale,SY9,2025-2026,RCD-S,RCD T&T - all boards,77,S,, , ,, ,"ad-hoc per visit",ad_hoc
+Equinix Hyperscale,SY9,2025-2026,THERM-A,Thermal scan,1,A,, , ,, ,"included in JP fixed",fixed
+Jemena,Cardiff DB-1,2025-2026,RCD-S,RCD service,15,S,5500,5500,5500,, ,"15 circuits expected",fixed

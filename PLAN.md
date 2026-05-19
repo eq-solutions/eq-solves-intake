@@ -40,12 +40,23 @@ While exploring, I found that **`C:\Projects\eq-intake\eq-platform\packages\eq-s
 
 - [x] **Tick 1 — PLAN.md scaffold** (this file, ~2026-05-19 evening)
 - [x] **Tick 1 — TS type generator + types/ for all 29 schemas** (`scripts/gen-types.mjs`, 29 `*.d.ts` in `types/`)
-- [ ] **Tick 2 — Sample fixtures (`samples/{entity}/{format}.csv\|json`)**
-- [ ] **Tick 2/3 — ajv test harness in eq-validation that validates samples → schemas**
+- [x] **Tick 2 — Sample fixtures** (10 messy CSVs + 11 clean CSVs + 3 nested JSON in `samples/`)
+- [x] **Tick 2 — ajv test harness** (`eq-platform/packages/eq-validation/test/samples-validation.test.ts` — 15/15 fixtures pass; full eq-validation suite 173/173 green)
 - [ ] **Tick 3/4 — Port parser pure-fns from eq-solves-service `delta-wo-parser.ts` into eq-validation + vitest covers**
 - [ ] **Tick 4/5 — eq-service `/admin/export` endpoint (worktree, branch, push, draft PR)**
 - [ ] **Tick 5/6 — ACB round-trip prototype (`scripts/round-trip-acb.mjs`)**
 - [ ] **Last tick — SUMMARY.md + commit + draft PR for eq-intake worktree**
+
+### Tick 2 (start ~22:25, ~10 min compute)
+
+- Discovered worktree had no `node_modules` — ran `pnpm install --frozen-lockfile` once (~7s). Now self-contained.
+- Built 21 CSV samples (10 messy + 11 clean) + 3 nested JSON for entities with child rows (acb_test, nsx_test, rcd_test).
+- Wrote `samples-validation.test.ts` in eq-validation. Took two rev cycles to get right:
+  - First pass: heuristic coerce-by-value-shape failed because it turned numeric strings (`intervals_text: "5"`) into integers, breaking string-typed schema columns.
+  - Second pass: schema-aware coerce — looks up `properties[col].type` and coerces accordingly. Plus generic PK injection (any required `_id` field with `format: uuid`).
+- One fixture bug: `check_asset-clean.csv` was missing `check_id` column. Added it.
+- Now: 15 clean fixtures + 173-test full suite all green.
+- Scheduling Tick 3 in ~20 min. Next: port `FREQUENCY_SUFFIX_MAP` + plan-code suffix splitter into eq-validation.
 
 ## Hard limits (from the loop brief)
 
