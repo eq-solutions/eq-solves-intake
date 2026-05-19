@@ -42,7 +42,7 @@ While exploring, I found that **`C:\Projects\eq-intake\eq-platform\packages\eq-s
 - [x] **Tick 1 — TS type generator + types/ for all 29 schemas** (`scripts/gen-types.mjs`, 29 `*.d.ts` in `types/`)
 - [x] **Tick 2 — Sample fixtures** (10 messy CSVs + 11 clean CSVs + 3 nested JSON in `samples/`)
 - [x] **Tick 2 — ajv test harness** (`eq-platform/packages/eq-validation/test/samples-validation.test.ts` — 15/15 fixtures pass; full eq-validation suite 173/173 green)
-- [ ] **Tick 3/4 — Port parser pure-fns from eq-solves-service `delta-wo-parser.ts` into eq-validation + vitest covers**
+- [x] **Tick 3 — Port parser pure-fns from eq-solves-service into eq-validation** (4 modules: `parse-frequency-suffix`, `parse-job-plan-code`, `parse-site-prefix`, `parse-jemena-asset-id`; 58 new tests; full suite 231/231 green)
 - [ ] **Tick 4/5 — eq-service `/admin/export` endpoint (worktree, branch, push, draft PR)**
 - [ ] **Tick 5/6 — ACB round-trip prototype (`scripts/round-trip-acb.mjs`)**
 - [ ] **Last tick — SUMMARY.md + commit + draft PR for eq-intake worktree**
@@ -57,6 +57,19 @@ While exploring, I found that **`C:\Projects\eq-intake\eq-platform\packages\eq-s
 - One fixture bug: `check_asset-clean.csv` was missing `check_id` column. Added it.
 - Now: 15 clean fixtures + 173-test full suite all green.
 - Scheduling Tick 3 in ~20 min. Next: port `FREQUENCY_SUFFIX_MAP` + plan-code suffix splitter into eq-validation.
+
+### Tick 3 (start ~22:57, ~10 min compute)
+
+- Read `eq-solves-service/lib/import/delta-wo-parser.ts` + `jemena-rcd-parser.ts` to lift out the pure-function pieces. Jemena ID extraction wasn't in delta-wo-parser as the brief implied — built it fresh from the `JM######` shape seen in `supabase/seeds/jemena-onboarding.sql` (`JM003534`, `JM003468`, `JM003470` etc.).
+- Added 4 modules under `eq-platform/packages/eq-validation/src/`:
+  - `parse-frequency-suffix.ts` — `FREQUENCY_SUFFIX_MAP` (frozen), `mapFrequencySuffix`, `knownFrequencySuffixes`, `FrequencyEnum` type
+  - `parse-job-plan-code.ts` — `splitJobPlanCode("LVACB-A")` → `{code, suffix}` on last dash
+  - `parse-site-prefix.ts` — `stripSitePrefix("AU01-SY3")` → `"SY3"`, `hasMaximoSitePrefix` for non-mutating detect
+  - `parse-jemena-asset-id.ts` — `isJemenaAssetId` (strict whole-string), `extractJemenaAssetId` (first match in free text), `extractAllJemenaAssetIds` (de-duped, source order)
+- All wired through `src/index.ts` public API.
+- 4 corresponding test files, 58 new tests. Full eq-validation suite: 231/231 green.
+- `pnpm typecheck` has 3 pre-existing errors in `process-capture.ts` (missing `@eq/ai` workspace dep), unrelated.
+- Scheduling Tick 4 in ~20 min. Next: eq-solves-service `/admin/export` — cross-repo work begins here.
 
 ## Hard limits (from the loop brief)
 
