@@ -1,8 +1,10 @@
-Customer,Account No,ABN,Contract Type,Term Start,Term End,CPI %,Net Days,Billing Email,Phone
-Equinix Australia Pty Ltd,EQX-AU,12 345 678 901,AU SMCA,1/1/2024,31/12/2026,5%,Net 45,billing@equinix.com,+61 2 9999 8888
-Metronode NSW Pty Ltd,EQX-MN,98 765 432 109,au_smca_v1,2024-01-01,2026-12-31,0.05,45,ap@metronode.com,02 8888 7777
-Equinix Hyperscale,EQX-HS,12 345 678 901,Hyperscale,Jan 1 2024,Dec 31 2028,5,30,hs-billing@equinix.com,0299998888
-Jemena,JEM,11 222 333 444,jemena,1-Jul-2024,30-Jun-2027,5.0%,30,suppliers@jemena.com.au,1300 555 666
-Ramsay Health,RHC,55 666 777 888,Generic,2024/01/01,2027/01/01,0,60,accounts@ramsay.com.au,(03) 8888 9999
-NEXTDC,NDC,67 890 123 456,SMCA,1.7.2024,30.6.2027,3.5%,Net 30,billing@nextdc.com,1800 888 999
-"Pacific Hydro, Australia",PH-AU,,Generic,,,, ,info@pacifichydro.com.au,0398765432
+Customer,Type,Account No,ABN,Email,Phone,Address,First Engaged,Notes
+Equinix Australia Pty Ltd,Customer,EQX-AU,12 345 678 901,billing@equinix.com,+61 2 9999 8888,99 Walker St North Sydney,2019-04-01,Active under SMCA 24-26
+Metronode NSW Pty Ltd,Customer,EQX-MN,98 765 432 109,ap@metronode.com,02 8888 7777,99 Walker St North Sydney,2020-07-01,SY6 SY7 sites
+Jemena,Active,JEM,11 222 333 444,suppliers@jemena.com.au,1300 555 666,Maitland St Sydney,2024-06-15,RCD T&T program
+Ramsay Health,active,RHC,55 666 777 888,accounts@ramsay.com.au,(03) 8888 9999,St George Hospital,2023-01-10,Healthcare
+NEXTDC,Prospect,NDC,67 890 123 456,billing@nextdc.com,1800 888 999,Cremorne Vic,2025-11-20,Quoted Q4 2025 awaiting signature
+"BHP Steelmaking",lead,,,procurement@bhp.com,,Wollongong,2026-02-10,Cold intro via Westpac
+"Pacific Hydro, Australia",Lead,PH-AU,,info@pacifichydro.com.au,0398765432,,2026-04-12,Solar plant maintenance enquiry
+John Smith Electrical,Lead,,11 222 999 111,john@jsesparkies.com.au,0412 999 888,Newcastle NSW,2026-03-05,Sole trader subcontractor inquiry
+Old Tenant Holdings,Churned,OTH,33 444 555 666,old@tenant.com,,Lapsed,2018-01-01,Contract expired 2022 not renewed

@@ -24,10 +24,18 @@
     "customer_id": {
       "type": "string",
       "format": "uuid",
-      "description": "Customer this scope row belongs to.",
+      "description": "Customer this scope row belongs to. Denormalised for query speed; the authoritative FK is service_contract_id (a scope hangs off a specific contract). Kept here because most reports group by customer first, contract second.",
       "x-eq-foreign-key": "customer.customer_id",
-      "x-eq-fk-fuzzy-match-on": ["customer.name", "customer.code"],
+      "x-eq-fk-fuzzy-match-on": ["customer.company_name", "customer.code"],
       "x-eq-source-aliases": ["customer", "client", "customer_name", "client_name"]
+    },
+    "service_contract_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Authoritative parent contract — a scope belongs to a specific contract, not just to the customer. Nullable for legacy rows that pre-date the v2 contract split; new rows should set it. When set, customer_id should match service_contract.customer_id.",
+      "x-eq-foreign-key": "service_contract.contract_id",
+      "x-eq-fk-fuzzy-match-on": ["service_contract.smca_agreement_number", "service_contract.name"],
+      "x-eq-source-aliases": ["contract_id", "contract", "agreement_id"]
     },
     "site_id": {
       "type": ["string", "null"],

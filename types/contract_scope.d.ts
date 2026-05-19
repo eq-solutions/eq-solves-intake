@@ -9,9 +9,13 @@ export interface ContractScope {
   scope_id: string;
   tenant_id: string;
   /**
-   * Customer this scope row belongs to.
+   * Customer this scope row belongs to. Denormalised for query speed; the authoritative FK is service_contract_id (a scope hangs off a specific contract). Kept here because most reports group by customer first, contract second.
    */
   customer_id: string;
+  /**
+   * Authoritative parent contract — a scope belongs to a specific contract, not just to the customer. Nullable for legacy rows that pre-date the v2 contract split; new rows should set it. When set, customer_id should match service_contract.customer_id.
+   */
+  service_contract_id?: string | null;
   /**
    * Site this scope row covers. Null when the scope applies to all customer sites.
    */

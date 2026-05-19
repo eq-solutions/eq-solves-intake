@@ -3,47 +3,46 @@
 // Source of truth: schemas/customer.schema.json — edit the JSON, regenerate.
 
 /**
- * A client company of a tenant. Top of the hierarchy: customers own sites, sites own assets. A customer in EQ Service is the legal entity SKS bills (e.g. Equinix Australia Pty Ltd, Jemena, Ramsay Health). Contract terms, CPI rules, SLAs, and standing hour allocations live here.
+ * A business or individual the tenant has any relationship with — leads, prospects, active customers, churned. The CRM-style entity. Contracts, billing terms, and SLAs live on a separate service_contract entity that links here (a customer can have many contracts over time; at most one is active at a time).
+ *
+ * v2 (2026-05-20): Door C split — the contract-side fields (CPI, payment terms, SLAs, hourly rates, contract_template) moved out to service_contract.schema.json. Identification fields (ABN/ACN/legal name) stay here because they're properties of the entity, not the contract.
  */
 export interface Customer {
   /**
    * Internal canonical ID. Generated on import if not provided.
    */
   customer_id: string;
-  /**
-   * Owning tenant. Set automatically by import context.
-   */
   tenant_id: string;
   /**
-   * Customer's own ID in an external system. Preserved for round-trip exports.
+   * Customer's own ID in an external system (SimPRO CustomerID, MYOB CardID, etc.). Preserved for round-trip exports.
    */
   external_id?: string | null;
   /**
-   * Display name. Required. Should be the legal entity name when known.
+   * Lifecycle classification. lead = early interest, no contact yet. prospect = engaged, quote in flight. active = under contract (has at least one service_contract with status=active). churned = was a customer, contract ended.
    */
-  name: string;
+  type?: "lead" | "prospect" | "active" | "churned";
+  /**
+   * Business / company name. Either company_name OR (first_name + last_name) must be set (cross-field rule customer_has_a_name).
+   */
+  company_name?: string | null;
+  /**
+   * Given name for individual customers (sole traders, residential).
+   */
+  first_name?: string | null;
+  /**
+   * Surname for individual customers.
+   */
+  last_name?: string | null;
+  /**
+   * Optional override for how the customer is shown in UI / reports. Falls back to company_name or full personal name.
+   */
+  display_name?: string | null;
   /**
    * Short identifier used in schedules and reports (e.g. 'EQX-NAT', 'EQX-HS', 'RHC').
    */
   code?: string | null;
   /**
-   * Primary billing/contact email.
-   */
-  email?: string | null;
-  /**
-   * Primary phone. Coerced to AU format where possible.
-   */
-  phone?: string | null;
-  /**
-   * Free-text head office address. Site-level addresses live on sites.
-   */
-  address?: string | null;
-  /**
-   * Customer logo for report letterheads.
-   */
-  logo_url?: string | null;
-  /**
-   * Full legal entity name on the signed contract (may differ from display name).
+   * Full legal entity name on registration documents (may differ from display name). Property of the entity, not any specific contract.
    */
   customer_entity_legal_name?: string | null;
   /**
@@ -55,121 +54,37 @@ export interface Customer {
    */
   customer_entity_acn?: string | null;
   /**
-   * Which contract template this customer is on. Drives derivation logic for year-fees, CPI, scope-coverage rules.
+   * Primary contact email.
    */
-  contract_template?: null | "au_smca_v1" | "hyperscale_v1" | "jemena_v1" | "generic";
+  email?: string | null;
   /**
-   * SMCA / Master Services Agreement reference number.
+   * Primary phone. Coerced to AU format where possible.
    */
-  smca_agreement_number?: string | null;
+  phone?: string | null;
   /**
-   * Schedule agreement reference number (attached to a master agreement).
+   * Free-text head office / billing address. Site-level addresses live on sites.
    */
-  schedule_agreement_number?: string | null;
+  address?: string | null;
   /**
-   * Start date of the current contract term. Used as the Y1 base for CPI calculations.
+   * Customer logo for report letterheads.
    */
-  contract_term_start?: string | null;
+  logo_url?: string | null;
   /**
-   * End date of the current contract term (before any renewal options).
+   * Date this customer entered the CRM (lead create date).
    */
-  contract_term_end?: string | null;
+  first_engaged_at?: string | null;
   /**
-   * Free-text renewal option encoding, e.g. '+1+1' (two one-year options).
+   * Date the customer became active (first contract signed). Null for leads / prospects.
    */
-  contract_options?: string | null;
+  became_active_at?: string | null;
   /**
-   * How often the tenant attends this customer's sites for routine maintenance. Drives the calendar coverage check at xlsx import.
+   * Date the customer churned. Null while active.
    */
-  visit_cadence?: null | "monthly" | "quarterly" | "biannual" | "annual" | "ad_hoc";
+  churned_at?: string | null;
   /**
-   * How CPI is applied year-over-year. Equinix AU SMCA = simple_on_y1_base (Y_n = Y1*(1+rate*(n-1))) — NOT compound.
+   * Whether this customer record is currently active (i.e. not soft-deleted). Distinct from `type=active` which is a lifecycle stage.
    */
-  cpi_basis?: null | "simple_on_y1_base" | "compound_annual" | "none";
-  /**
-   * Annual CPI rate as a decimal fraction (e.g. 0.05 = 5%).
-   */
-  cpi_rate?: number | null;
-  /**
-   * Whether contract years align to Australian FY (1 Jul - 30 Jun) or calendar year (1 Jan - 31 Dec, Equinix).
-   */
-  fiscal_year_basis?: null | "au_fy" | "calendar";
-  /**
-   * Days from invoice to payment due (e.g. 45 for Equinix Net 45).
-   */
-  payment_terms_days?: number | null;
-  /**
-   * Standard business hours rate ($/hr).
-   */
-  hourly_rate_normal?: number | null;
-  /**
-   * After-hours rate ($/hr).
-   */
-  hourly_rate_after_hours?: number | null;
-  /**
-   * Weekend rate ($/hr).
-   */
-  hourly_rate_weekend?: number | null;
-  /**
-   * Public holiday rate ($/hr).
-   */
-  hourly_rate_public_holiday?: number | null;
-  /**
-   * Minimum charge in hours for an after-hours call-out.
-   */
-  min_hours_after_hours?: number | null;
-  /**
-   * Minimum charge in hours for a weekend call-out.
-   */
-  min_hours_weekend?: number | null;
-  /**
-   * Date from which the current hourly rates apply.
-   */
-  hourly_rate_effective_from?: string | null;
-  /**
-   * Maximum minutes to acknowledge a reactive call (15 for Equinix Premium).
-   */
-  sla_response_minutes?: number | null;
-  /**
-   * Maximum hours to be on-site after a reactive call (2 for Equinix).
-   */
-  sla_onsite_hours?: number | null;
-  /**
-   * Maximum hours to fully resolve a reactive call (24 for Equinix).
-   */
-  sla_resolution_hours?: number | null;
-  /**
-   * Day of month by which the monthly performance report must be issued (Equinix = 7).
-   */
-  monthly_report_due_day?: number | null;
-  /**
-   * Notice required (days) before rescheduling a PM visit. Equinix = 30.
-   */
-  pm_reschedule_notice_days?: number | null;
-  /**
-   * Service credit as fraction of annual contract value for PM breach (e.g. 0.03 = 3%).
-   */
-  service_credit_pm_breach_pct?: number | null;
-  /**
-   * Service credit as fraction of annual contract value for reactive breach.
-   */
-  service_credit_reactive_breach_pct?: number | null;
-  /**
-   * Service credit as fraction of annual contract value for spares breach.
-   */
-  service_credit_spares_breach_pct?: number | null;
-  /**
-   * Standing supervisor/planner overhead allocation absorbed into the contract value, NOT scheduled to specific dates. Equinix = 80 hrs/quarter.
-   */
-  management_hours_per_period?: number | null;
-  /**
-   * Period that management_hours_per_period covers.
-   */
-  management_period_basis?: null | "quarterly" | "monthly" | "annual";
-  /**
-   * Whether this customer is currently active.
-   */
-  active: boolean;
+  active?: boolean;
   notes?: string | null;
   imported_at?: string | null;
   imported_from?: string | null;

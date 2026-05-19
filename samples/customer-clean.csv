@@ -1,8 +1,10 @@
-name,code,customer_entity_abn,contract_template,contract_term_start,contract_term_end,cpi_rate,payment_terms_days,email,phone,active
-Equinix Australia Pty Ltd,EQX-AU,12345678901,au_smca_v1,2024-01-01,2026-12-31,0.05,45,billing@equinix.com,+61299998888,true
-Metronode NSW Pty Ltd,EQX-MN,98765432109,au_smca_v1,2024-01-01,2026-12-31,0.05,45,ap@metronode.com,+61288887777,true
-Equinix Hyperscale,EQX-HS,12345678901,hyperscale_v1,2024-01-01,2028-12-31,0.05,30,hs-billing@equinix.com,+61299998888,true
-Jemena,JEM,11222333444,jemena_v1,2024-07-01,2027-06-30,0.05,30,suppliers@jemena.com.au,+611300555666,true
-Ramsay Health,RHC,55666777888,generic,2024-01-01,2027-01-01,0,60,accounts@ramsay.com.au,+61388889999,true
-NEXTDC,NDC,67890123456,au_smca_v1,2024-07-01,2027-06-30,0.035,30,billing@nextdc.com,+611800888999,true
-Pacific Hydro Australia,PH-AU,,generic,,,,,info@pacifichydro.com.au,+61398765432,true
+company_name,first_name,last_name,type,code,customer_entity_abn,email,phone,address,first_engaged_at,became_active_at,churned_at,active
+Equinix Australia Pty Ltd,,,active,EQX-AU,12345678901,billing@equinix.com,+61299998888,99 Walker St North Sydney,2019-04-01,2019-04-01,,true
+Metronode NSW Pty Ltd,,,active,EQX-MN,98765432109,ap@metronode.com,+61288887777,99 Walker St North Sydney,2020-07-01,2020-07-01,,true
+Jemena,,,active,JEM,11222333444,suppliers@jemena.com.au,+611300555666,Maitland St Sydney,2024-06-15,2024-07-01,,true
+Ramsay Health,,,active,RHC,55666777888,accounts@ramsay.com.au,+61388889999,St George Hospital,2023-01-10,2023-02-01,,true
+NEXTDC,,,prospect,NDC,67890123456,billing@nextdc.com,+611800888999,Cremorne Vic,2025-11-20,,,true
+BHP Steelmaking,,,lead,,,procurement@bhp.com,,Wollongong,2026-02-10,,,true
+Pacific Hydro Australia,,,lead,PH-AU,,info@pacifichydro.com.au,+61398765432,,2026-04-12,,,true
+,John,Smith,lead,,11222999111,john@jsesparkies.com.au,+61412999888,Newcastle NSW,2026-03-05,,,true
+Old Tenant Holdings,,,churned,OTH,33444555666,old@tenant.com,,Lapsed,2018-01-01,2018-02-15,2022-12-31,true

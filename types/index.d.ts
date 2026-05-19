@@ -27,6 +27,7 @@ export type * from "./prestart.d.ts";
 export type * from "./rcd_test.d.ts";
 export type * from "./rcd_test_circuit.d.ts";
 export type * from "./schedule.d.ts";
+export type * from "./service_contract.d.ts";
 export type * from "./site.d.ts";
 export type * from "./staff.d.ts";
 export type * from "./swms.d.ts";
