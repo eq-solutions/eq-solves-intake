@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/core/attachment/v1.json",
+  "title": "Attachment",
+  "description": "Polymorphic file attachment. One row links a file in Supabase Storage to its parent entity (maintenance_check, asset, test, etc.) via (entity_type, entity_id). EQ Intake imports the metadata row; binary upload happens separately (the storage_path is the address within the 'attachments' bucket).",
+  "type": "object",
+  "x-eq-entity": "attachment",
+  "x-eq-module": "core",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "attachments",
+  "required": ["attachment_id", "tenant_id", "entity_type", "entity_id", "file_name", "storage_path"],
+  "properties": {
+    "attachment_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-source-aliases": ["id", "attachment_id"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-system-managed": true
+    },
+    "entity_type": {
+      "type": "string",
+      "description": "Canonical entity name of the parent (e.g. 'maintenance_check', 'asset', 'acb_test', 'defect'). Matches x-eq-entity on the parent schema.",
+      "x-eq-source-aliases": ["parent_type", "type", "entity", "object_type"],
+      "x-eq-suggested-values": [
+        "customer",
+        "site",
+        "asset",
+        "maintenance_check",
+        "check_asset",
+        "check_item",
+        "acb_test",
+        "nsx_test",
+        "rcd_test",
+        "defect",
+        "incident",
+        "swms",
+        "jsa",
+        "prestart",
+        "itp",
+        "toolbox_talk"
+      ],
+      "x-eq-enum-aliases": {
+        "maintenance_check": ["check", "wo", "work_order"],
+        "acb_test": ["acb", "circuit_breaker_test"],
+        "nsx_test": ["nsx", "mccb_test"],
+        "rcd_test": ["rcd", "rcd_report"]
+      },
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "entity_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Primary key of the parent row. Not a hard FK because entity_type is polymorphic — validation is by lookup on the canonical entity.",
+      "x-eq-source-aliases": ["parent_id", "object_id", "ref_id"]
+    },
+    "file_name": {
+      "type": "string",
+      "description": "Original filename as uploaded.",
+      "x-eq-source-aliases": ["filename", "name", "file"],
+      "minLength": 1,
+      "maxLength": 250
+    },
+    "file_size": {
+      "type": "integer",
+      "description": "File size in bytes.",
+      "x-eq-source-aliases": ["size", "bytes", "size_bytes"],
+      "x-eq-coerce": "number",
+      "minimum": 0,
+      "default": 0
+    },
+    "content_type": {
+      "type": "string",
+      "description": "MIME type.",
+      "x-eq-source-aliases": ["mime_type", "mime", "type"],
+      "maxLength": 100,
+      "default": "application/octet-stream"
+    },
+    "storage_path": {
+      "type": "string",
+      "description": "Path within the 'attachments' Supabase Storage bucket. Conventionally {tenant_id}/{entity_type}/{entity_id}/{file_name}.",
+      "x-eq-source-aliases": ["path", "url", "object_key", "key"],
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "uploaded_by_user_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "x-eq-foreign-key": "staff.user_id",
+      "x-eq-fk-fuzzy-match-on": ["staff.full_name", "staff.email"],
+      "x-eq-source-aliases": ["uploaded_by", "added_by", "user"]
+    },
+    "category": {
+      "type": ["string", "null"],
+      "description": "Optional categorisation (e.g. 'photo', 'report', 'certificate', 'signature').",
+      "x-eq-source-aliases": ["attachment_category", "kind", "classification"],
+      "x-eq-suggested-values": [
+        "photo",
+        "report",
+        "certificate",
+        "signature",
+        "drawing",
+        "datasheet",
+        "test_result",
+        "logo",
+        "other"
+      ],
+      "maxLength": 64
+    },
+    "imported_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-eq-system-managed": true
+    },
+    "imported_from": {
+      "type": ["string", "null"],
+      "x-eq-system-managed": true
+    }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "storage_path_starts_with_tenant",
+      "rule": "storage_path matches '^[0-9a-f-]{36}/'",
+      "message": "storage_path should start with the tenant_id UUID so storage RLS can resolve ownership.",
+      "severity": "warning"
+    }
+  ],
+  "x-eq-import-hints": {
+    "description": "Attachment rows are usually generated programmatically (one per file upload) rather than imported from a spreadsheet. When imported, the binary itself must also be uploaded to storage; this row only carries metadata.",
+    "common_sources": [
+      {
+        "name": "Migration from a legacy file index",
+        "typical_columns": ["File", "Parent Type", "Parent ID", "Size", "Uploaded By", "Date"],
+        "watchouts": ["Parent Type must be canonicalised against the entity_type suggested-values list", "If migrating from S3, rewrite storage_path to the {tenant_id}/{entity_type}/{entity_id}/{file_name} convention"]
+      }
+    ]
+  }
+}

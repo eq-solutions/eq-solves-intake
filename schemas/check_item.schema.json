@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/service/check-item/v1.json",
+  "title": "Check Item",
+  "description": "The line-item result of a maintenance check: a copy of a maintenance_plan_item with the pass/fail/na result the technician recorded. Equivalent to eq-solves-service's maintenance_check_items table. The plan item's description is snapshotted at check creation so later plan edits don't rewrite history.",
+  "type": "object",
+  "x-eq-entity": "check_item",
+  "x-eq-module": "service",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "check_items",
+  "x-eq-table-aliases": ["maintenance_check_items"],
+  "required": ["item_id", "tenant_id", "check_id", "description"],
+  "properties": {
+    "item_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-source-aliases": ["id", "item_id", "check_item_id", "maintenance_check_item_id"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-system-managed": true
+    },
+    "check_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Parent maintenance check.",
+      "x-eq-foreign-key": "maintenance_check.check_id",
+      "x-eq-source-aliases": ["maintenance_check_id", "check"]
+    },
+    "check_asset_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Optional link to the specific (check, asset) row this result belongs to. Lets one check carry per-asset result rows for a single line item.",
+      "x-eq-foreign-key": "check_asset.check_asset_id",
+      "x-eq-source-aliases": ["check_asset", "wo_asset_id"]
+    },
+    "plan_item_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "The plan item this row is an instance of. Null if the check was ad-hoc / no plan.",
+      "x-eq-foreign-key": "maintenance_plan_item.item_id",
+      "x-eq-source-aliases": ["job_plan_item_id", "plan_item", "source_item"]
+    },
+    "asset_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Asset this result applies to (denormalised for query speed when check_asset_id is null).",
+      "x-eq-foreign-key": "asset.asset_id",
+      "x-eq-fk-fuzzy-match-on": ["asset.external_id", "asset.name"],
+      "x-eq-source-aliases": ["asset", "asset_tag", "tag"]
+    },
+    "description": {
+      "type": "string",
+      "description": "Snapshotted task description at the time of check creation.",
+      "x-eq-source-aliases": ["task", "task_description", "item_description", "step"],
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "sort_order": {
+      "type": "integer",
+      "x-eq-source-aliases": ["order", "sequence", "seq"],
+      "x-eq-coerce": "number",
+      "minimum": 0,
+      "default": 0
+    },
+    "is_required": {
+      "type": "boolean",
+      "x-eq-source-aliases": ["required", "mandatory"],
+      "x-eq-coerce": "boolean",
+      "default": true
+    },
+    "result": {
+      "type": ["string", "null"],
+      "enum": [null, "pass", "fail", "na"],
+      "description": "Technician's recorded result. Null = not yet checked.",
+      "x-eq-source-aliases": ["outcome", "status", "check_result", "test_result"],
+      "x-eq-enum-aliases": {
+        "pass": ["p", "ok", "passed", "y", "yes", "green", "compliant"],
+        "fail": ["f", "failed", "n", "no", "red", "non_compliant", "defect"],
+        "na": ["n/a", "not_applicable", "skip", "skipped", "not_done"]
+      }
+    },
+    "completed_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-eq-source-aliases": ["completion_time", "completed", "checked_at"],
+      "x-eq-coerce": "date"
+    },
+    "completed_by_user_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Technician who recorded this result.",
+      "x-eq-foreign-key": "staff.user_id",
+      "x-eq-fk-fuzzy-match-on": ["staff.full_name", "staff.email"],
+      "x-eq-source-aliases": ["completed_by", "checked_by", "technician", "tech"]
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["comment", "comments", "remarks", "note"],
+      "maxLength": 4000
+    },
+    "imported_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-eq-system-managed": true
+    },
+    "imported_from": {
+      "type": ["string", "null"],
+      "x-eq-system-managed": true
+    }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "completed_when_result",
+      "rule": "result == null OR completed_at != null",
+      "message": "Result recorded but no completed_at timestamp.",
+      "severity": "warning"
+    }
+  ],
+  "x-eq-import-hints": {
+    "description": "Check items rarely come in standalone — they're populated when a check is created from a plan, or appear inline on a completed-check export.",
+    "common_sources": [
+      {
+        "name": "Completed check export",
+        "typical_columns": ["WO #", "Step", "Description", "Result", "Notes", "Tech"],
+        "watchouts": ["Result column may be 'P/F/N' or 'Pass/Fail/N/A' — see x-eq-enum-aliases"]
+      }
+    ]
+  }
+}

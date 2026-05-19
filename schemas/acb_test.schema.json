@@ -1,0 +1,329 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/service/acb-test/v1.json",
+  "title": "ACB Test",
+  "description": "Specialised test record for an Air Circuit Breaker (ACB). One header row per (asset, test_date) with full breaker identification, trip-unit + ratings, protection settings, and accessories — matching the exact Excel test sheet layout used by SKS technicians. Child rows: acb_visual_check_items (qualitative pass/fail) and acb_electrical_readings (quantitative readings).",
+  "type": "object",
+  "x-eq-entity": "acb_test",
+  "x-eq-module": "service",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "acb_tests",
+  "required": ["acb_test_id", "tenant_id", "asset_id", "site_id", "test_date", "test_type", "overall_result", "active"],
+  "properties": {
+    "acb_test_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-source-aliases": ["id", "acb_test_id", "test_id"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-system-managed": true
+    },
+    "asset_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "The ACB asset being tested.",
+      "x-eq-foreign-key": "asset.asset_id",
+      "x-eq-fk-fuzzy-match-on": ["asset.external_id", "asset.name"],
+      "x-eq-source-aliases": ["asset", "asset_tag", "tag", "breaker_tag", "cb_tag"]
+    },
+    "site_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-foreign-key": "site.site_id",
+      "x-eq-fk-fuzzy-match-on": ["site.name", "site.code"],
+      "x-eq-source-aliases": ["site", "site_name", "location"]
+    },
+    "check_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Optional link to the parent maintenance_check this test belongs to.",
+      "x-eq-foreign-key": "maintenance_check.check_id",
+      "x-eq-source-aliases": ["maintenance_check_id", "check", "wo_id"]
+    },
+    "test_date": {
+      "type": "string",
+      "format": "date",
+      "x-eq-source-aliases": ["date", "test_dt", "date_tested", "tested_on"],
+      "x-eq-coerce": "date"
+    },
+    "tested_by_user_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "x-eq-foreign-key": "staff.user_id",
+      "x-eq-fk-fuzzy-match-on": ["staff.full_name", "staff.email"],
+      "x-eq-source-aliases": ["tested_by", "technician", "tech", "tested_by_name"]
+    },
+    "test_type": {
+      "type": "string",
+      "enum": ["Initial", "Routine", "Special"],
+      "description": "Type of test event.",
+      "x-eq-source-aliases": ["type", "test_classification"],
+      "x-eq-enum-aliases": {
+        "Initial": ["initial", "commissioning", "first", "new_install"],
+        "Routine": ["routine", "periodic", "scheduled", "annual", "pm"],
+        "Special": ["special", "investigative", "post_fault", "ad_hoc"]
+      },
+      "default": "Routine"
+    },
+    "brand": {
+      "type": ["string", "null"],
+      "description": "Manufacturer brand of the breaker (e.g. Schneider, ABB, Terasaki).",
+      "x-eq-source-aliases": ["manufacturer", "make", "mfr"],
+      "maxLength": 100
+    },
+    "breaker_type": {
+      "type": ["string", "null"],
+      "description": "Breaker series / type (e.g. 'Masterpact NW', 'Emax2 E2.2').",
+      "x-eq-source-aliases": ["type_designation", "cb_series", "series"],
+      "maxLength": 100
+    },
+    "name_location": {
+      "type": ["string", "null"],
+      "description": "Display name + location combined (matches the xlsx 'Name/Location' field).",
+      "x-eq-source-aliases": ["name", "location", "cb_name"],
+      "maxLength": 200
+    },
+    "performance_level": {
+      "type": ["string", "null"],
+      "enum": [null, "N1", "H1", "H2", "H3", "L1"],
+      "description": "Schneider performance class.",
+      "x-eq-source-aliases": ["perf_level", "class"]
+    },
+    "protection_unit_fitted": {
+      "type": ["boolean", "null"],
+      "description": "Whether an electronic protection unit is fitted.",
+      "x-eq-source-aliases": ["protection_fitted", "trip_unit_fitted", "has_protection_unit"],
+      "x-eq-coerce": "boolean"
+    },
+    "trip_unit_model": {
+      "type": ["string", "null"],
+      "description": "Trip unit model (e.g. 'Micrologic 5.0H').",
+      "x-eq-source-aliases": ["trip_unit", "micrologic_model"],
+      "maxLength": 100
+    },
+    "current_in": {
+      "type": ["string", "null"],
+      "description": "Rated current In (e.g. '630A'). Stored as text to preserve units.",
+      "x-eq-source-aliases": ["in_rating", "rated_current", "in"],
+      "maxLength": 50
+    },
+    "fixed_withdrawable": {
+      "type": ["string", "null"],
+      "enum": [null, "Fixed", "Withdrawable"],
+      "description": "Mounting style.",
+      "x-eq-source-aliases": ["mounting", "fixed_or_withdrawable"],
+      "x-eq-enum-aliases": {
+        "Fixed": ["fixed", "fix", "f"],
+        "Withdrawable": ["withdrawable", "draw_out", "drawout", "w"]
+      }
+    },
+    "cb_make": {
+      "type": ["string", "null"],
+      "description": "Legacy 'CB Make' field (often duplicates brand).",
+      "x-eq-source-aliases": ["cb_manufacturer"],
+      "maxLength": 100
+    },
+    "cb_model": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["model", "cb_model_number"],
+      "maxLength": 100
+    },
+    "cb_serial": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["serial", "serial_no", "cb_serial_number"],
+      "maxLength": 100
+    },
+    "cb_rating": {
+      "type": ["string", "null"],
+      "description": "Frame rating (e.g. '1600A').",
+      "x-eq-source-aliases": ["rating", "frame_rating"],
+      "maxLength": 50
+    },
+    "cb_poles": {
+      "type": ["string", "null"],
+      "description": "Number of poles ('3P', '4P').",
+      "x-eq-source-aliases": ["poles", "n_poles"],
+      "maxLength": 10
+    },
+    "trip_unit": {
+      "type": ["string", "null"],
+      "description": "Legacy free-text trip unit description.",
+      "x-eq-source-aliases": ["trip"],
+      "maxLength": 100
+    },
+    "trip_settings_ir": {
+      "type": ["string", "null"],
+      "description": "Long-time pickup setting Ir.",
+      "x-eq-source-aliases": ["ir", "long_time_pickup"],
+      "maxLength": 50
+    },
+    "trip_settings_isd": {
+      "type": ["string", "null"],
+      "description": "Short-time pickup setting Isd.",
+      "x-eq-source-aliases": ["isd", "short_time_pickup"],
+      "maxLength": 50
+    },
+    "trip_settings_ii": {
+      "type": ["string", "null"],
+      "description": "Instantaneous pickup setting Ii.",
+      "x-eq-source-aliases": ["ii", "instantaneous"],
+      "maxLength": 50
+    },
+    "trip_settings_ig": {
+      "type": ["string", "null"],
+      "description": "Earth-fault pickup setting Ig.",
+      "x-eq-source-aliases": ["ig", "earth_fault_pickup"],
+      "maxLength": 50
+    },
+    "long_time_ir": {
+      "type": ["string", "null"],
+      "description": "Long-time pickup Ir (matches xlsx layout).",
+      "x-eq-source-aliases": ["lt_ir", "long_time_setting"],
+      "maxLength": 50
+    },
+    "long_time_delay_tr": {
+      "type": ["string", "null"],
+      "description": "Long-time delay tr.",
+      "x-eq-source-aliases": ["lt_tr", "tr", "long_time_delay"],
+      "maxLength": 50
+    },
+    "short_time_pickup_isd": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["st_isd", "isd_pickup"],
+      "maxLength": 50
+    },
+    "short_time_delay_tsd": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["st_tsd", "tsd"],
+      "maxLength": 50
+    },
+    "instantaneous_pickup": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["inst_pickup", "ii_pickup"],
+      "maxLength": 50
+    },
+    "earth_fault_pickup": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["ef_pickup", "ig_pickup"],
+      "maxLength": 50
+    },
+    "earth_fault_delay": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["ef_delay", "tg"],
+      "maxLength": 50
+    },
+    "earth_leakage_pickup": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["el_pickup", "i_delta_n"],
+      "maxLength": 50
+    },
+    "earth_leakage_delay": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["el_delay", "t_delta_n"],
+      "maxLength": 50
+    },
+    "motor_charge": {
+      "type": ["string", "null"],
+      "description": "Motor charging accessory voltage/state.",
+      "x-eq-source-aliases": ["motor_charge_voltage"],
+      "maxLength": 50
+    },
+    "shunt_trip_mx1": {
+      "type": ["string", "null"],
+      "description": "Shunt trip MX1 voltage/state.",
+      "x-eq-source-aliases": ["mx1", "shunt_trip"],
+      "maxLength": 50
+    },
+    "shunt_close_xf": {
+      "type": ["string", "null"],
+      "description": "Shunt close XF voltage/state.",
+      "x-eq-source-aliases": ["xf", "shunt_close"],
+      "maxLength": 50
+    },
+    "undervoltage_mn": {
+      "type": ["string", "null"],
+      "description": "Undervoltage release MN voltage/state.",
+      "x-eq-source-aliases": ["mn", "undervoltage_release"],
+      "maxLength": 50
+    },
+    "second_shunt_trip": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["mx2", "shunt_trip_mx2"],
+      "maxLength": 50
+    },
+    "overall_result": {
+      "type": "string",
+      "enum": ["Pending", "Pass", "Fail", "Defect"],
+      "x-eq-source-aliases": ["result", "outcome", "test_result"],
+      "x-eq-enum-aliases": {
+        "Pending": ["pending", "incomplete", "in_progress", "not_done"],
+        "Pass": ["pass", "passed", "ok", "p"],
+        "Fail": ["fail", "failed", "f"],
+        "Defect": ["defect", "defective", "raised_defect"]
+      },
+      "default": "Pending"
+    },
+    "step1_status": {
+      "type": "string",
+      "enum": ["pending", "in_progress", "complete"],
+      "description": "Wizard step 1 (typically asset collection).",
+      "x-eq-source-aliases": ["step_1"],
+      "default": "pending"
+    },
+    "step2_status": {
+      "type": "string",
+      "enum": ["pending", "in_progress", "complete"],
+      "description": "Wizard step 2 (typically visual checks).",
+      "x-eq-source-aliases": ["step_2"],
+      "default": "pending"
+    },
+    "step3_status": {
+      "type": "string",
+      "enum": ["pending", "in_progress", "complete"],
+      "description": "Wizard step 3 (typically electrical readings).",
+      "x-eq-source-aliases": ["step_3"],
+      "default": "pending"
+    },
+    "active": {
+      "type": "boolean",
+      "x-eq-source-aliases": ["is_active", "current"],
+      "x-eq-coerce": "boolean",
+      "default": true
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["comment", "comments", "remarks", "note"],
+      "maxLength": 4000
+    },
+    "imported_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-eq-system-managed": true
+    },
+    "imported_from": {
+      "type": ["string", "null"],
+      "x-eq-system-managed": true
+    }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "result_pending_when_steps_open",
+      "rule": "overall_result != 'Pending' OR step1_status != 'complete' OR step2_status != 'complete' OR step3_status != 'complete'",
+      "message": "All three steps are complete but overall_result is still Pending — should be Pass/Fail/Defect.",
+      "severity": "warning"
+    }
+  ],
+  "x-eq-import-hints": {
+    "description": "ACB test data usually comes from the SKS Excel test sheet — one workbook per breaker tested. The sheet has a hierarchical layout: identification, trip-unit, protection settings, accessories, visual checks, electrical readings.",
+    "common_sources": [
+      {
+        "name": "SKS ACB Excel test sheet",
+        "typical_columns": ["Brand", "Type", "Name/Location", "Performance Level", "Trip Unit Model", "In Rating", "Fixed/Withdrawable", "Long Time Ir", "Short Time Isd", "Instantaneous"],
+        "watchouts": ["Trip-unit settings preserve units in-string (e.g. '0.9 x In') — store as text", "Visual checks and electrical readings split into acb_visual_check_items and acb_electrical_readings child rows"]
+      }
+    ]
+  }
+}

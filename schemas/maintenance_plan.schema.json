@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/service/maintenance-plan/v1.json",
+  "title": "Maintenance Plan",
+  "description": "A reusable maintenance plan template. Defines what work to do (via maintenance_plan_items) on assets matching a scope. Equivalent to eq-solves-service's job_plans table. Plans can be tenant-global (customer_id + site_id both null), customer-scoped (customer_id set), or site-scoped (site_id set — legacy pattern).",
+  "type": "object",
+  "x-eq-entity": "maintenance_plan",
+  "x-eq-module": "service",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "maintenance_plans",
+  "x-eq-table-aliases": ["job_plans"],
+  "required": ["plan_id", "tenant_id", "name", "active"],
+  "properties": {
+    "plan_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-source-aliases": ["id", "plan_id", "job_plan_id", "jp_id"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-system-managed": true
+    },
+    "external_id": {
+      "type": ["string", "null"],
+      "description": "External system reference (e.g. Maximo PM number, Delta JP id).",
+      "x-eq-source-aliases": ["external_ref", "ref", "external_plan_id", "maximo_pm_number"],
+      "maxLength": 64
+    },
+    "customer_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "When set with site_id null, plan applies to all sites of this customer.",
+      "x-eq-foreign-key": "customer.customer_id",
+      "x-eq-fk-fuzzy-match-on": ["customer.name", "customer.code"],
+      "x-eq-source-aliases": ["customer", "client", "customer_name", "client_name"]
+    },
+    "site_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Legacy / site-scoped plans. When null, plan is customer- or tenant-scoped.",
+      "x-eq-foreign-key": "site.site_id",
+      "x-eq-fk-fuzzy-match-on": ["site.name", "site.code"],
+      "x-eq-source-aliases": ["site", "site_name", "location"]
+    },
+    "code": {
+      "type": ["string", "null"],
+      "description": "Job plan code (e.g. 'LVACB', 'E1.25', 'M10.13'). Often combined with a frequency suffix in source documents — e.g. 'LVACB-A' parses to code 'LVACB' + frequency suffix 'A'. The suffix is stripped during import and the frequency is set on the maintenance_check, not on the plan.",
+      "x-eq-source-aliases": ["plan_code", "job_plan_code", "jp_code", "ref", "ref_no"],
+      "maxLength": 64
+    },
+    "name": {
+      "type": "string",
+      "description": "Display name (e.g. 'LV ACB Service', 'Annual Switchboard PM').",
+      "x-eq-source-aliases": ["plan_name", "job_plan_name", "title", "description"],
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "type": {
+      "type": ["string", "null"],
+      "description": "Free-text classification (e.g. 'electrical', 'mechanical', 'safety').",
+      "x-eq-source-aliases": ["plan_type", "category", "classification"],
+      "maxLength": 64
+    },
+    "description": {
+      "type": ["string", "null"],
+      "description": "Long-form description of what the plan covers.",
+      "x-eq-source-aliases": ["details", "scope_description", "long_description"],
+      "maxLength": 4000
+    },
+    "frequency": {
+      "type": ["string", "null"],
+      "enum": [null, "weekly", "monthly", "quarterly", "semi_annual", "annual", "2yr", "3yr", "5yr", "8yr", "10yr", "ad_hoc"],
+      "description": "Default frequency for instances of this plan. Often null when the plan covers multiple cycles (frequency lives per-item instead). Source codes use suffixes A/Q/M/S/W/2/3/5/8/10 — see x-eq-enum-aliases.",
+      "x-eq-source-aliases": ["frequency_text", "cycle", "interval"],
+      "x-eq-enum-aliases": {
+        "weekly": ["w", "wk", "1w", "weekly_visit"],
+        "monthly": ["m", "1m", "monthly_visit"],
+        "quarterly": ["q", "3", "3m", "qtr", "3_monthly"],
+        "semi_annual": ["s", "6", "6m", "biannual", "semi-annual", "half_yearly"],
+        "annual": ["a", "1y", "12m", "yearly"],
+        "2yr": ["2", "2y", "24m", "biennial"],
+        "3yr": ["3y", "36m", "triennial"],
+        "5yr": ["5y", "60m", "quinquennial"],
+        "8yr": ["8y", "96m"],
+        "10yr": ["10", "10y", "120m", "decadal"],
+        "ad_hoc": ["adhoc", "ad-hoc", "on_demand", "as_needed"]
+      }
+    },
+    "active": {
+      "type": "boolean",
+      "x-eq-source-aliases": ["is_active", "current", "status", "enabled"],
+      "x-eq-coerce": "boolean",
+      "default": true
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["comment", "comments", "remarks", "note"],
+      "maxLength": 4000
+    },
+    "imported_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-eq-system-managed": true
+    },
+    "imported_from": {
+      "type": ["string", "null"],
+      "x-eq-system-managed": true
+    }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "customer_or_site_not_both",
+      "rule": "customer_id == null OR site_id == null",
+      "message": "A plan should be scoped to a customer OR a site, not both. (Both null = tenant-global, which is allowed.)",
+      "severity": "warning"
+    }
+  ],
+  "x-eq-import-hints": {
+    "description": "Plans are usually defined in a 'Job Plans' tab of a contract spreadsheet, or in a Maximo PM export. The plan code frequently encodes the frequency as a trailing suffix.",
+    "common_sources": [
+      {
+        "name": "Delta / Maximo PM export",
+        "typical_columns": ["JP Code", "Description", "Frequency", "Asset Type"],
+        "watchouts": ["JP Code may include the frequency suffix ('LVACB-A') — split into code + frequency before insert", "Frequency column may be a single letter (A/Q/M/S/W) or coded ('1Y', '6M') — see x-eq-enum-aliases"]
+      },
+      {
+        "name": "Contract scope sheet",
+        "typical_columns": ["Job Plan", "Asset Class", "Frequency", "Cost per Cycle"],
+        "watchouts": ["Cost data belongs on contract_scope, not here"]
+      }
+    ]
+  }
+}
