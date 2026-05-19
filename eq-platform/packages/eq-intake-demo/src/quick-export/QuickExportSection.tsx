@@ -17,7 +17,7 @@ import {
   SITE_SCHEMA,
 } from "../simpro-schemas.js";
 import type { RoleName } from "../rollup/roles.js";
-import { QUICK_DESTINATIONS, encodeCsv, type QuickDestination } from "./destinations.js";
+import { QUICK_DESTINATIONS, encodeCsv } from "./destinations.js";
 
 const ROLE_REGISTRY: Record<RoleName, Record<string, unknown>> = {
   customer: CUSTOMER_SCHEMA,
