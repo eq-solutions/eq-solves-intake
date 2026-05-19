@@ -139,6 +139,16 @@ export function coerceNumber(
     normalised = raw;
   }
 
+  // Strict numeric shape — `parseFloat` is greedy and silently truncates at
+  // the first non-numeric character ("1 234.56" → 1, "0x1F" → 0). Validate
+  // the whole normalised string is a clean decimal number BEFORE parsing.
+  // Accepts: 123, 123.45, .45, 123., 1.23e10, 1.23E+10, 1.23e-10.
+  // Rejects: anything with embedded whitespace, hex/octal/binary prefixes,
+  // multiple decimals, trailing junk, or stray characters.
+  if (!/^\d+(\.\d*)?([eE][+-]?\d+)?$|^\.\d+([eE][+-]?\d+)?$/.test(normalised)) {
+    return err('number_unparseable', `Cannot parse "${value}" as number.`);
+  }
+
   const parsed = parseFloat(normalised);
   if (isNaN(parsed) || !isFinite(parsed)) {
     return err('number_unparseable', `Cannot parse "${value}" as number.`);

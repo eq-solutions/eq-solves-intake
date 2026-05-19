@@ -40,6 +40,17 @@ export interface ParsedSheet {
   meta: ParseMeta;
 }
 
+export interface MalformedRow {
+  /** 1-based source line number (data lines after the header are 2, 3, ...). */
+  lineNumber: number;
+  /** Raw source line text, untouched. */
+  raw: string;
+  /** Short machine-readable code, e.g. "extra_fields", "missing_fields", "quote_mismatch". */
+  reason: string;
+  /** Human-readable detail Papa Parse produced. */
+  message: string;
+}
+
 export interface ParseMeta {
   /** Encoding used to decode the input. */
   encoding: string;
@@ -49,8 +60,12 @@ export interface ParseMeta {
   totalRows: number;
   /** Rows in the source that were skipped because they were fully empty. */
   emptyRowsSkipped: number;
-  /** Rows Papa Parse flagged as malformed (e.g. wrong field count). */
+  /** Number of malformed rows excluded from `rows` (same as `malformed.length`). */
   malformedRows: number;
+  /** Per-row diagnostics for malformed lines that didn't make it into `rows`.
+   *  Surfaced so the confirm UI can show "these rows didn't parse" with line
+   *  numbers and reasons — drops are visible, not silent. */
+  malformed: MalformedRow[];
   /** True if a UTF-8 BOM was detected and stripped from the input. */
   bomDetected: boolean;
 }
@@ -118,24 +133,71 @@ export async function parseCsv(
   });
 
   const headerRow = (result.meta.fields ?? []).map((f) => f.trim());
-  const rows = result.data;
+  const rawRows = result.data;
+  const sourceLines = text.split(/\r?\n/);
 
-  // Empty-row count: Papa already skipped them when skipEmptyLines:true, so
-  // derive the count from the difference between non-empty source lines and
-  // (rows + header).
-  let emptyRowsSkipped = 0;
-  if (opts.skipEmptyLines ?? true) {
-    const nonEmptyLines = text
-      .split(/\r?\n/)
-      .filter((l) => l.trim().length > 0).length;
-    // -1 for header row
-    emptyRowsSkipped = Math.max(0, nonEmptyLines - 1 - rows.length);
+  // Build the set of malformed source-row indices (0-based, where 0 = first
+  // data row, NOT counting the header). Papa Parse reports field count
+  // mismatches as FieldMismatch errors with .row, and it also leaves a
+  // `__parsed_extra` array on rows that had more columns than headers — these
+  // are silent corruption (downstream code reads by header name and misses
+  // the overflow). Treat both as malformed and exclude from `rows`.
+  const malformedRowIndices = new Set<number>();
+  const malformedFromErrors: MalformedRow[] = [];
+  for (const e of result.errors) {
+    if (e.type !== "FieldMismatch" && e.type !== "Quotes") continue;
+    if (typeof e.row !== "number") continue;
+    malformedRowIndices.add(e.row);
+    const lineNumber = e.row + 2; // +1 for 0-based, +1 for header
+    const reason = e.type === "FieldMismatch"
+      ? (e.code === "TooManyFields" ? "extra_fields" : "missing_fields")
+      : "quote_mismatch";
+    malformedFromErrors.push({
+      lineNumber,
+      raw: sourceLines[lineNumber - 1] ?? "",
+      reason,
+      message: e.message,
+    });
   }
 
-  // Malformed = Papa errors that aren't just quote-related warnings
-  const malformedRows = result.errors.filter(
-    (e) => e.type === "FieldMismatch" || e.type === "Delimiter",
-  ).length;
+  // Also catch any row Papa accepted but stuffed with __parsed_extra — these
+  // would otherwise look valid to downstream code reading by header name.
+  const malformed: MalformedRow[] = [...malformedFromErrors];
+  rawRows.forEach((row, idx) => {
+    if (malformedRowIndices.has(idx)) return; // already accounted for
+    if (Object.prototype.hasOwnProperty.call(row, "__parsed_extra")) {
+      malformedRowIndices.add(idx);
+      const lineNumber = idx + 2;
+      malformed.push({
+        lineNumber,
+        raw: sourceLines[lineNumber - 1] ?? "",
+        reason: "extra_fields",
+        message: "Row had more columns than the header — overflow in __parsed_extra.",
+      });
+    }
+  });
+
+  // Filter malformed rows out of the returned rows so downstream code only
+  // sees clean rows. The malformed ones are surfaced via meta.malformed[].
+  const rows = rawRows
+    .filter((_, idx) => !malformedRowIndices.has(idx))
+    .map((row) => {
+      // Defensive: strip __parsed_extra if any survived (shouldn't, but cheap).
+      if (Object.prototype.hasOwnProperty.call(row, "__parsed_extra")) {
+        const clean = { ...row };
+        delete (clean as Record<string, unknown>).__parsed_extra;
+        return clean;
+      }
+      return row;
+    });
+
+  // Empty-row count: derive from non-empty source lines minus header, rows
+  // accepted, and rows rejected as malformed.
+  let emptyRowsSkipped = 0;
+  if (opts.skipEmptyLines ?? true) {
+    const nonEmptyLines = sourceLines.filter((l) => l.trim().length > 0).length;
+    emptyRowsSkipped = Math.max(0, nonEmptyLines - 1 - rows.length - malformed.length);
+  }
 
   return {
     sheetName: opts.sheetName ?? "csv",
@@ -146,7 +208,8 @@ export async function parseCsv(
       delimiter: result.meta.delimiter ?? opts.delimiter ?? ",",
       totalRows: rows.length,
       emptyRowsSkipped,
-      malformedRows,
+      malformedRows: malformed.length,
+      malformed,
       bomDetected,
     },
   };

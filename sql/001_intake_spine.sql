@@ -214,51 +214,69 @@ alter table eq_intake_row_audit enable row level security;
 alter table eq_export_events enable row level security;
 alter table eq_export_profiles enable row level security;
 
+-- Policies use drop-then-create so the whole migration is idempotent. Postgres
+-- has no `create policy if not exists`, and the migration header promises
+-- "safe to re-run" — without these drops, a second apply errors on the first
+-- existing policy.
+
 -- Schema registry is global-readable but only EQ admins can write.
+drop policy if exists eq_schema_registry_select on eq_schema_registry;
 create policy eq_schema_registry_select on eq_schema_registry
   for select using (true);
 
 -- Intake templates: tenant-isolated, with global templates visible to all.
+drop policy if exists eq_intake_templates_select on eq_intake_templates;
 create policy eq_intake_templates_select on eq_intake_templates
   for select using (
     tenant_id = (auth.jwt() ->> 'tenant_id')::uuid
     or is_global = true
   );
+drop policy if exists eq_intake_templates_insert on eq_intake_templates;
 create policy eq_intake_templates_insert on eq_intake_templates
   for insert with check (
     tenant_id = (auth.jwt() ->> 'tenant_id')::uuid
   );
+drop policy if exists eq_intake_templates_update on eq_intake_templates;
 create policy eq_intake_templates_update on eq_intake_templates
   for update using (
     tenant_id = (auth.jwt() ->> 'tenant_id')::uuid
   );
 
 -- Intake events: tenant-isolated, no cross-tenant visibility.
+drop policy if exists eq_intake_events_select on eq_intake_events;
 create policy eq_intake_events_select on eq_intake_events
   for select using (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+drop policy if exists eq_intake_events_insert on eq_intake_events;
 create policy eq_intake_events_insert on eq_intake_events
   for insert with check (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+drop policy if exists eq_intake_events_update on eq_intake_events;
 create policy eq_intake_events_update on eq_intake_events
   for update using (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
 
 -- Intake row audit: tenant-isolated.
+drop policy if exists eq_intake_row_audit_select on eq_intake_row_audit;
 create policy eq_intake_row_audit_select on eq_intake_row_audit
   for select using (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+drop policy if exists eq_intake_row_audit_insert on eq_intake_row_audit;
 create policy eq_intake_row_audit_insert on eq_intake_row_audit
   for insert with check (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
 
 -- Export events: tenant-isolated.
+drop policy if exists eq_export_events_select on eq_export_events;
 create policy eq_export_events_select on eq_export_events
   for select using (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+drop policy if exists eq_export_events_insert on eq_export_events;
 create policy eq_export_events_insert on eq_export_events
   for insert with check (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
 
 -- Export profiles: tenant-isolated, with global profiles visible to all.
+drop policy if exists eq_export_profiles_select on eq_export_profiles;
 create policy eq_export_profiles_select on eq_export_profiles
   for select using (
     tenant_id = (auth.jwt() ->> 'tenant_id')::uuid
     or is_global = true
   );
+drop policy if exists eq_export_profiles_insert on eq_export_profiles;
 create policy eq_export_profiles_insert on eq_export_profiles
   for insert with check (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
 
@@ -346,7 +364,12 @@ $$;
 -- 9. TRIGGERS
 -- ============================================================================
 
--- Ensure only one is_current=true per entity in schema registry
+-- Ensure only one is_current=true per entity in schema registry.
+-- Excludes rows with the same (entity, version) so a re-seed (INSERT ... ON
+-- CONFLICT DO UPDATE) doesn't trigger an update on the conflict target row
+-- before ON CONFLICT runs — which Postgres rejects as "row affected a second
+-- time". The intent is to flip OTHER versions of this entity, not the same
+-- version being upserted.
 create or replace function eq_schema_registry_one_current()
 returns trigger language plpgsql as $$
 begin
@@ -354,7 +377,7 @@ begin
     update eq_schema_registry
       set is_current = false
       where entity = NEW.entity
-        and schema_id <> NEW.schema_id
+        and version <> NEW.version
         and is_current = true;
   end if;
   return NEW;

@@ -390,7 +390,13 @@ function coerceField(value: unknown, fieldSchema: any, locale: Locale): CoerceRe
     return coerceBoolean(value);
   }
   if (coerceHint === 'phone-au') {
-    return coercePhoneAU(value);
+    // validate's design: phones are soft-required. Unparseable values get
+    // kept raw and bubble up as a `phone_kept_raw` flag (handled below at
+    // the `coerced.note === 'phone_format_unrecognised_kept_raw'` branch),
+    // so the bookkeeper sees the row in confirm UI and fixes it there.
+    // External callers of coercePhoneAU get strict-by-default; validate
+    // opts INTO permissive on their behalf.
+    return coercePhoneAU(value, { permissive: true });
   }
   if (coerceHint === 'au-state') {
     return coerceAuState(value);

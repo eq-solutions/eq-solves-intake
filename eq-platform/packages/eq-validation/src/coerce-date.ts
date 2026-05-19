@@ -109,8 +109,21 @@ export function coerceDate(
     return err('date_unparseable', `Unexpected type ${typeof raw} for date.`);
   }
 
-  const s = raw.trim();
+  let s = raw.trim();
   if (s === '') return err('value_null_or_empty', 'Date is empty after trim.');
+
+  // Strip a trailing time component from slash/dash-formatted dates like
+  // "01/05/2026 12:34" or "28-04-2026 09:00:00". Without this, the slash
+  // parser fails on the whole string and the native fallback below would
+  // re-parse it with the JS runtime's locale (not opts.locale), silently
+  // flipping DD/MM to MM/DD on US-locale machines. Strip the time and let
+  // the dedicated slash-date branch handle the rest.
+  const slashDateWithTime = s.match(
+    /^(\d{1,4}[\/\-.]\d{1,2}[\/\-.]\d{1,4})\s+\d{1,2}:\d{2}(?::\d{2})?\s*$/,
+  );
+  if (slashDateWithTime) {
+    s = slashDateWithTime[1]!;
+  }
 
   // ISO 8601
   let m: RegExpMatchArray | null;
@@ -219,12 +232,36 @@ export function coerceDate(
       : err('date_unparseable', `Date ${s} not valid.`);
   }
 
-  // Last-ditch: native Date.parse (handles many ISO-ish forms)
+  // Last-ditch: native Date.parse — kept for ISO-ish forms the dedicated
+  // parsers don't cover (e.g. "Wed, 01 May 2026"). Validate against overflow:
+  // native Date silently rolls "Feb 30" into March, so if the input contains
+  // a 2-digit number that doesn't appear as month/day in the parsed result,
+  // reject — that means the parser "fixed up" something the bookkeeper meant.
   const native = Date.parse(s);
   if (!isNaN(native)) {
     const d = new Date(native);
     const iso = buildIso(d.getFullYear(), d.getMonth() + 1, d.getDate());
-    if (iso) return ok(iso, true, 'parsed via native Date');
+    if (iso) {
+      // Overflow check: extract all 1-2 digit numbers from the input. The
+      // result's day, month, and 2-digit year-suffix should be among them.
+      // If a number appears in the input that's NOT in {day, month, yy},
+      // the native parser silently rolled over (e.g. "Feb 30 2026" → Mar 2:
+      // input has 30, result has day=2 → mismatch). Reject.
+      const inputNums = (s.match(/\b\d{1,2}\b/g) ?? []).map((n) => parseInt(n, 10));
+      const resultDay = d.getDate();
+      const resultMonth = d.getMonth() + 1;
+      const yearStr = String(d.getFullYear());
+      const resultYearSuffix = parseInt(yearStr.slice(-2), 10);
+      const validNums = new Set([resultDay, resultMonth, resultYearSuffix]);
+      const rolled = inputNums.some((n) => !validNums.has(n));
+      if (rolled) {
+        return err(
+          'date_unparseable',
+          `Could not parse '${raw}' as a date — components don't match a valid date.`,
+        );
+      }
+      return ok(iso, true, 'parsed via native Date');
+    }
   }
 
   return err('date_unparseable', `Could not parse '${s}' as a date.`);

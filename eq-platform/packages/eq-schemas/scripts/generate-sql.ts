@@ -174,6 +174,40 @@ function emitCreateTable(
     columnDefs.push(`  ${colDef}`);
     emitted.add(name);
 
+    // Enum CHECK as deferred ALTER — the inline CHECK in CREATE TABLE only
+    // applies on fresh creates. For existing tables, `create table if not
+    // exists` is a no-op and the new CHECK never gets added. Emit a deferred
+    // drop-then-add so re-runs land the constraint on existing tables too.
+    const colSqlType = pickSqlType(field, name === pkColumn);
+    const enumValues = field.enum;
+    const isCheckableEnumType =
+      colSqlType === "text" ||
+      colSqlType.startsWith("varchar") ||
+      colSqlType === "bigint" ||
+      colSqlType === "numeric" ||
+      colSqlType === "date" ||
+      colSqlType === "timestamptz";
+    if (
+      Array.isArray(enumValues) &&
+      enumValues.length > 0 &&
+      isCheckableEnumType &&
+      name !== pkColumn
+    ) {
+      const scalarValues = enumValues.filter((v) => v !== null);
+      if (scalarValues.length > 0) {
+        const sqlLiterals = scalarValues
+          .map((v) => `'${String(v).replace(/'/g, "''")}'`)
+          .join(", ");
+        const conName = `${tableName}_${name}_enum_check`;
+        alters.push(
+          `alter table ${tableName} drop constraint if exists ${conName};`,
+        );
+        alters.push(
+          `alter table ${tableName} add constraint ${conName} check (${name} is null or ${name} in (${sqlLiterals}));`,
+        );
+      }
+    }
+
     // FK constraint — only emit when:
     //   (a) target entity is a known schema (resolves to a real table), AND
     //   (b) the source column SQL type is uuid (scalar refs only — array-of-uuid
@@ -265,6 +299,37 @@ function emitColumn(
       line += ` default ${field.default}`;
     } else if (typeof field.default === "string") {
       line += ` default '${field.default.replace(/'/g, "''")}'`;
+    }
+  }
+
+  // Enum CHECK constraint — JSON Schema `enum` becomes a Postgres CHECK so the
+  // DB enforces the allowed set, not just the validate pipeline. The constraint
+  // permits NULL explicitly (Postgres NULL is unknown; a check returning NULL
+  // doesn't reject the row, but being explicit reads clearer). JSON Schema
+  // sometimes includes `null` in enum values to signal nullability — strip
+  // those, the null branch handles them. Skip enum CHECK for jsonb/boolean/uuid
+  // (jsonb can't reasonably constrain to a scalar set; boolean is already
+  // constrained; uuids don't have meaningful enum sets in EQ schemas).
+  const enumValues = field.enum;
+  const isCheckableType =
+    sqlType === "text" ||
+    sqlType.startsWith("varchar") ||
+    sqlType === "bigint" ||
+    sqlType === "numeric" ||
+    sqlType === "date" ||
+    sqlType === "timestamptz";
+  if (
+    Array.isArray(enumValues) &&
+    enumValues.length > 0 &&
+    isCheckableType &&
+    !isPk
+  ) {
+    const scalarValues = enumValues.filter((v) => v !== null);
+    if (scalarValues.length > 0) {
+      const sqlLiterals = scalarValues
+        .map((v) => `'${String(v).replace(/'/g, "''")}'`)
+        .join(", ");
+      line += ` check (${name} is null or ${name} in (${sqlLiterals}))`;
     }
   }
 

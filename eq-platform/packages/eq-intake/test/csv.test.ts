@@ -119,6 +119,46 @@ describe("parseCsv — staff-clean.csv", () => {
   });
 });
 
+describe("parseCsv — malformed handling (added 2026-05-19 after overnight review)", () => {
+  it("rejects rows with unquoted currency commas instead of silently corrupting them", async () => {
+    // Pre-fix: `-$1,234.56` was split into amount="-$1" + __parsed_extra=["234.56"]
+    // and the row showed up in `rows` looking valid. Now rejected with reason.
+    // `($789)` is a valid 1-cell row for the 1-column header — it passes through.
+    const input = "amount\n-$1,234.56\n($789)\n";
+    const parsed = await parseCsv(input);
+    expect(parsed.rows).toEqual([{ amount: "($789)" }]);
+    expect(parsed.meta.malformedRows).toBe(1);
+    expect(parsed.meta.malformed[0]?.reason).toBe("extra_fields");
+    expect(parsed.meta.malformed[0]?.raw).toBe("-$1,234.56");
+    expect(parsed.meta.malformed[0]?.lineNumber).toBe(2);
+  });
+
+  it("surfaces line number + raw text for missing-field rows", async () => {
+    const input = "a,b,c\n1,2,3\n4,5\n6,7,8\n";
+    const parsed = await parseCsv(input);
+    expect(parsed.rows).toHaveLength(2);
+    expect(parsed.meta.malformed).toHaveLength(1);
+    expect(parsed.meta.malformed[0]?.lineNumber).toBe(3);
+    expect(parsed.meta.malformed[0]?.raw).toBe("4,5");
+    expect(parsed.meta.malformed[0]?.reason).toBe("missing_fields");
+  });
+
+  it("returned rows never carry __parsed_extra (defensive cleanup)", async () => {
+    const input = "a,b\n1,2,3,4\n5,6\n";
+    const parsed = await parseCsv(input);
+    for (const row of parsed.rows) {
+      expect(Object.prototype.hasOwnProperty.call(row, "__parsed_extra")).toBe(false);
+    }
+  });
+
+  it("clean input has empty malformed[]", async () => {
+    const parsed = await parseCsv("a,b\n1,2\n3,4\n");
+    expect(parsed.meta.malformed).toHaveLength(0);
+    expect(parsed.meta.malformedRows).toBe(0);
+    expect(parsed.rows).toHaveLength(2);
+  });
+});
+
 describe("parseCsv → @eq/validation smoke test", () => {
   it("produces rows that @eq/validation can consume without throwing", async () => {
     const raw = readFileSync(join(FIXTURE_DIR, "staff-clean.csv"));
