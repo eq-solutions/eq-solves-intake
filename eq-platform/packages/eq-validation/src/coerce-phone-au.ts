@@ -3,8 +3,15 @@
  *
  * Converts AU phone numbers to E.164 (+614xxxxxxxx for mobile, +612xxxxxxxx etc for landlines).
  * International numbers (already +) are kept verbatim if the digit count is plausible.
- * Unparseable numbers are kept raw with a note (we don't reject — the phone field is
- * almost always non-critical for import-time validation).
+ *
+ * Contract:
+ * - Default: STRICT. Unrecognised formats return ok:false so the caller can
+ *   trust the ok flag without consulting notes. This is the no-silent-drops
+ *   posture — every input either resolves to a valid recognised shape or
+ *   surfaces as an error.
+ * - opts.permissive: true → unrecognised formats are kept raw with a
+ *   `phone_format_unrecognised_kept_raw` note. Use this when the caller is
+ *   a confirm-UI that wants to show the user the raw value alongside a flag.
  *
  * Strips before processing:
  * - Whitespace
@@ -20,19 +27,41 @@
  *
  * Recognised international:
  * - +<country><number> → kept verbatim if 8-15 digits total
- *
- * Anything else: ok with note 'phone_format_unrecognised_kept_raw'.
  */
 
 import { CoerceOptions, CoerceResult, ok, err } from './types';
 
+interface PhoneOpts extends Partial<CoerceOptions> {
+  /**
+   * When true, unrecognised formats are kept raw with a note instead of
+   * being rejected. Use for confirm-UI flows that want to surface the value
+   * for the user to fix manually. Default: false (strict).
+   */
+  permissive?: boolean;
+}
+
 const STRIP_CHARS = /[\s().\-/]/g;
 const PREFIX_STRIP = /^(ph|tel|mob|mobile|phone|cell):\s*/i;
 
+function unrecognised(
+  rawValue: string,
+  permissive: boolean,
+): CoerceResult<string> {
+  if (permissive) {
+    return ok(rawValue, false, 'phone_format_unrecognised_kept_raw');
+  }
+  return err(
+    'phone_unrecognised',
+    `Phone "${rawValue}" not in a recognised AU or international format.`,
+  );
+}
+
 export function coercePhoneAU(
   value: unknown,
-  opts: Partial<CoerceOptions> = {}
+  opts: PhoneOpts = {}
 ): CoerceResult<string> {
+  const permissive = opts.permissive === true;
+
   // Null / undefined / empty — pass through (phones are almost always optional)
   if (value === null || value === undefined) {
     if (opts.strict) {
@@ -66,7 +95,7 @@ export function coercePhoneAU(
     if (/^\d{8,15}$/.test(digits)) {
       return ok(stripped, stripped !== original.replace(STRIP_CHARS, ''));
     }
-    return ok(original, false, 'phone_format_unrecognised_kept_raw');
+    return unrecognised(original, permissive);
   }
 
   // 614... → +614...
@@ -89,11 +118,8 @@ export function coercePhoneAU(
     return ok(stripped, stripped !== original);
   }
 
-  // Plausible international without + (8-15 digits)
-  if (/^\d{8,15}$/.test(stripped)) {
-    return ok(original, false, 'phone_format_unrecognised_kept_raw');
-  }
-
-  // Anything else — preserve raw
-  return ok(original, false, 'phone_format_unrecognised_kept_raw');
+  // Plausible international without + (8-15 digits) — still unrecognised because
+  // we can't infer the country code. Permissive mode keeps it raw with a flag.
+  // Anything else — same treatment.
+  return unrecognised(original, permissive);
 }

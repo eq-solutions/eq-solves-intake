@@ -10,6 +10,7 @@
  * actually happening so a stalled mocked-AI doesn't look like a dead app.
  */
 
+import type { JSX } from "react";
 import type { UseBoundStore, StoreApi } from "zustand";
 import type { FlowState } from "../types.js";
 import { type FlowDriver, buildCommittedCsv } from "../store.js";

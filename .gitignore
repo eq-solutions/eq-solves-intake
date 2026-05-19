@@ -43,4 +43,5 @@ demos/simpro-customer-rollup/eq-quotes-by-site.csv
 
 # Overnight review reports + ephemeral working files
 OVERNIGHT-REVIEW-*.md
+**/fuzz-overnight*.mjs
 

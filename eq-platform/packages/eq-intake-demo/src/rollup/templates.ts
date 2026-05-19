@@ -24,7 +24,6 @@ import {
   siteRollup,
   contactCount,
   contactRollup,
-  firstSiteField,
   defaultContactField,
   site,
   siteAddress,

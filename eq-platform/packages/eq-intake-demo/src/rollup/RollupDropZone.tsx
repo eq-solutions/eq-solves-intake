@@ -17,6 +17,7 @@ import {
   useMemo,
   type DragEvent,
   type ChangeEvent,
+  type JSX,
 } from "react";
 import { parseFile, classifySheet, type ParsedSheet } from "@eq/intake";
 import {
@@ -24,7 +25,7 @@ import {
   CONTACT_SCHEMA,
   SITE_SCHEMA,
 } from "../simpro-schemas.js";
-import type { RoleName } from "./rollup-engine.js";
+import type { RoleName } from "./roles.js";
 import {
   renderTemplate,
   renderToCsv,

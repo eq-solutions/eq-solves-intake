@@ -22,6 +22,7 @@ import {
   useState,
   type DragEvent,
   type ChangeEvent,
+  type JSX,
 } from "react";
 import { createConfirmFlow } from "../store.js";
 import { ConfirmFlow } from "./ConfirmFlow.js";

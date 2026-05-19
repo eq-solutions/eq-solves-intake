@@ -66,6 +66,7 @@ export async function parsePhoto(opts: ParsePhotoOptions): Promise<ParsedSheet[]
     totalRows: 1,
     emptyRowsSkipped: 0,
     malformedRows: 0,
+    malformed: [],
     bomDetected: false,
     visionConfidence: aggregateConfidence(result),
     visionUncertainFields: result.uncertainFields.length,

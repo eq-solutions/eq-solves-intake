@@ -100,8 +100,15 @@ declare
   v_schema_version text;
   v_replace_count int;
 begin
-  -- Verify caller's tenant matches
-  if (auth.jwt() ->> 'tenant_id')::uuid <> p_tenant_id then
+  -- Verify caller's tenant matches.
+  -- The JWT claim path is `user_metadata.tenant_id` because Supabase's
+  -- default Auth flow nests user_metadata under that key rather than
+  -- promoting individual claims to the top level. Set this when adding
+  -- the user via Dashboard → Auth → Users → Add user → Raw User Meta:
+  --   {"tenant_id": "<the-tenant-uuid>"}
+  -- (Future: an Auth Hook can lift this to a top-level claim if we ever
+  -- want shorter JWT paths in other RPCs.)
+  if (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid <> p_tenant_id then
     raise exception 'tenant_id mismatch';
   end if;
 
@@ -232,6 +239,71 @@ begin
           insert into assets
             select * from jsonb_populate_record(null::assets, v_row)
           returning asset_id into v_id;
+        end if;
+
+      when 'customers' then
+        -- Added 2026-05-19 to support SimPRO bundle intake (customer +
+        -- contact + site). The conflict key is external_id when present
+        -- (SimPRO Customer ID) so re-importing the same export upserts
+        -- by source system ID instead of creating duplicates.
+        if v_import_mode = 'upsert' then
+          insert into customers
+            select * from jsonb_populate_record(null::customers, v_row)
+          on conflict (customer_id) do update set
+            company_name      = excluded.company_name,
+            first_name        = excluded.first_name,
+            last_name         = excluded.last_name,
+            external_id       = excluded.external_id,
+            type              = excluded.type,
+            abn               = excluded.abn,
+            acn               = excluded.acn,
+            street_address    = excluded.street_address,
+            suburb            = excluded.suburb,
+            state             = excluded.state,
+            postcode          = excluded.postcode,
+            email             = excluded.email,
+            primary_phone     = excluded.primary_phone,
+            mobile_phone      = excluded.mobile_phone,
+            notes             = excluded.notes,
+            active            = excluded.active,
+            imported_at       = excluded.imported_at,
+            imported_from     = excluded.imported_from,
+            intake_id         = excluded.intake_id,
+            schema_version    = excluded.schema_version
+          returning customer_id into v_id;
+        else
+          insert into customers
+            select * from jsonb_populate_record(null::customers, v_row)
+          returning customer_id into v_id;
+        end if;
+
+      when 'contacts' then
+        -- Added 2026-05-19 for SimPRO bundle intake. Note: contacts.customer_id
+        -- is a NOT NULL FK to customers. The caller is responsible for
+        -- resolving customer_id before commit (typically via FK fuzzy match
+        -- on company_name during validation).
+        if v_import_mode = 'upsert' then
+          insert into contacts
+            select * from jsonb_populate_record(null::contacts, v_row)
+          on conflict (contact_id) do update set
+            first_name        = excluded.first_name,
+            last_name         = excluded.last_name,
+            email             = excluded.email,
+            work_phone        = excluded.work_phone,
+            mobile_phone      = excluded.mobile_phone,
+            customer_id       = excluded.customer_id,
+            external_id       = excluded.external_id,
+            position          = excluded.position,
+            active            = excluded.active,
+            imported_at       = excluded.imported_at,
+            imported_from     = excluded.imported_from,
+            intake_id         = excluded.intake_id,
+            schema_version    = excluded.schema_version
+          returning contact_id into v_id;
+        else
+          insert into contacts
+            select * from jsonb_populate_record(null::contacts, v_row)
+          returning contact_id into v_id;
         end if;
 
       else

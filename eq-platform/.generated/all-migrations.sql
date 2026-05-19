@@ -45,8 +45,8 @@ create table if not exists assets (
   rating varchar(100),
   install_date date,
   warranty_expires date,
-  criticality text default 'medium',
-  condition text default 'unknown',
+  criticality text default 'medium' check (criticality is null or criticality in ('critical', 'high', 'medium', 'low')),
+  condition text default 'unknown' check (condition is null or condition in ('good', 'fair', 'poor', 'needs_replacement', 'unknown')),
   service_schedule_id uuid,
   ppm_frequency varchar(100),
   last_service_date date,
@@ -164,8 +164,8 @@ create table if not exists incidents (
   tenant_id uuid,
   external_id text,
   site_id uuid not null,
-  incident_type text not null,
-  severity text default 'minor',
+  incident_type text not null check (incident_type is null or incident_type in ('injury', 'near_miss', 'hazard_observed', 'property_damage', 'environmental', 'security', 'first_aid', 'medical_treatment', 'lost_time_injury', 'notifiable', 'other')),
+  severity text default 'minor' check (severity is null or severity in ('minor', 'moderate', 'serious', 'critical')),
   occurred_at timestamptz not null,
   reported_at timestamptz,
   reported_by text not null,
@@ -183,8 +183,8 @@ create table if not exists incidents (
   attachments jsonb,
   gps jsonb,
   weather_conditions text,
-  status text default 'submitted',
-  source text,
+  status text default 'submitted' check (status is null or status in ('draft', 'submitted', 'under_investigation', 'actions_pending', 'closed', 'reopened')),
+  source text check (source is null or source in ('cards_mobile', 'import_spreadsheet', 'capture_pdf', 'capture_photo', 'manual_entry')),
   raw_extract text,
   imported_at timestamptz,
   imported_from text,
@@ -207,10 +207,10 @@ create table if not exists itp_records (
   site_id uuid not null,
   asset_id uuid,
   itp_reference varchar(200) not null,
-  discipline text,
+  discipline text check (discipline is null or discipline in ('electrical', 'mechanical', 'fire', 'hydraulic', 'civil', 'data', 'communications', 'controls', 'other')),
   scope text,
   checkpoints jsonb not null,
-  overall_result text,
+  overall_result text check (overall_result is null or overall_result in ('pass', 'fail', 'partial_pass', 'in_progress')),
   performed_by text not null,
   performed_by_user_id uuid,
   performed_at timestamptz not null,
@@ -218,8 +218,8 @@ create table if not exists itp_records (
   client_signature jsonb,
   attachments jsonb,
   non_conformances jsonb,
-  status text default 'draft',
-  source text,
+  status text default 'draft' check (status is null or status in ('draft', 'submitted', 'client_review', 'accepted', 'rejected', 'ncr_raised', 'closed')),
+  source text check (source is null or source in ('cards_mobile', 'import_spreadsheet', 'capture_pdf', 'capture_photo', 'manual_entry')),
   raw_extract text,
   imported_at timestamptz,
   imported_from text,
@@ -249,8 +249,8 @@ create table if not exists jsa_records (
   crew jsonb,
   steps jsonb not null,
   signatures jsonb,
-  status text default 'draft',
-  source text,
+  status text default 'draft' check (status is null or status in ('draft', 'active', 'completed', 'archived')),
+  source text check (source is null or source in ('cards_mobile', 'import_spreadsheet', 'capture_pdf', 'capture_photo', 'manual_entry')),
   raw_extract text,
   imported_at timestamptz,
   imported_from text,
@@ -284,7 +284,7 @@ create table if not exists prestart_checks (
   signature_image_url text,
   gps jsonb,
   device_id text,
-  source text,
+  source text check (source is null or source in ('cards_mobile', 'import_spreadsheet', 'capture_pdf', 'capture_photo', 'manual_entry')),
   raw_extract text,
   imported_at timestamptz,
   imported_from text,
@@ -308,10 +308,10 @@ create table if not exists schedule_entries (
   date date not null,
   hours_planned numeric not null,
   hours_actual numeric,
-  shift text default 'day',
+  shift text default 'day' check (shift is null or shift in ('day', 'evening', 'night', 'weekend', 'afterhours')),
   task text,
-  status text default 'planned',
-  leave_type text,
+  status text default 'planned' check (status is null or status in ('planned', 'confirmed', 'in_progress', 'completed', 'cancelled', 'no_show')),
+  leave_type text check (leave_type is null or leave_type in ('annual', 'sick', 'personal', 'rdo', 'tafe', 'unpaid', 'public_holiday', 'other')),
   notes text,
   supervisor_id uuid,
   imported_at timestamptz,
@@ -339,7 +339,7 @@ create table if not exists sites (
   name varchar(200) not null,
   code varchar(20),
   client_name text,
-  site_type text default 'customer',
+  site_type text default 'customer' check (site_type is null or site_type in ('customer', 'project', 'depot', 'office', 'other')),
   address_line_1 text,
   address_line_2 text,
   suburb text,
@@ -378,7 +378,7 @@ create table if not exists staff (
   preferred_name varchar(80),
   email text,
   phone text,
-  employment_type text not null,
+  employment_type text not null check (employment_type is null or employment_type in ('employee', 'subcontractor', 'labour_hire', 'casual', 'apprentice')),
   trade text,
   level text,
   start_date date,
@@ -426,8 +426,8 @@ create table if not exists swms (
   valid_until date,
   signatures jsonb,
   attachments jsonb,
-  status text not null default 'draft',
-  source text,
+  status text not null default 'draft' check (status is null or status in ('draft', 'active', 'expired', 'superseded', 'archived')),
+  source text check (source is null or source in ('cards_mobile', 'import_spreadsheet', 'capture_pdf', 'capture_photo', 'capture_email', 'manual_entry')),
   raw_extract text,
   imported_at timestamptz,
   imported_from text,
@@ -449,7 +449,7 @@ create table if not exists toolbox_talks (
   external_id text,
   site_id uuid not null,
   topic varchar(200) not null,
-  category text,
+  category text check (category is null or category in ('safety', 'quality', 'environment', 'operations', 'induction', 'emergency_procedure', 'incident_review', 'tool_specific', 'other')),
   content text,
   key_messages jsonb,
   delivered_by text not null,
@@ -462,7 +462,7 @@ create table if not exists toolbox_talks (
   attachments jsonb,
   gps jsonb,
   device_id text,
-  source text,
+  source text check (source is null or source in ('cards_mobile', 'import_spreadsheet', 'capture_pdf', 'capture_photo', 'manual_entry')),
   raw_extract text,
   imported_at timestamptz,
   imported_from text,
@@ -483,6 +483,10 @@ alter table assets drop constraint if exists assets_site_id_fk;
 alter table assets add constraint assets_site_id_fk foreign key (site_id) references sites(site_id);
 alter table assets drop constraint if exists assets_parent_asset_id_fk;
 alter table assets add constraint assets_parent_asset_id_fk foreign key (parent_asset_id) references assets(asset_id);
+alter table assets drop constraint if exists assets_criticality_enum_check;
+alter table assets add constraint assets_criticality_enum_check check (criticality is null or criticality in ('critical', 'high', 'medium', 'low'));
+alter table assets drop constraint if exists assets_condition_enum_check;
+alter table assets add constraint assets_condition_enum_check check (condition is null or condition in ('good', 'fair', 'poor', 'needs_replacement', 'unknown'));
 
 -- FKs for contact
 alter table contacts drop constraint if exists contacts_customer_id_fk;
@@ -491,46 +495,86 @@ alter table contacts add constraint contacts_customer_id_fk foreign key (custome
 -- FKs for incident
 alter table incidents drop constraint if exists incidents_site_id_fk;
 alter table incidents add constraint incidents_site_id_fk foreign key (site_id) references sites(site_id);
+alter table incidents drop constraint if exists incidents_incident_type_enum_check;
+alter table incidents add constraint incidents_incident_type_enum_check check (incident_type is null or incident_type in ('injury', 'near_miss', 'hazard_observed', 'property_damage', 'environmental', 'security', 'first_aid', 'medical_treatment', 'lost_time_injury', 'notifiable', 'other'));
+alter table incidents drop constraint if exists incidents_severity_enum_check;
+alter table incidents add constraint incidents_severity_enum_check check (severity is null or severity in ('minor', 'moderate', 'serious', 'critical'));
+alter table incidents drop constraint if exists incidents_status_enum_check;
+alter table incidents add constraint incidents_status_enum_check check (status is null or status in ('draft', 'submitted', 'under_investigation', 'actions_pending', 'closed', 'reopened'));
+alter table incidents drop constraint if exists incidents_source_enum_check;
+alter table incidents add constraint incidents_source_enum_check check (source is null or source in ('cards_mobile', 'import_spreadsheet', 'capture_pdf', 'capture_photo', 'manual_entry'));
 
 -- FKs for itp
 alter table itp_records drop constraint if exists itp_records_site_id_fk;
 alter table itp_records add constraint itp_records_site_id_fk foreign key (site_id) references sites(site_id);
 alter table itp_records drop constraint if exists itp_records_asset_id_fk;
 alter table itp_records add constraint itp_records_asset_id_fk foreign key (asset_id) references assets(asset_id);
+alter table itp_records drop constraint if exists itp_records_discipline_enum_check;
+alter table itp_records add constraint itp_records_discipline_enum_check check (discipline is null or discipline in ('electrical', 'mechanical', 'fire', 'hydraulic', 'civil', 'data', 'communications', 'controls', 'other'));
+alter table itp_records drop constraint if exists itp_records_overall_result_enum_check;
+alter table itp_records add constraint itp_records_overall_result_enum_check check (overall_result is null or overall_result in ('pass', 'fail', 'partial_pass', 'in_progress'));
+alter table itp_records drop constraint if exists itp_records_status_enum_check;
+alter table itp_records add constraint itp_records_status_enum_check check (status is null or status in ('draft', 'submitted', 'client_review', 'accepted', 'rejected', 'ncr_raised', 'closed'));
+alter table itp_records drop constraint if exists itp_records_source_enum_check;
+alter table itp_records add constraint itp_records_source_enum_check check (source is null or source in ('cards_mobile', 'import_spreadsheet', 'capture_pdf', 'capture_photo', 'manual_entry'));
 
 -- FKs for jsa
 alter table jsa_records drop constraint if exists jsa_records_site_id_fk;
 alter table jsa_records add constraint jsa_records_site_id_fk foreign key (site_id) references sites(site_id);
 alter table jsa_records drop constraint if exists jsa_records_swms_id_fk;
 alter table jsa_records add constraint jsa_records_swms_id_fk foreign key (swms_id) references swms(swms_id);
+alter table jsa_records drop constraint if exists jsa_records_status_enum_check;
+alter table jsa_records add constraint jsa_records_status_enum_check check (status is null or status in ('draft', 'active', 'completed', 'archived'));
+alter table jsa_records drop constraint if exists jsa_records_source_enum_check;
+alter table jsa_records add constraint jsa_records_source_enum_check check (source is null or source in ('cards_mobile', 'import_spreadsheet', 'capture_pdf', 'capture_photo', 'manual_entry'));
 
 -- FKs for prestart
 alter table prestart_checks drop constraint if exists prestart_checks_site_id_fk;
 alter table prestart_checks add constraint prestart_checks_site_id_fk foreign key (site_id) references sites(site_id);
+alter table prestart_checks drop constraint if exists prestart_checks_source_enum_check;
+alter table prestart_checks add constraint prestart_checks_source_enum_check check (source is null or source in ('cards_mobile', 'import_spreadsheet', 'capture_pdf', 'capture_photo', 'manual_entry'));
 
 -- FKs for schedule
 alter table schedule_entries drop constraint if exists schedule_entries_staff_id_fk;
 alter table schedule_entries add constraint schedule_entries_staff_id_fk foreign key (staff_id) references staff(staff_id);
 alter table schedule_entries drop constraint if exists schedule_entries_site_id_fk;
 alter table schedule_entries add constraint schedule_entries_site_id_fk foreign key (site_id) references sites(site_id);
+alter table schedule_entries drop constraint if exists schedule_entries_shift_enum_check;
+alter table schedule_entries add constraint schedule_entries_shift_enum_check check (shift is null or shift in ('day', 'evening', 'night', 'weekend', 'afterhours'));
+alter table schedule_entries drop constraint if exists schedule_entries_status_enum_check;
+alter table schedule_entries add constraint schedule_entries_status_enum_check check (status is null or status in ('planned', 'confirmed', 'in_progress', 'completed', 'cancelled', 'no_show'));
+alter table schedule_entries drop constraint if exists schedule_entries_leave_type_enum_check;
+alter table schedule_entries add constraint schedule_entries_leave_type_enum_check check (leave_type is null or leave_type in ('annual', 'sick', 'personal', 'rdo', 'tafe', 'unpaid', 'public_holiday', 'other'));
 alter table schedule_entries drop constraint if exists schedule_entries_supervisor_id_fk;
 alter table schedule_entries add constraint schedule_entries_supervisor_id_fk foreign key (supervisor_id) references staff(staff_id);
 
 -- FKs for site
 alter table sites drop constraint if exists sites_customer_id_fk;
 alter table sites add constraint sites_customer_id_fk foreign key (customer_id) references customers(customer_id);
+alter table sites drop constraint if exists sites_site_type_enum_check;
+alter table sites add constraint sites_site_type_enum_check check (site_type is null or site_type in ('customer', 'project', 'depot', 'office', 'other'));
 
 -- FKs for staff
+alter table staff drop constraint if exists staff_employment_type_enum_check;
+alter table staff add constraint staff_employment_type_enum_check check (employment_type is null or employment_type in ('employee', 'subcontractor', 'labour_hire', 'casual', 'apprentice'));
 alter table staff drop constraint if exists staff_default_site_id_fk;
 alter table staff add constraint staff_default_site_id_fk foreign key (default_site_id) references sites(site_id);
 
 -- FKs for swms
 alter table swms drop constraint if exists swms_site_id_fk;
 alter table swms add constraint swms_site_id_fk foreign key (site_id) references sites(site_id);
+alter table swms drop constraint if exists swms_status_enum_check;
+alter table swms add constraint swms_status_enum_check check (status is null or status in ('draft', 'active', 'expired', 'superseded', 'archived'));
+alter table swms drop constraint if exists swms_source_enum_check;
+alter table swms add constraint swms_source_enum_check check (source is null or source in ('cards_mobile', 'import_spreadsheet', 'capture_pdf', 'capture_photo', 'capture_email', 'manual_entry'));
 
 -- FKs for toolbox_talk
 alter table toolbox_talks drop constraint if exists toolbox_talks_site_id_fk;
 alter table toolbox_talks add constraint toolbox_talks_site_id_fk foreign key (site_id) references sites(site_id);
+alter table toolbox_talks drop constraint if exists toolbox_talks_category_enum_check;
+alter table toolbox_talks add constraint toolbox_talks_category_enum_check check (category is null or category in ('safety', 'quality', 'environment', 'operations', 'induction', 'emergency_procedure', 'incident_review', 'tool_specific', 'other'));
+alter table toolbox_talks drop constraint if exists toolbox_talks_source_enum_check;
+alter table toolbox_talks add constraint toolbox_talks_source_enum_check check (source is null or source in ('cards_mobile', 'import_spreadsheet', 'capture_pdf', 'capture_photo', 'manual_entry'));
 
 
 -- ============================================================================
@@ -753,53 +797,71 @@ alter table eq_intake_row_audit enable row level security;
 alter table eq_export_events enable row level security;
 alter table eq_export_profiles enable row level security;
 
+-- Policies use drop-then-create so the whole migration is idempotent. Postgres
+-- has no `create policy if not exists`, and the migration header promises
+-- "safe to re-run" — without these drops, a second apply errors on the first
+-- existing policy.
+
 -- Schema registry is global-readable but only EQ admins can write.
+drop policy if exists eq_schema_registry_select on eq_schema_registry;
 create policy eq_schema_registry_select on eq_schema_registry
   for select using (true);
 
 -- Intake templates: tenant-isolated, with global templates visible to all.
+drop policy if exists eq_intake_templates_select on eq_intake_templates;
 create policy eq_intake_templates_select on eq_intake_templates
   for select using (
-    tenant_id = (auth.jwt() ->> 'tenant_id')::uuid
+    tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid
     or is_global = true
   );
+drop policy if exists eq_intake_templates_insert on eq_intake_templates;
 create policy eq_intake_templates_insert on eq_intake_templates
   for insert with check (
-    tenant_id = (auth.jwt() ->> 'tenant_id')::uuid
+    tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid
   );
+drop policy if exists eq_intake_templates_update on eq_intake_templates;
 create policy eq_intake_templates_update on eq_intake_templates
   for update using (
-    tenant_id = (auth.jwt() ->> 'tenant_id')::uuid
+    tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid
   );
 
 -- Intake events: tenant-isolated, no cross-tenant visibility.
+drop policy if exists eq_intake_events_select on eq_intake_events;
 create policy eq_intake_events_select on eq_intake_events
-  for select using (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+  for select using (tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid);
+drop policy if exists eq_intake_events_insert on eq_intake_events;
 create policy eq_intake_events_insert on eq_intake_events
-  for insert with check (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+  for insert with check (tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid);
+drop policy if exists eq_intake_events_update on eq_intake_events;
 create policy eq_intake_events_update on eq_intake_events
-  for update using (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+  for update using (tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid);
 
 -- Intake row audit: tenant-isolated.
+drop policy if exists eq_intake_row_audit_select on eq_intake_row_audit;
 create policy eq_intake_row_audit_select on eq_intake_row_audit
-  for select using (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+  for select using (tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid);
+drop policy if exists eq_intake_row_audit_insert on eq_intake_row_audit;
 create policy eq_intake_row_audit_insert on eq_intake_row_audit
-  for insert with check (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+  for insert with check (tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid);
 
 -- Export events: tenant-isolated.
+drop policy if exists eq_export_events_select on eq_export_events;
 create policy eq_export_events_select on eq_export_events
-  for select using (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+  for select using (tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid);
+drop policy if exists eq_export_events_insert on eq_export_events;
 create policy eq_export_events_insert on eq_export_events
-  for insert with check (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+  for insert with check (tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid);
 
 -- Export profiles: tenant-isolated, with global profiles visible to all.
+drop policy if exists eq_export_profiles_select on eq_export_profiles;
 create policy eq_export_profiles_select on eq_export_profiles
   for select using (
-    tenant_id = (auth.jwt() ->> 'tenant_id')::uuid
+    tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid
     or is_global = true
   );
+drop policy if exists eq_export_profiles_insert on eq_export_profiles;
 create policy eq_export_profiles_insert on eq_export_profiles
-  for insert with check (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+  for insert with check (tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid);
 
 -- ============================================================================
 -- 8. RPC FUNCTIONS
@@ -822,7 +884,7 @@ declare
   v_ids uuid[];
 begin
   -- Verify caller's tenant matches
-  if (auth.jwt() ->> 'tenant_id')::uuid <> p_tenant_id then
+  if (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid <> p_tenant_id then
     raise exception 'tenant_id mismatch';
   end if;
 
@@ -861,7 +923,7 @@ begin
   select tenant_id, entity into v_tenant_id, v_table
   from eq_intake_events where intake_id = p_intake_id;
 
-  if (auth.jwt() ->> 'tenant_id')::uuid <> v_tenant_id then
+  if (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid <> v_tenant_id then
     raise exception 'tenant_id mismatch';
   end if;
 
@@ -885,7 +947,12 @@ $$;
 -- 9. TRIGGERS
 -- ============================================================================
 
--- Ensure only one is_current=true per entity in schema registry
+-- Ensure only one is_current=true per entity in schema registry.
+-- Excludes rows with the same (entity, version) so a re-seed (INSERT ... ON
+-- CONFLICT DO UPDATE) doesn't trigger an update on the conflict target row
+-- before ON CONFLICT runs — which Postgres rejects as "row affected a second
+-- time". The intent is to flip OTHER versions of this entity, not the same
+-- version being upserted.
 create or replace function eq_schema_registry_one_current()
 returns trigger language plpgsql as $$
 begin
@@ -893,7 +960,7 @@ begin
     update eq_schema_registry
       set is_current = false
       where entity = NEW.entity
-        and schema_id <> NEW.schema_id
+        and version <> NEW.version
         and is_current = true;
   end if;
   return NEW;
@@ -1062,7 +1129,7 @@ declare
   v_source_signature text;
 begin
   -- Verify caller's tenant matches
-  if (auth.jwt() ->> 'tenant_id')::uuid <> p_tenant_id then
+  if (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid <> p_tenant_id then
     raise exception 'tenant_id mismatch';
   end if;
 
@@ -1210,7 +1277,7 @@ begin
     raise exception 'intake_id % not found', p_intake_id;
   end if;
 
-  if (auth.jwt() ->> 'tenant_id')::uuid <> v_tenant_id then
+  if (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid <> v_tenant_id then
     raise exception 'tenant_id mismatch';
   end if;
 
@@ -1393,8 +1460,15 @@ declare
   v_schema_version text;
   v_replace_count int;
 begin
-  -- Verify caller's tenant matches
-  if (auth.jwt() ->> 'tenant_id')::uuid <> p_tenant_id then
+  -- Verify caller's tenant matches.
+  -- The JWT claim path is `user_metadata.tenant_id` because Supabase's
+  -- default Auth flow nests user_metadata under that key rather than
+  -- promoting individual claims to the top level. Set this when adding
+  -- the user via Dashboard → Auth → Users → Add user → Raw User Meta:
+  --   {"tenant_id": "<the-tenant-uuid>"}
+  -- (Future: an Auth Hook can lift this to a top-level claim if we ever
+  -- want shorter JWT paths in other RPCs.)
+  if (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid <> p_tenant_id then
     raise exception 'tenant_id mismatch';
   end if;
 
@@ -1525,6 +1599,71 @@ begin
           insert into assets
             select * from jsonb_populate_record(null::assets, v_row)
           returning asset_id into v_id;
+        end if;
+
+      when 'customers' then
+        -- Added 2026-05-19 to support SimPRO bundle intake (customer +
+        -- contact + site). The conflict key is external_id when present
+        -- (SimPRO Customer ID) so re-importing the same export upserts
+        -- by source system ID instead of creating duplicates.
+        if v_import_mode = 'upsert' then
+          insert into customers
+            select * from jsonb_populate_record(null::customers, v_row)
+          on conflict (customer_id) do update set
+            company_name      = excluded.company_name,
+            first_name        = excluded.first_name,
+            last_name         = excluded.last_name,
+            external_id       = excluded.external_id,
+            type              = excluded.type,
+            abn               = excluded.abn,
+            acn               = excluded.acn,
+            street_address    = excluded.street_address,
+            suburb            = excluded.suburb,
+            state             = excluded.state,
+            postcode          = excluded.postcode,
+            email             = excluded.email,
+            primary_phone     = excluded.primary_phone,
+            mobile_phone      = excluded.mobile_phone,
+            notes             = excluded.notes,
+            active            = excluded.active,
+            imported_at       = excluded.imported_at,
+            imported_from     = excluded.imported_from,
+            intake_id         = excluded.intake_id,
+            schema_version    = excluded.schema_version
+          returning customer_id into v_id;
+        else
+          insert into customers
+            select * from jsonb_populate_record(null::customers, v_row)
+          returning customer_id into v_id;
+        end if;
+
+      when 'contacts' then
+        -- Added 2026-05-19 for SimPRO bundle intake. Note: contacts.customer_id
+        -- is a NOT NULL FK to customers. The caller is responsible for
+        -- resolving customer_id before commit (typically via FK fuzzy match
+        -- on company_name during validation).
+        if v_import_mode = 'upsert' then
+          insert into contacts
+            select * from jsonb_populate_record(null::contacts, v_row)
+          on conflict (contact_id) do update set
+            first_name        = excluded.first_name,
+            last_name         = excluded.last_name,
+            email             = excluded.email,
+            work_phone        = excluded.work_phone,
+            mobile_phone      = excluded.mobile_phone,
+            customer_id       = excluded.customer_id,
+            external_id       = excluded.external_id,
+            position          = excluded.position,
+            active            = excluded.active,
+            imported_at       = excluded.imported_at,
+            imported_from     = excluded.imported_from,
+            intake_id         = excluded.intake_id,
+            schema_version    = excluded.schema_version
+          returning contact_id into v_id;
+        else
+          insert into contacts
+            select * from jsonb_populate_record(null::contacts, v_row)
+          returning contact_id into v_id;
         end if;
 
       else

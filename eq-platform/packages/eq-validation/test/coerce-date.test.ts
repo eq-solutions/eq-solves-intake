@@ -50,3 +50,40 @@ describe("coerceDate (fixture-driven)", async () => {
     });
   }
 });
+
+describe("coerceDate — regression tests added 2026-05-19 (overnight review)", () => {
+  it("rejects 'Feb 30 2026' instead of silently rolling to March 2 (was a bug)", () => {
+    const r = coerceDate("Feb 30 2026", { locale: "en-AU" });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe("date_unparseable");
+  });
+
+  it("parses '01/05/2026 12:34' as AU (May 1), not US (Jan 5) — strips time + respects locale", () => {
+    const r = coerceDate("01/05/2026 12:34", { locale: "en-AU" });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value).toBe("2026-05-01");
+  });
+
+  it("parses '28-04-2026 09:00:00' as AU after stripping time", () => {
+    const r = coerceDate("28-04-2026 09:00:00", { locale: "en-AU" });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value).toBe("2026-04-28");
+  });
+
+  it("accepts valid leap-year 2024-02-29 (was incorrectly listed as a bug in iter-2 fuzz; never broken)", () => {
+    const r = coerceDate("2024-02-29", { locale: "en-AU" });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value).toBe("2024-02-29");
+  });
+
+  it("rejects invalid 2026-02-29 (not a leap year)", () => {
+    const r = coerceDate("2026-02-29", { locale: "en-AU" });
+    expect(r.ok).toBe(false);
+  });
+
+  it("still accepts native-parsable forms that don't overflow (e.g. 'Wed, 01 May 2026')", () => {
+    const r = coerceDate("Wed, 01 May 2026", { locale: "en-AU" });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value).toBe("2026-05-01");
+  });
+});

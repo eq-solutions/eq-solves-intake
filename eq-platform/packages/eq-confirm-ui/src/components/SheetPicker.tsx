@@ -8,6 +8,7 @@
  * obvious without opening Excel.
  */
 
+import type { JSX } from "react";
 import type { UseBoundStore, StoreApi } from "zustand";
 import type { FlowState } from "../types.js";
 import type { FlowDriver } from "../store.js";

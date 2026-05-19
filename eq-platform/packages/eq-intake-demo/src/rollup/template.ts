@@ -19,7 +19,7 @@
  */
 
 import type { ParsedSheet } from "@eq/intake";
-import type { RoleName } from "./rollup-engine.js";
+import type { RoleName } from "./roles.js";
 
 export type Row = Record<string, unknown>;
 

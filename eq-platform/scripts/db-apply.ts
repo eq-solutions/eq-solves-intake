@@ -21,7 +21,8 @@
  *   2. 001_intake_spine.sql      — eq_schema_registry, eq_intake_events, etc.
  *   3. 002_intake_module_columns — adds imported_at/from/intake_id to entities
  *   4. 003_schema_version_columns— schema_version + import mode
- *   5. seed_schema_registry      — inserts the JSON schemas as rows
+ *   5. 004_security_advisor_fix  — pin search_path + revoke PUBLIC on SECURITY DEFINER
+ *   6. seed_schema_registry      — inserts the JSON schemas as rows
  *
  * Idempotent: every CREATE / ALTER uses IF NOT EXISTS or IF EXISTS;
  * the seed uses INSERT ... ON CONFLICT DO UPDATE.
@@ -60,7 +61,7 @@ function seedSchemaRegistry(): string {
 
   const inserts: string[] = [
     "-- ============================================================================",
-    "-- 5. SEED eq_schema_registry",
+    "-- 6. SEED eq_schema_registry",
     "-- ============================================================================",
     "-- Upsert each canonical schema. ON CONFLICT (entity, version) DO UPDATE so",
     "-- re-running picks up edits to the same version. Bumping a schema's version",
@@ -122,7 +123,8 @@ function main() {
     "--   2. eq_intake_spine — schema registry, intake events, audit, templates",
     "--   3. Per-module column extensions (imported_at/from/intake_id)",
     "--   4. Schema version + import-mode columns",
-    "--   5. Seed eq_schema_registry with current schemas",
+    "--   5. Security-advisor fix — pin search_path + revoke PUBLIC on SECURITY DEFINER",
+    "--   6. Seed eq_schema_registry with current schemas",
     "--",
     "-- Idempotent — safe to re-run.",
     "-- ============================================================================",
@@ -152,6 +154,12 @@ function main() {
     "-- ============================================================================",
     "",
     readSqlFile("003_schema_version_columns.sql"),
+    "",
+    "-- ============================================================================",
+    "-- 5. SECURITY ADVISOR FIX (search_path + revoke PUBLIC on SECURITY DEFINER)",
+    "-- ============================================================================",
+    "",
+    readSqlFile("004_security_advisor_fix.sql"),
     "",
     seedSchemaRegistry(),
     "",

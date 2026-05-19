@@ -14,6 +14,7 @@ import { coerceNumber } from './coerce-number';
 import { coerceDate } from './coerce-date';
 import { coercePhoneAU } from './coerce-phone-au';
 import { coerceAuState } from './coerce-au-state';
+import { coerceCountry } from './coerce-country';
 import { coerceEnumAlias } from './coerce-enum-alias';
 import { resolveFk, FkLookup, FkResolution } from './fk-resolver';
 import { compileRule } from './cross-field-eval';
@@ -390,10 +391,19 @@ function coerceField(value: unknown, fieldSchema: any, locale: Locale): CoerceRe
     return coerceBoolean(value);
   }
   if (coerceHint === 'phone-au') {
-    return coercePhoneAU(value);
+    // validate's design: phones are soft-required. Unparseable values get
+    // kept raw and bubble up as a `phone_kept_raw` flag (handled below at
+    // the `coerced.note === 'phone_format_unrecognised_kept_raw'` branch),
+    // so the bookkeeper sees the row in confirm UI and fixes it there.
+    // External callers of coercePhoneAU get strict-by-default; validate
+    // opts INTO permissive on their behalf.
+    return coercePhoneAU(value, { permissive: true });
   }
   if (coerceHint === 'au-state') {
     return coerceAuState(value);
+  }
+  if (coerceHint === 'country' || coerceHint === 'country-iso-alpha2') {
+    return coerceCountry(value);
   }
   if (coerceHint === 'number') {
     return coerceNumber(value);
