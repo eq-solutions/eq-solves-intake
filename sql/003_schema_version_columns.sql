@@ -234,6 +234,71 @@ begin
           returning asset_id into v_id;
         end if;
 
+      when 'customers' then
+        -- Added 2026-05-19 to support SimPRO bundle intake (customer +
+        -- contact + site). The conflict key is external_id when present
+        -- (SimPRO Customer ID) so re-importing the same export upserts
+        -- by source system ID instead of creating duplicates.
+        if v_import_mode = 'upsert' then
+          insert into customers
+            select * from jsonb_populate_record(null::customers, v_row)
+          on conflict (customer_id) do update set
+            company_name      = excluded.company_name,
+            first_name        = excluded.first_name,
+            last_name         = excluded.last_name,
+            external_id       = excluded.external_id,
+            type              = excluded.type,
+            abn               = excluded.abn,
+            acn               = excluded.acn,
+            street_address    = excluded.street_address,
+            suburb            = excluded.suburb,
+            state             = excluded.state,
+            postcode          = excluded.postcode,
+            email             = excluded.email,
+            primary_phone     = excluded.primary_phone,
+            mobile_phone      = excluded.mobile_phone,
+            notes             = excluded.notes,
+            active            = excluded.active,
+            imported_at       = excluded.imported_at,
+            imported_from     = excluded.imported_from,
+            intake_id         = excluded.intake_id,
+            schema_version    = excluded.schema_version
+          returning customer_id into v_id;
+        else
+          insert into customers
+            select * from jsonb_populate_record(null::customers, v_row)
+          returning customer_id into v_id;
+        end if;
+
+      when 'contacts' then
+        -- Added 2026-05-19 for SimPRO bundle intake. Note: contacts.customer_id
+        -- is a NOT NULL FK to customers. The caller is responsible for
+        -- resolving customer_id before commit (typically via FK fuzzy match
+        -- on company_name during validation).
+        if v_import_mode = 'upsert' then
+          insert into contacts
+            select * from jsonb_populate_record(null::contacts, v_row)
+          on conflict (contact_id) do update set
+            first_name        = excluded.first_name,
+            last_name         = excluded.last_name,
+            email             = excluded.email,
+            work_phone        = excluded.work_phone,
+            mobile_phone      = excluded.mobile_phone,
+            customer_id       = excluded.customer_id,
+            external_id       = excluded.external_id,
+            position          = excluded.position,
+            active            = excluded.active,
+            imported_at       = excluded.imported_at,
+            imported_from     = excluded.imported_from,
+            intake_id         = excluded.intake_id,
+            schema_version    = excluded.schema_version
+          returning contact_id into v_id;
+        else
+          insert into contacts
+            select * from jsonb_populate_record(null::contacts, v_row)
+          returning contact_id into v_id;
+        end if;
+
       else
         -- For tables not yet implemented in this RPC, log and skip.
         -- Production: extend with one branch per whitelisted table.

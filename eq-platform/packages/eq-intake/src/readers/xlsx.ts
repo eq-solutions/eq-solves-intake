@@ -157,6 +157,11 @@ export async function parseXlsx(
       totalRows: dataRows.length,
       emptyRowsSkipped,
       malformedRows: 0,
+      // xlsx reader doesn't currently produce per-row malformed diagnostics —
+      // SheetJS shape doesn't error per cell the way Papa Parse does. Empty
+      // array satisfies the shared ParseMeta contract added 2026-05-19; future
+      // work can populate this for empty rows or type mismatches.
+      malformed: [],
       bomDetected: false,
     };
 

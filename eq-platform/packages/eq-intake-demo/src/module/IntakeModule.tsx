@@ -2,23 +2,44 @@
  * IntakeModule — the production-mount entry-point for EQ Intake.
  *
  * Host app (the EQ Shell) imports this and mounts it at /intake.
- * Renders the bundle flow: drop SimPRO customer/contact/site files →
- * auto-classify → pick a destination template → preview → download.
  *
- * The single-file-to-canonical flow that the demo's App.tsx also
- * exposes is intentionally NOT included here — that path only earns
- * its keep once the canonical Supabase is wired up. Until then, the
- * bundle-to-destination flow is what real users actually use.
+ * Renders two parallel flows:
+ *   1. RollupDropZone — drop the SimPRO bundle, pick a destination template
+ *      (Xero / MYOB / SharePoint rollup / etc.), download the reshape-out
+ *      CSV. Doesn't write to canonical.
+ *   2. CanonicalCommitSection — drop the same bundle, validate against the
+ *      canonical schemas, write via eq_intake_commit_batch. Disabled when
+ *      Supabase isn't configured.
  *
- * Routes log to `eq-intake:routes` in localStorage by default (same as
- * the demo's onDestinationChange handler). Host can override via the
- * onDestinationChange prop.
+ * Both flows use the same SimPRO classification (customer / contact / site).
+ * The bookkeeper drops files twice today — once per flow — because the
+ * rollup engine is mid-refactor in a sibling branch and we don't want to
+ * couple state across both flows yet. When the refactor settles, lifting
+ * shared classification state up into IntakeModule is the next step.
+ *
+ * Routes log to `eq-intake:routes` in localStorage by default. Host can
+ * override via the onDestinationChange prop.
  */
 
 import { useMemo } from "react";
 import { RollupDropZone } from "../rollup/RollupDropZone.js";
+import { CanonicalCommitSection } from "../canonical/CanonicalCommitSection.js";
+import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
 
 export interface IntakeModuleProps {
+  /**
+   * Authenticated Supabase client. Passed by the EQ Shell via getSupabase().
+   * When omitted, the canonical-commit section renders in a disabled state
+   * with a "Configure Supabase to enable" hint. The standalone Vite demo
+   * playground always renders disabled.
+   */
+  supabase?: SupabaseLikeClient | null;
+  /**
+   * Tenant ID for canonical commits. In the per-tenant Supabase model the
+   * shell reads this from env (VITE_TENANT_ID) and passes it down. Default
+   * keeps the demo working in isolation.
+   */
+  tenantId?: string;
   /**
    * Optional callback fired when the user picks a destination in the
    * "Where is this going?" prompt. Defaults to a localStorage logger
@@ -65,6 +86,10 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
   return (
     <div className="eq-intake-module">
       <RollupDropZone />
+      <CanonicalCommitSection
+        supabase={props.supabase}
+        tenantId={props.tenantId}
+      />
     </div>
   );
 }

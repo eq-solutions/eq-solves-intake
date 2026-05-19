@@ -37,8 +37,11 @@ export const MODULE_REGISTRY: ModuleDefinition[] = [
     id: "intake",
     label: "Intake",
     path: "/intake",
+    // Wrap the IntakeModule lazy import to inject the shell's Supabase
+    // client + tenant ID. The module itself stays prop-based (testable in
+    // isolation); the shell threads context-derived values in here.
     component: lazy(() =>
-      import("@eq/intake-demo").then((m) => ({ default: m.IntakeModule })),
+      import("./IntakeModuleHost.js").then((m) => ({ default: m.IntakeModuleHost })),
     ),
   },
   {
