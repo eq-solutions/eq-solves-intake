@@ -43,7 +43,7 @@ While exploring, I found that **`C:\Projects\eq-intake\eq-platform\packages\eq-s
 - [x] **Tick 2 — Sample fixtures** (10 messy CSVs + 11 clean CSVs + 3 nested JSON in `samples/`)
 - [x] **Tick 2 — ajv test harness** (`eq-platform/packages/eq-validation/test/samples-validation.test.ts` — 15/15 fixtures pass; full eq-validation suite 173/173 green)
 - [x] **Tick 3 — Port parser pure-fns from eq-solves-service into eq-validation** (4 modules: `parse-frequency-suffix`, `parse-job-plan-code`, `parse-site-prefix`, `parse-jemena-asset-id`; 58 new tests; full suite 231/231 green)
-- [ ] **Tick 4/5 — eq-service `/admin/export` endpoint (worktree, branch, push, draft PR)**
+- [x] **Tick 4 — eq-service `/admin/export` endpoint** — draft PR https://github.com/Milmlow/eq-solves-service/pull/176, branch `claude-overnight/admin-export` (~8 entities fully wired, 8 stubs, clean tsc + eslint)
 - [ ] **Tick 5/6 — ACB round-trip prototype (`scripts/round-trip-acb.mjs`)**
 - [ ] **Last tick — SUMMARY.md + commit + draft PR for eq-intake worktree**
 
@@ -70,6 +70,17 @@ While exploring, I found that **`C:\Projects\eq-intake\eq-platform\packages\eq-s
 - 4 corresponding test files, 58 new tests. Full eq-validation suite: 231/231 green.
 - `pnpm typecheck` has 3 pre-existing errors in `process-capture.ts` (missing `@eq/ai` workspace dep), unrelated.
 - Scheduling Tick 4 in ~20 min. Next: eq-solves-service `/admin/export` — cross-repo work begins here.
+
+### Tick 4 (start ~23:23, ~20 min compute)
+
+- Cross-repo work, eq-solves-service.
+- Created worktree `.claude/worktrees/admin-export` on new branch `claude-overnight/admin-export` off `origin/main`. `npm install --prefer-offline` (~30s).
+- Wrote 2 files:
+  - `lib/admin/canonical-export.ts` (~440 lines) — `ENTITY_EXPORTERS` registry. Per-entity exporter maps DB columns → canonical schema property names. Wired fully: customer, site, asset, maintenance_check, check_asset, check_item, defect, acb_test (with children split by `unit IS NULL` discriminator). Stubs for the rest.
+  - `app/api/admin/export/route.ts` — GET handler. Auth-gated (`isAdmin(role)`). Single-entity short-circuit, multi-entity envelope, unknown-entity 400.
+- One typecheck rev: Supabase typed-select returns `Row[] | GenericStringError` union; added `asRows()` helper that casts. After that: `npx tsc --noEmit` clean, eslint clean.
+- Pushed to origin, opened draft PR #176. Title prefix `[claude-overnight]` per brief.
+- Scheduling Tick 5 in ~20 min. Next: ACB round-trip prototype — uses this endpoint.
 
 ## Hard limits (from the loop brief)
 
