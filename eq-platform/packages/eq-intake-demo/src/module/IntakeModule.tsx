@@ -21,7 +21,7 @@
  * override via the onDestinationChange prop.
  */
 
-import { useMemo } from "react";
+import { useMemo, type JSX } from "react";
 import { QuickExportSection } from "../quick-export/QuickExportSection.js";
 import { RollupDropZone } from "../rollup/RollupDropZone.js";
 import { CanonicalCommitSection } from "../canonical/CanonicalCommitSection.js";

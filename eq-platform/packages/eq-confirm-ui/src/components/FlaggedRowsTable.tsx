@@ -5,7 +5,7 @@
  * Bulk "apply to all similar flags" is also wired here.
  */
 
-import { useState } from "react";
+import { useState, type JSX } from "react";
 import type { UseBoundStore, StoreApi } from "zustand";
 import type { Flag, ValidationError } from "@eq/validation";
 import type { FlowState, FlagResolution } from "../types.js";

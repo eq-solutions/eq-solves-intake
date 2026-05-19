@@ -9,7 +9,7 @@
  * sits below for power users who need the cross-file logic.
  */
 
-import { useState, useRef, useMemo, type DragEvent } from "react";
+import { useState, useRef, useMemo, type DragEvent, type JSX } from "react";
 import { parseFile, classifySheet, type ParsedSheet } from "@eq/intake";
 import {
   CUSTOMER_SCHEMA,

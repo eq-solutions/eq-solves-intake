@@ -17,6 +17,7 @@ import {
   useMemo,
   type DragEvent,
   type ChangeEvent,
+  type JSX,
 } from "react";
 import { parseFile, classifySheet, type ParsedSheet } from "@eq/intake";
 import {

@@ -19,7 +19,7 @@
  * hover tooltip via the native title attribute.
  */
 
-import { useMemo } from "react";
+import { useMemo, type JSX } from "react";
 import type { UseBoundStore, StoreApi } from "zustand";
 import type { FlowState } from "../types.js";
 import { DestinationPicker } from "./DestinationPicker.js";

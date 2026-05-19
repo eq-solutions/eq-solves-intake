@@ -17,7 +17,7 @@
  * future export-profile selector) can read it.
  */
 
-import { useState, useId } from "react";
+import { useState, useId, type JSX } from "react";
 import type { UseBoundStore, StoreApi } from "zustand";
 import type { FlowState } from "../types.js";
 

@@ -14,7 +14,7 @@
  * brand notes.
  */
 
-import { useState, useRef, type DragEvent } from "react";
+import { useState, useRef, type DragEvent, type JSX } from "react";
 import { parseFile, classifySheet, type ParsedSheet } from "@eq/intake";
 import {
   CUSTOMER_SCHEMA,
