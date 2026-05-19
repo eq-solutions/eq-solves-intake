@@ -95,7 +95,7 @@ declare
   v_source_signature text;
 begin
   -- Verify caller's tenant matches
-  if (auth.jwt() ->> 'tenant_id')::uuid <> p_tenant_id then
+  if (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid <> p_tenant_id then
     raise exception 'tenant_id mismatch';
   end if;
 
@@ -243,7 +243,7 @@ begin
     raise exception 'intake_id % not found', p_intake_id;
   end if;
 
-  if (auth.jwt() ->> 'tenant_id')::uuid <> v_tenant_id then
+  if (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid <> v_tenant_id then
     raise exception 'tenant_id mismatch';
   end if;
 

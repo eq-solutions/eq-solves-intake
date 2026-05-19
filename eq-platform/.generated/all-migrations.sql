@@ -811,57 +811,57 @@ create policy eq_schema_registry_select on eq_schema_registry
 drop policy if exists eq_intake_templates_select on eq_intake_templates;
 create policy eq_intake_templates_select on eq_intake_templates
   for select using (
-    tenant_id = (auth.jwt() ->> 'tenant_id')::uuid
+    tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid
     or is_global = true
   );
 drop policy if exists eq_intake_templates_insert on eq_intake_templates;
 create policy eq_intake_templates_insert on eq_intake_templates
   for insert with check (
-    tenant_id = (auth.jwt() ->> 'tenant_id')::uuid
+    tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid
   );
 drop policy if exists eq_intake_templates_update on eq_intake_templates;
 create policy eq_intake_templates_update on eq_intake_templates
   for update using (
-    tenant_id = (auth.jwt() ->> 'tenant_id')::uuid
+    tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid
   );
 
 -- Intake events: tenant-isolated, no cross-tenant visibility.
 drop policy if exists eq_intake_events_select on eq_intake_events;
 create policy eq_intake_events_select on eq_intake_events
-  for select using (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+  for select using (tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid);
 drop policy if exists eq_intake_events_insert on eq_intake_events;
 create policy eq_intake_events_insert on eq_intake_events
-  for insert with check (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+  for insert with check (tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid);
 drop policy if exists eq_intake_events_update on eq_intake_events;
 create policy eq_intake_events_update on eq_intake_events
-  for update using (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+  for update using (tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid);
 
 -- Intake row audit: tenant-isolated.
 drop policy if exists eq_intake_row_audit_select on eq_intake_row_audit;
 create policy eq_intake_row_audit_select on eq_intake_row_audit
-  for select using (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+  for select using (tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid);
 drop policy if exists eq_intake_row_audit_insert on eq_intake_row_audit;
 create policy eq_intake_row_audit_insert on eq_intake_row_audit
-  for insert with check (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+  for insert with check (tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid);
 
 -- Export events: tenant-isolated.
 drop policy if exists eq_export_events_select on eq_export_events;
 create policy eq_export_events_select on eq_export_events
-  for select using (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+  for select using (tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid);
 drop policy if exists eq_export_events_insert on eq_export_events;
 create policy eq_export_events_insert on eq_export_events
-  for insert with check (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+  for insert with check (tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid);
 
 -- Export profiles: tenant-isolated, with global profiles visible to all.
 drop policy if exists eq_export_profiles_select on eq_export_profiles;
 create policy eq_export_profiles_select on eq_export_profiles
   for select using (
-    tenant_id = (auth.jwt() ->> 'tenant_id')::uuid
+    tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid
     or is_global = true
   );
 drop policy if exists eq_export_profiles_insert on eq_export_profiles;
 create policy eq_export_profiles_insert on eq_export_profiles
-  for insert with check (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+  for insert with check (tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid);
 
 -- ============================================================================
 -- 8. RPC FUNCTIONS
@@ -884,7 +884,7 @@ declare
   v_ids uuid[];
 begin
   -- Verify caller's tenant matches
-  if (auth.jwt() ->> 'tenant_id')::uuid <> p_tenant_id then
+  if (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid <> p_tenant_id then
     raise exception 'tenant_id mismatch';
   end if;
 
@@ -923,7 +923,7 @@ begin
   select tenant_id, entity into v_tenant_id, v_table
   from eq_intake_events where intake_id = p_intake_id;
 
-  if (auth.jwt() ->> 'tenant_id')::uuid <> v_tenant_id then
+  if (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid <> v_tenant_id then
     raise exception 'tenant_id mismatch';
   end if;
 
@@ -1129,7 +1129,7 @@ declare
   v_source_signature text;
 begin
   -- Verify caller's tenant matches
-  if (auth.jwt() ->> 'tenant_id')::uuid <> p_tenant_id then
+  if (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid <> p_tenant_id then
     raise exception 'tenant_id mismatch';
   end if;
 
@@ -1277,7 +1277,7 @@ begin
     raise exception 'intake_id % not found', p_intake_id;
   end if;
 
-  if (auth.jwt() ->> 'tenant_id')::uuid <> v_tenant_id then
+  if (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid <> v_tenant_id then
     raise exception 'tenant_id mismatch';
   end if;
 
@@ -1460,8 +1460,15 @@ declare
   v_schema_version text;
   v_replace_count int;
 begin
-  -- Verify caller's tenant matches
-  if (auth.jwt() ->> 'tenant_id')::uuid <> p_tenant_id then
+  -- Verify caller's tenant matches.
+  -- The JWT claim path is `user_metadata.tenant_id` because Supabase's
+  -- default Auth flow nests user_metadata under that key rather than
+  -- promoting individual claims to the top level. Set this when adding
+  -- the user via Dashboard → Auth → Users → Add user → Raw User Meta:
+  --   {"tenant_id": "<the-tenant-uuid>"}
+  -- (Future: an Auth Hook can lift this to a top-level claim if we ever
+  -- want shorter JWT paths in other RPCs.)
+  if (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid <> p_tenant_id then
     raise exception 'tenant_id mismatch';
   end if;
 

@@ -100,8 +100,15 @@ declare
   v_schema_version text;
   v_replace_count int;
 begin
-  -- Verify caller's tenant matches
-  if (auth.jwt() ->> 'tenant_id')::uuid <> p_tenant_id then
+  -- Verify caller's tenant matches.
+  -- The JWT claim path is `user_metadata.tenant_id` because Supabase's
+  -- default Auth flow nests user_metadata under that key rather than
+  -- promoting individual claims to the top level. Set this when adding
+  -- the user via Dashboard → Auth → Users → Add user → Raw User Meta:
+  --   {"tenant_id": "<the-tenant-uuid>"}
+  -- (Future: an Auth Hook can lift this to a top-level claim if we ever
+  -- want shorter JWT paths in other RPCs.)
+  if (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid <> p_tenant_id then
     raise exception 'tenant_id mismatch';
   end if;
 

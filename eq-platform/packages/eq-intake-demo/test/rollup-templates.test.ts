@@ -12,7 +12,7 @@ import { describe, it, expect } from "vitest";
 import type { ParsedSheet } from "@eq/intake";
 import { renderTemplate, renderToCsv } from "../src/rollup/template.js";
 import { BUILTIN_TEMPLATES, buildUserTemplate } from "../src/rollup/templates.js";
-import type { RoleName } from "../src/rollup/rollup-engine.js";
+import type { RoleName } from "../src/rollup/roles.js";
 
 /** Build a ParsedSheet wrapping a header row + a few data rows. */
 function sheet(headerRow: string[], rows: Record<string, unknown>[]): ParsedSheet {

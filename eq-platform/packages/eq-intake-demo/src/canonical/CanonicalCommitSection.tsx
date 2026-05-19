@@ -128,14 +128,16 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
       if (slot.role === "unknown" || !slot.sheet) continue;
       if (bundle[slot.role]) {
         setError(
-          `Two files classified as ${slot.role}. Remove one before committing.`,
+          `Two files look like ${slot.role}s. Remove one before saving.`,
         );
         return;
       }
       bundle[slot.role] = slot.sheet;
     }
     if (!bundle.customer && !bundle.site && !bundle.contact) {
-      setError("Drop at least one of customer / site / contact CSV before committing.");
+      setError(
+        "Drop at least one file first — a customer, site or contact list from SimPRO.",
+      );
       return;
     }
     setBusy(true);
@@ -177,12 +179,13 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
         id="canonical-commit-heading"
         style={{ fontSize: 20, fontWeight: 600, marginBottom: 6 }}
       >
-        Commit to canonical
+        Save into EQ
       </h2>
       <p style={{ fontSize: 14, color: "#1A1A2E", opacity: 0.7, marginBottom: 16 }}>
-        Drop the SimPRO bundle (customer + contact + site CSVs). Validates against
-        the canonical schemas and writes via <code>eq_intake_commit_batch</code>.
-        Each entity gets its own intake event for audit.
+        Drop your SimPRO files here — the customer list, the sites list, the
+        contacts list. They land in EQ so you don't have to retype them
+        anywhere else. We keep a record of every file you bring in, so
+        you can always trace where a row came from.
       </p>
 
       {!enabled && (
@@ -196,9 +199,8 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
             marginBottom: 16,
           }}
         >
-          Supabase not configured — set <code>VITE_SUPABASE_URL</code> and{" "}
-          <code>VITE_SUPABASE_ANON_KEY</code> in <code>.env.local</code> and
-          reload. The drop zone below is disabled until then.
+          EQ isn't connected yet — ask whoever set this up to fill in the
+          connection details. The drop zone below stays inactive until then.
         </div>
       )}
 
@@ -224,8 +226,8 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
         {busy
           ? "Working..."
           : slots.length === 0
-            ? "Drop CSV files here, or click to pick"
-            : `${slots.length} file(s) ready`}
+            ? "Drop files here, or click to pick them"
+            : `${slots.length} file${slots.length === 1 ? "" : "s"} ready`}
         <input
           ref={inputRef}
           type="file"
@@ -256,8 +258,12 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
               <span>
                 <strong>{slot.file.name}</strong>{" "}
                 <span style={{ color: "#1A1A2E", opacity: 0.6 }}>
-                  → {slot.role}
-                  {slot.confidence != null && ` (${Math.round(slot.confidence * 100)}%)`}
+                  {slot.role === "unknown"
+                    ? "— couldn't tell what this is"
+                    : `— looks like ${slot.role}s`}
+                  {slot.confidence != null && slot.role !== "unknown"
+                    ? ` (${Math.round(slot.confidence * 100)}% sure)`
+                    : ""}
                 </span>
               </span>
               {slot.error && (
@@ -301,7 +307,7 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
             fontSize: 14,
           }}
         >
-          {busy ? "Committing..." : "Commit to canonical"}
+          {busy ? "Saving..." : "Save into EQ"}
         </button>
         <button
           type="button"
@@ -317,7 +323,7 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
             fontSize: 14,
           }}
         >
-          Reset
+          Start over
         </button>
       </div>
 
@@ -331,16 +337,16 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
               color: result.bundleSuccess ? "#2986B4" : "#B33A3A",
             }}
           >
-            {result.bundleSuccess ? "Commit complete" : "Commit failed"}
+            {result.bundleSuccess ? "Saved" : "Something went wrong"}
           </h3>
           <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: "#EAF5FB" }}>
-                <th style={{ padding: 6, textAlign: "left" }}>Entity</th>
-                <th style={{ padding: 6, textAlign: "right" }}>Committed</th>
-                <th style={{ padding: 6, textAlign: "right" }}>Flagged</th>
-                <th style={{ padding: 6, textAlign: "right" }}>Rejected</th>
-                <th style={{ padding: 6, textAlign: "left" }}>Intake ID</th>
+                <th style={{ padding: 6, textAlign: "left" }}>Type</th>
+                <th style={{ padding: 6, textAlign: "right" }}>Saved</th>
+                <th style={{ padding: 6, textAlign: "right" }}>Need checking</th>
+                <th style={{ padding: 6, textAlign: "right" }}>Couldn't save</th>
+                <th style={{ padding: 6, textAlign: "left" }}>Reference</th>
               </tr>
             </thead>
             <tbody>
@@ -355,13 +361,13 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
               <summary
                 style={{ cursor: "pointer", fontSize: 13, fontWeight: 500 }}
               >
-                Rejected rows — see why each was dropped
+                Show the rows that didn't save — and why
               </summary>
               <div style={{ marginTop: 8, fontSize: 12 }}>
                 {result.perEntity.map((r) =>
                   r.rejectedRows.length === 0 ? null : (
                     <div key={r.entity} style={{ marginBottom: 12 }}>
-                      <div style={{ fontWeight: 500 }}>{r.entity}</div>
+                      <div style={{ fontWeight: 500 }}>{entityLabel(r.entity)}</div>
                       <ul style={{ paddingLeft: 18, margin: 0 }}>
                         {r.rejectedRows.map((rr, i) => (
                           <li key={i}>
@@ -381,20 +387,31 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
   );
 }
 
+function entityLabel(entity: EntityCommitResult["entity"]): string {
+  return entity === "customer" ? "Customers" : entity === "site" ? "Sites" : "Contacts";
+}
+
 function EntityResultRow({ r }: { r: EntityCommitResult }): JSX.Element {
+  // Show first 8 chars of the UUID as a reference. Operators don't need the
+  // whole thing — engineering can pull the full ID from the DB if needed.
+  const shortRef = r.intakeId ? r.intakeId.slice(0, 8) : "—";
   return (
     <tr style={{ borderBottom: "1px solid #F4F4F8" }}>
       <td style={{ padding: 6 }}>
-        <strong>{r.entity}</strong>{" "}
-        <span style={{ color: "#1A1A2E", opacity: 0.6 }}>({r.table})</span>
+        <strong>{entityLabel(r.entity)}</strong>
       </td>
       <td style={{ padding: 6, textAlign: "right" }}>{r.committedCount}</td>
       <td style={{ padding: 6, textAlign: "right" }}>{r.flaggedCount}</td>
       <td style={{ padding: 6, textAlign: "right" }}>{r.rejectedCount}</td>
-      <td style={{ padding: 6, fontFamily: "monospace", fontSize: 11 }}>
-        {r.intakeId ? r.intakeId : "—"}
+      <td
+        style={{ padding: 6, fontFamily: "monospace", fontSize: 11 }}
+        title={r.intakeId ?? ""}
+      >
+        {shortRef}
         {r.fatalError && (
-          <div style={{ color: "#B33A3A", marginTop: 4 }}>{r.fatalError}</div>
+          <div style={{ color: "#B33A3A", marginTop: 4, fontFamily: "inherit" }}>
+            {r.fatalError}
+          </div>
         )}
       </td>
     </tr>

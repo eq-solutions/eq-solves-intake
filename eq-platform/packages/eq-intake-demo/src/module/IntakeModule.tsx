@@ -22,6 +22,7 @@
  */
 
 import { useMemo } from "react";
+import { QuickExportSection } from "../quick-export/QuickExportSection.js";
 import { RollupDropZone } from "../rollup/RollupDropZone.js";
 import { CanonicalCommitSection } from "../canonical/CanonicalCommitSection.js";
 import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
@@ -85,6 +86,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
 
   return (
     <div className="eq-intake-module">
+      <QuickExportSection />
       <RollupDropZone />
       <CanonicalCommitSection
         supabase={props.supabase}
