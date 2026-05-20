@@ -22,7 +22,8 @@
  *   3. 002_intake_module_columns — adds imported_at/from/intake_id to entities
  *   4. 003_schema_version_columns— schema_version + import mode
  *   5. 004_security_advisor_fix  — pin search_path + revoke PUBLIC on SECURITY DEFINER
- *   6. seed_schema_registry      — inserts the JSON schemas as rows
+ *   6. 005_licences_extensions   — RLS, indexes, storage bucket for licences
+ *   7. seed_schema_registry      — inserts the JSON schemas as rows
  *
  * Idempotent: every CREATE / ALTER uses IF NOT EXISTS or IF EXISTS;
  * the seed uses INSERT ... ON CONFLICT DO UPDATE.
@@ -124,7 +125,8 @@ function main() {
     "--   3. Per-module column extensions (imported_at/from/intake_id)",
     "--   4. Schema version + import-mode columns",
     "--   5. Security-advisor fix — pin search_path + revoke PUBLIC on SECURITY DEFINER",
-    "--   6. Seed eq_schema_registry with current schemas",
+    "--   6. Licences extensions — RLS, indexes, storage bucket for the Cards entity",
+    "--   7. Seed eq_schema_registry with current schemas",
     "--",
     "-- Idempotent — safe to re-run.",
     "-- ============================================================================",
@@ -160,6 +162,12 @@ function main() {
     "-- ============================================================================",
     "",
     readSqlFile("004_security_advisor_fix.sql"),
+    "",
+    "-- ============================================================================",
+    "-- 6. LICENCES EXTENSIONS (RLS, indexes, storage bucket, set_updated_at trigger)",
+    "-- ============================================================================",
+    "",
+    readSqlFile("005_licences_extensions.sql"),
     "",
     seedSchemaRegistry(),
     "",

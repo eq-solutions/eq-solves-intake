@@ -10,7 +10,9 @@
 --   2. eq_intake_spine — schema registry, intake events, audit, templates
 --   3. Per-module column extensions (imported_at/from/intake_id)
 --   4. Schema version + import-mode columns
---   5. Seed eq_schema_registry with current schemas
+--   5. Security-advisor fix — pin search_path + revoke PUBLIC on SECURITY DEFINER
+--   6. Licences extensions — RLS, indexes, storage bucket for the Cards entity
+--   7. Seed eq_schema_registry with current schemas
 --
 -- Idempotent — safe to re-run.
 -- ============================================================================
@@ -265,6 +267,36 @@ create index if not exists jsa_records_tenant_id_idx on jsa_records(tenant_id);
 create index if not exists jsa_records_site_id_idx on jsa_records(site_id);
 create index if not exists jsa_records_swms_id_idx on jsa_records(swms_id);
 alter table jsa_records enable row level security;
+
+-- ----- licence -----
+create table if not exists licences (
+  licence_id uuid primary key default gen_random_uuid(),
+  tenant_id uuid,
+  staff_id uuid not null,
+  external_id varchar(64),
+  licence_type varchar(64) not null,
+  licence_number varchar(64) not null,
+  issuing_authority varchar(200),
+  state text check (state is null or state in ('NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT')),
+  issue_date date,
+  expiry_date date,
+  photo_front_path text,
+  photo_back_path text,
+  notes text,
+  metadata jsonb,
+  active boolean not null default true,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists licences_tenant_id_idx on licences(tenant_id);
+create index if not exists licences_staff_id_idx on licences(staff_id);
+alter table licences enable row level security;
 
 -- ----- prestart -----
 create table if not exists prestart_checks (
@@ -527,6 +559,12 @@ alter table jsa_records drop constraint if exists jsa_records_status_enum_check;
 alter table jsa_records add constraint jsa_records_status_enum_check check (status is null or status in ('draft', 'active', 'completed', 'archived'));
 alter table jsa_records drop constraint if exists jsa_records_source_enum_check;
 alter table jsa_records add constraint jsa_records_source_enum_check check (source is null or source in ('cards_mobile', 'import_spreadsheet', 'capture_pdf', 'capture_photo', 'manual_entry'));
+
+-- FKs for licence
+alter table licences drop constraint if exists licences_staff_id_fk;
+alter table licences add constraint licences_staff_id_fk foreign key (staff_id) references staff(staff_id);
+alter table licences drop constraint if exists licences_state_enum_check;
+alter table licences add constraint licences_state_enum_check check (state is null or state in ('NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'));
 
 -- FKs for prestart
 alter table prestart_checks drop constraint if exists prestart_checks_site_id_fk;
@@ -1770,7 +1808,430 @@ $$;
 
 
 -- ============================================================================
--- 5. SEED eq_schema_registry
+-- 5. SECURITY ADVISOR FIX (search_path + revoke PUBLIC on SECURITY DEFINER)
+-- ============================================================================
+
+-- ============================================================================
+-- EQ INTAKE — Security advisor fix (search_path + privileges)
+-- ============================================================================
+-- Date authored: 2026-05-19
+-- Target Supabase project: eq-demo-canonical (EQ Intake Phase 2 canonical spine)
+-- Run AFTER 003_schema_version_columns.sql.
+--
+-- Origin: Supabase Security Advisor surfaced 17 warnings on this project
+-- (0 errors), all on functions created by migrations 001-003. Four categories:
+--
+--   1. Function Search Path Mutable (8 warnings, 7 unique functions, 1 overload):
+--        eq_intake_template_track_outcome, eq_intake_commit_batch (×2),
+--        eq_intake_rollback, eq_set_imported_at, eq_schema_registry_one_current,
+--        eq_intake_template_track_use, eq_intake_find_template_by_signature
+--      -> Mutable search_path enables function hijack via earlier-in-path schemas.
+--         Low real risk in default Supabase, trivial to prevent at definition time.
+--
+--   2. Public Can Execute SECURITY DEFINER (4 warnings):
+--        eq_intake_commit_batch (×2 signatures), eq_intake_find_template_by_signature,
+--        eq_intake_rollback
+--      -> SECURITY DEFINER runs with the owner's privileges. Public-callable means
+--         the anon key (unauthenticated requests) can trigger them. Fix: revoke from
+--         PUBLIC + anon. These warnings will clear.
+--
+--   3. Signed-In Users Can Execute SECURITY DEFINER (4 warnings, same fns as #2):
+--      -> These RPCs are INTENTIONALLY callable by signed-in users — the intake
+--         module calls them client-side via supabase.rpc() with the user's JWT.
+--         The security boundary is enforced INSIDE the function body via
+--         `auth.jwt() -> 'user_metadata' ->> 'tenant_id'` checks against the
+--         p_tenant_id argument (see 003_schema_version_columns.sql:111).
+--         These 4 warnings remain after this migration — accepted as by-design.
+--         Resolving them would require moving the commit RPC server-side
+--         (Netlify Function holding service_role key) AND rewriting the
+--         in-function tenant check. Deferred.
+--
+--   4. Leaked Password Protection Disabled (1 warning, Auth):
+--        Not fixable here — toggle in Supabase Dashboard → Authentication → Settings.
+--        Documented in eq-context system/lessons.md.
+--
+-- Strategy:
+--   - Iterate via pg_catalog so signature variations don't break the migration.
+--   - Idempotent: re-running is safe (ALTER FUNCTION ... SET search_path is harmless
+--     on functions that already have it set).
+--   - RAISE NOTICE per fix so the dashboard run output makes the changes visible.
+--
+-- Verification queries at the bottom — run them to confirm the advisor goes green.
+-- ============================================================================
+
+set search_path = public;
+
+-- ============================================================================
+-- 1. SET search_path ON ALL FLAGGED FUNCTIONS
+-- ============================================================================
+-- Catches all signatures of overloaded functions automatically.
+
+do $$
+declare
+  fn record;
+  target_functions text[] := array[
+    'eq_intake_template_track_outcome',
+    'eq_intake_commit_batch',
+    'eq_intake_rollback',
+    'eq_set_imported_at',
+    'eq_schema_registry_one_current',
+    'eq_intake_template_track_use',
+    'eq_intake_find_template_by_signature'
+  ];
+begin
+  for fn in
+    select
+      n.nspname as schema_name,
+      p.proname as func_name,
+      pg_catalog.pg_get_function_identity_arguments(p.oid) as args,
+      p.oid
+    from pg_catalog.pg_proc p
+    join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname = any(target_functions)
+    order by p.proname, args
+  loop
+    execute format(
+      'alter function %I.%I(%s) set search_path = public, pg_temp',
+      fn.schema_name, fn.func_name, fn.args
+    );
+    raise notice 'search_path set: %.%(%)',
+      fn.schema_name, fn.func_name, fn.args;
+  end loop;
+end;
+$$;
+
+-- ============================================================================
+-- 2. REVOKE FROM PUBLIC/ANON + GRANT TO AUTHENTICATED ON SECURITY DEFINER FUNCTIONS
+-- ============================================================================
+-- Strip the default PUBLIC grant (which leaks execute to the anon role / un-
+-- authenticated requests) and explicitly grant to `authenticated`. The intake
+-- module calls these RPCs client-side via supabase.rpc() with the user's JWT,
+-- so PostgREST resolves the call to the `authenticated` role.
+--
+-- The tenant-isolation security boundary is enforced INSIDE the function body
+-- via `auth.jwt() -> 'user_metadata' ->> 'tenant_id'` checks — see
+-- 003_schema_version_columns.sql:111. SECURITY DEFINER + authenticated grant
+-- + in-function tenant check is the intended pattern.
+--
+-- service_role retains EXECUTE implicitly (it bypasses grants via BYPASSRLS).
+
+do $$
+declare
+  fn record;
+  secdef_functions text[] := array[
+    'eq_intake_commit_batch',
+    'eq_intake_find_template_by_signature',
+    'eq_intake_rollback'
+  ];
+begin
+  for fn in
+    select
+      n.nspname as schema_name,
+      p.proname as func_name,
+      pg_catalog.pg_get_function_identity_arguments(p.oid) as args,
+      p.prosecdef as is_security_definer
+    from pg_catalog.pg_proc p
+    join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname = any(secdef_functions)
+      and p.prosecdef = true
+    order by p.proname, args
+  loop
+    -- Revoke from PUBLIC (the default-everyone grant)
+    execute format(
+      'revoke execute on function %I.%I(%s) from public',
+      fn.schema_name, fn.func_name, fn.args
+    );
+    -- Revoke from anon (unauthenticated PostgREST requests)
+    -- Wrapped in safe block: anon may not have an explicit grant after the
+    -- PUBLIC revoke above.
+    begin
+      execute format(
+        'revoke execute on function %I.%I(%s) from anon',
+        fn.schema_name, fn.func_name, fn.args
+      );
+    exception when others then
+      raise notice 'no anon grant to revoke on %.%(%) — skipping',
+        fn.schema_name, fn.func_name, fn.args;
+    end;
+    -- Grant to authenticated (signed-in users via their JWT)
+    execute format(
+      'grant execute on function %I.%I(%s) to authenticated',
+      fn.schema_name, fn.func_name, fn.args
+    );
+    raise notice 'SECURITY DEFINER restricted to authenticated: %.%(%)',
+      fn.schema_name, fn.func_name, fn.args;
+  end loop;
+end;
+$$;
+
+-- ============================================================================
+-- VERIFICATION (run as separate queries after the migration applies)
+-- ============================================================================
+
+-- (a) Confirm search_path is set on every flagged function.
+-- Expect: every row's `config` column contains 'search_path=public, pg_temp'.
+--
+--   select
+--     p.proname,
+--     pg_catalog.pg_get_function_identity_arguments(p.oid) as args,
+--     p.proconfig as config,
+--     p.prosecdef as is_security_definer
+--   from pg_catalog.pg_proc p
+--   join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+--   where n.nspname = 'public'
+--     and (
+--       p.proname like 'eq_intake_%'
+--       or p.proname in ('eq_set_imported_at', 'eq_schema_registry_one_current')
+--     )
+--   order by p.proname, args;
+
+-- (b) Confirm privileges on SECURITY DEFINER functions.
+-- Expect: `authenticated` appears as grantee, PUBLIC + anon are absent.
+-- service_role is implicit (bypasses grants).
+--
+--   select
+--     routine_schema,
+--     routine_name,
+--     grantee,
+--     privilege_type
+--   from information_schema.routine_privileges
+--   where routine_schema = 'public'
+--     and routine_name in (
+--       'eq_intake_commit_batch',
+--       'eq_intake_find_template_by_signature',
+--       'eq_intake_rollback'
+--     )
+--   order by routine_name, grantee;
+
+-- (c) Expected Security Advisor state after applying this migration:
+--     - "Function Search Path Mutable" warnings (8): CLEARED to 0.
+--     - "Public Can Execute SECURITY DEFINER" warnings (4): CLEARED to 0.
+--     - "Signed-In Users Can Execute SECURITY DEFINER" warnings (4): REMAIN.
+--       These are by-design — see header notes section. The function-internal
+--       auth.jwt() tenant check is the enforcement boundary.
+--     - "Leaked Password Protection Disabled" (1, Auth): manual dashboard toggle.
+--
+-- Net: 17 warnings → 5 expected residual (4 by-design + 1 dashboard click).
+
+-- ============================================================================
+-- POST-APPLY ACTIONS (manual — not SQL):
+--   1. Supabase Dashboard → Authentication → Settings → enable
+--      "Leaked password protection" (HaveIBeenPwned check)
+--   2. Re-run Security Advisor → confirm 0 warnings / 0 errors
+--   3. Log applied state in eq/changelog/eq-context.md (or wherever Intake's
+--      production-state log lives once it has one)
+-- ============================================================================
+
+
+-- ============================================================================
+-- 6. LICENCES EXTENSIONS (RLS, indexes, storage bucket, set_updated_at trigger)
+-- ============================================================================
+
+-- ============================================================================
+-- EQ INTAKE — Licences table extensions v1.0
+-- ============================================================================
+-- The base `licences` table is created by the schema codegen via
+-- _all_tables.sql (one of the 13 entities derived from licence.schema.json).
+-- This migration adds the layer on top that the codegen doesn't produce:
+--
+--   1. Performance indexes for the Cards wallet's two hot queries
+--      (expiry-list-by-staff, type-filter-by-staff)
+--   2. Row-level security policies — SELECT/INSERT/UPDATE/DELETE, all
+--      gated by tenant_id from auth.jwt() user_metadata. Matches the
+--      pattern in 001_intake_spine.sql + the live `core` tenant's
+--      `2026_05_19_canonical_select_rls_policies` migration.
+--   3. licence-photos storage bucket (private) + RLS policies. Path
+--      convention: {tenant_id}/{staff_id}/{licence_id}/front.jpg —
+--      tenant in path[1] so storage RLS can gate cheaply without
+--      joining the licences table.
+--
+-- Run AFTER 004_security_advisor_fix.sql.
+-- Idempotent — safe to re-run.
+-- ============================================================================
+
+set search_path = public;
+
+-- ============================================================================
+-- 1. EXTRA PERFORMANCE INDEXES
+-- ============================================================================
+-- Codegen produced:
+--   licences_tenant_id_idx on (tenant_id)
+--   licences_staff_id_idx on (staff_id)
+--
+-- Cards's wallet UI has two additional hot queries:
+--   - "all my licences, sorted by expiry" → list view
+--   - "my driver licence" → tap-to-copy on a specific type
+-- Both filter by staff_id first; composite indexes win over a single-column.
+
+create index if not exists licences_staff_expiry_idx
+  on licences (staff_id, expiry_date)
+  where active = true and expiry_date is not null;
+
+create index if not exists licences_staff_type_idx
+  on licences (staff_id, licence_type)
+  where active = true;
+
+-- ============================================================================
+-- 2. ROW-LEVEL SECURITY POLICIES
+-- ============================================================================
+-- Pattern matches 001_intake_spine.sql + canonical SELECT policies applied
+-- on `core` tenant 2026-05-19.
+--
+-- JWT claim path: auth.jwt() -> 'user_metadata' ->> 'tenant_id'.
+-- This is the EXISTING canonical RLS pattern (12 tables already use it via
+-- the 2026-05-19 canonical_select_rls_policies migration on `core` tenant).
+--
+-- IMPORTANT — Phase 1.F transition: per
+-- C:\Projects\eq-context\eq\identity\IDENTITY-MODEL.md §6.2 + PHASE-1F-PLAN.md,
+-- the unified identity model standardises on app_metadata (not user_metadata)
+-- as the canonical claim location. Phase 1.F's migration will sweep ALL 13
+-- canonical tables (the existing 12 + this new licences table) from
+-- user_metadata to app_metadata in lockstep. Until Phase 1.F lands, we
+-- match the existing pattern so the 13 tables read identically.
+--
+-- Postgres has no `create policy if not exists`. We use drop-then-create so
+-- this migration is idempotent and safe to re-run.
+
+drop policy if exists licences_select on licences;
+create policy licences_select on licences
+  for select
+  using (tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid);
+
+drop policy if exists licences_insert on licences;
+create policy licences_insert on licences
+  for insert
+  with check (tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid);
+
+drop policy if exists licences_update on licences;
+create policy licences_update on licences
+  for update
+  using (tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid);
+
+drop policy if exists licences_delete on licences;
+create policy licences_delete on licences
+  for delete
+  using (tenant_id = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid);
+
+-- Note: no separate "row owner" check (e.g. staff_id = current user's staff_id).
+-- Tenant-scoped read is the right granularity: a supervisor in the tenant
+-- needs to see their team's licences for compliance / scheduling decisions.
+-- Cards UI filters to "just me" client-side via WHERE staff_id = <current>.
+-- If a tighter per-worker visibility model is needed later, add a second
+-- policy that gates on staff_id from JWT claims.
+
+-- ============================================================================
+-- 3. set_updated_at TRIGGER
+-- ============================================================================
+-- Codegen doesn't add this; sites/staff/etc. don't have it either in the
+-- _all_tables.sql output. Adding here so Cards's "last edited" surfaces
+-- stay accurate.
+
+create or replace function licences_set_updated_at()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_licences_set_updated_at on licences;
+create trigger trg_licences_set_updated_at
+  before update on licences
+  for each row execute function licences_set_updated_at();
+
+-- ============================================================================
+-- 4. STORAGE BUCKET — licence-photos (private)
+-- ============================================================================
+-- Mirrors Cards's existing licence-photos bucket on hshvnjzczdytfiklhojz.
+-- Private — never publicly accessible. Access via signed URLs only, 1h
+-- expiry, minted server-side or via Supabase JS client.
+--
+-- Path convention (changed from Cards):
+--   Cards (today):    {user_id}/{licence_id}/front.jpg
+--   Canonical (new):  {tenant_id}/{staff_id}/{licence_id}/front.jpg
+--
+-- tenant_id at path[1] means storage RLS can gate cheaply with a JWT claim
+-- comparison instead of joining the licences table.
+
+insert into storage.buckets (id, name, public)
+values ('licence-photos', 'licence-photos', false)
+on conflict (id) do nothing;
+
+-- SELECT: any signed-in user from the right tenant can fetch any licence
+-- photo within that tenant. Cards's UI further restricts client-side via
+-- the signed-URL generation step.
+
+drop policy if exists licence_photos_select on storage.objects;
+create policy licence_photos_select on storage.objects
+  for select
+  using (
+    bucket_id = 'licence-photos'
+    and (storage.foldername(name))[1]::uuid
+        = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid
+  );
+
+-- INSERT: same gate. Path[1] must match the user's tenant. Allows photo
+-- upload BEFORE the licences row exists (the typical capture flow:
+-- photo → OCR → confirm → row).
+
+drop policy if exists licence_photos_insert on storage.objects;
+create policy licence_photos_insert on storage.objects
+  for insert
+  with check (
+    bucket_id = 'licence-photos'
+    and (storage.foldername(name))[1]::uuid
+        = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid
+  );
+
+-- UPDATE: re-uploading replaces the front/back photo. Same gate.
+
+drop policy if exists licence_photos_update on storage.objects;
+create policy licence_photos_update on storage.objects
+  for update
+  using (
+    bucket_id = 'licence-photos'
+    and (storage.foldername(name))[1]::uuid
+        = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid
+  );
+
+-- DELETE: clean-up on licence deletion.
+
+drop policy if exists licence_photos_delete on storage.objects;
+create policy licence_photos_delete on storage.objects
+  for delete
+  using (
+    bucket_id = 'licence-photos'
+    and (storage.foldername(name))[1]::uuid
+        = (auth.jwt() -> 'user_metadata' ->> 'tenant_id')::uuid
+  );
+
+-- ============================================================================
+-- 5. VERIFICATION QUERIES (run after apply, not part of the migration)
+-- ============================================================================
+-- -- Confirm RLS is enabled + policies exist:
+-- select schemaname, tablename, rowsecurity
+--   from pg_tables where tablename = 'licences';
+-- select polname, polcmd from pg_policy
+--   where polrelid = 'licences'::regclass;
+--
+-- -- Confirm storage bucket + policies exist:
+-- select id, name, public from storage.buckets where id = 'licence-photos';
+-- select policyname, cmd from pg_policies
+--   where schemaname = 'storage' and tablename = 'objects'
+--   and policyname like 'licence_photos_%';
+--
+-- -- Confirm indexes:
+-- select indexname from pg_indexes where tablename = 'licences';
+
+
+-- ============================================================================
+-- 6. SEED eq_schema_registry
 -- ============================================================================
 -- Upsert each canonical schema. ON CONFLICT (entity, version) DO UPDATE so
 -- re-running picks up edits to the same version. Bumping a schema's version
@@ -2936,6 +3397,228 @@ on conflict (entity, version) do update set
   module = excluded.module;
 
 insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('licence', 'cards', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/cards/licence/v1.json",
+  "title": "Licence",
+  "description": "A trade licence, ticket, or certification held by a staff member. White cards, driver licences, first aid certs, forklift HRWL, electrical licences, etc. Stored in canonical as the source of truth; surfaces in EQ Cards (mobile wallet) and any other module that needs to check what tickets a person holds (Field, Service, future Quotes).",
+  "type": "object",
+  "x-eq-entity": "licence",
+  "x-eq-module": "cards",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "licences",
+  "required": ["licence_id", "tenant_id", "staff_id", "licence_type", "licence_number", "active"],
+  "properties": {
+    "licence_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Internal canonical ID. Generated on import if not provided.",
+      "x-eq-source-aliases": ["id", "licence_id", "licence_uuid"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Owning tenant. Set automatically by import context.",
+      "x-eq-system-managed": true
+    },
+    "staff_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "The licence holder. FK to staff.staff_id. Required — a licence belongs to exactly one person.",
+      "x-eq-source-aliases": ["holder", "person", "worker", "employee", "staff", "staff_member"],
+      "x-eq-foreign-key": "staff.staff_id",
+      "x-eq-fk-fuzzy-match-on": ["staff.first_name", "staff.last_name", "staff.email", "staff.external_id"]
+    },
+    "external_id": {
+      "type": ["string", "null"],
+      "description": "Customer''s own ID for this licence record (HR system, training register, etc.). Preserved for round-trip exports.",
+      "x-eq-source-aliases": ["ref", "code", "external_ref", "record_id"],
+      "maxLength": 64
+    },
+    "licence_type": {
+      "type": "string",
+      "description": "The kind of licence. Free text — common Australian tradie types listed as suggested values. Forklift_hrwl, driver_licence, and electrical_licence require state.",
+      "x-eq-source-aliases": ["type", "ticket", "cert", "certification", "licence", "license", "category", "qualification"],
+      "x-eq-suggested-values": [
+        "white_card",
+        "driver_licence",
+        "first_aid",
+        "cpr",
+        "working_at_heights",
+        "confined_space",
+        "ewp",
+        "forklift_hrwl",
+        "test_and_tag",
+        "electrical_licence",
+        "medicare",
+        "asbestos_awareness",
+        "traffic_control"
+      ],
+      "x-eq-enum-aliases": {
+        "white_card": ["white card", "construction induction", "ci", "wc"],
+        "driver_licence": ["driver license", "drivers licence", "dl", "licence", "license"],
+        "first_aid": ["hltaid011", "first-aid", "fa"],
+        "cpr": ["hltaid009", "cpr cert"],
+        "working_at_heights": ["heights", "wah", "working_heights"],
+        "confined_space": ["confined-space", "cs", "csa"],
+        "ewp": ["elevated work platform", "boom lift", "scissor lift"],
+        "forklift_hrwl": ["forklift", "hrwl", "high risk work licence", "lf", "lo", "lr"],
+        "test_and_tag": ["test and tag", "tnt", "electrical test"],
+        "electrical_licence": ["electrical license", "el", "sparky"],
+        "medicare": ["medicare card", "medi"],
+        "asbestos_awareness": ["asbestos", "aaa"],
+        "traffic_control": ["traffic", "tc"]
+      },
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "licence_number": {
+      "type": "string",
+      "description": "The number printed on the card. Required.",
+      "x-eq-source-aliases": ["number", "no", "card_number", "ticket_number", "cert_number", "ref"],
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "issuing_authority": {
+      "type": ["string", "null"],
+      "description": "Who issued the licence. e.g. ''Service NSW'', ''RTO 12345'', ''WorkCover NSW''. Often inferred from licence_type + state when missing.",
+      "x-eq-source-aliases": ["authority", "issuer", "issued_by", "rto", "issuing_body"],
+      "maxLength": 200
+    },
+    "state": {
+      "type": ["string", "null"],
+      "description": "Australian state/territory abbreviation. Required for state-licensed types (driver, forklift HRWL, electrical).",
+      "x-eq-source-aliases": ["jurisdiction", "issuing_state", "state_issued", "issuing_jurisdiction"],
+      "enum": ["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT", null],
+      "x-eq-enum-aliases": {
+        "NSW": ["new south wales", "n.s.w."],
+        "VIC": ["victoria", "vic."],
+        "QLD": ["queensland", "qld."],
+        "WA": ["western australia", "w.a."],
+        "SA": ["south australia", "s.a."],
+        "TAS": ["tasmania", "tas."],
+        "ACT": ["australian capital territory", "a.c.t."],
+        "NT": ["northern territory", "n.t."]
+      }
+    },
+    "issue_date": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "Date the licence was issued. ISO 8601 (YYYY-MM-DD). Optional — some licences (older White Cards) lack a printed issue date.",
+      "x-eq-source-aliases": ["issued", "date_issued", "from", "valid_from", "start_date"],
+      "x-eq-coerce": "date"
+    },
+    "expiry_date": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "Date the licence expires. ISO 8601. Null = doesn''t expire (White Cards). Drives expiry alerts in Cards (90/30/7-day reminders).",
+      "x-eq-source-aliases": ["expires", "expiry", "valid_until", "expires_on", "to", "valid_to", "end_date"],
+      "x-eq-coerce": "date"
+    },
+    "photo_front_path": {
+      "type": ["string", "null"],
+      "description": "Storage path in the canonical licence-photos bucket. Format: ''{staff_id}/{licence_id}/front.jpg''. Never a public URL — repositories enrich with transient signed URLs (1h expiry) post-fetch.",
+      "x-eq-source-aliases": ["photo_front", "front_image", "front_url", "photo"],
+      "maxLength": 500
+    },
+    "photo_back_path": {
+      "type": ["string", "null"],
+      "description": "Storage path for the back of the card. Most licences only have a front; back is optional.",
+      "x-eq-source-aliases": ["photo_back", "back_image", "back_url"],
+      "maxLength": 500
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "description": "Free-form notes. Not used in scheduling or compliance logic.",
+      "x-eq-source-aliases": ["comment", "comments", "remarks", "note"],
+      "maxLength": 2000
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Type-specific extras as JSONB. Established conventions: Medicare {irn: ''1''}; driver_licence {class: ''C''}; forklift_hrwl {class: ''LF''|''LO''|''LR'', ticket_number: ''...''}. Document new keys here before shipping a licence type that uses them.",
+      "default": {},
+      "additionalProperties": true
+    },
+    "active": {
+      "type": "boolean",
+      "description": "Whether this licence record is currently active. Defaults true on import. Aligns with staff.active rather than Cards''s deleted_at pattern (per canonical convention).",
+      "x-eq-source-aliases": ["is_active", "current", "status", "enabled"],
+      "x-eq-coerce": "boolean",
+      "default": true
+    },
+    "imported_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "When this record was last imported. System-managed.",
+      "x-eq-system-managed": true
+    },
+    "imported_from": {
+      "type": ["string", "null"],
+      "description": "Source of the import (filename, system name, ''eq_cards_supabase_2026_05_20'' for the Cards migration). System-managed.",
+      "x-eq-system-managed": true
+    }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "expiry_after_issue",
+      "rule": "expiry_date == null OR issue_date == null OR expiry_date >= issue_date",
+      "message": "Expiry date must be on or after issue date.",
+      "severity": "warning"
+    },
+    {
+      "id": "state_required_for_state_licenced",
+      "rule": "state != null OR licence_type NOT IN [''driver_licence'', ''forklift_hrwl'', ''electrical_licence'']",
+      "message": "State is required for driver licence, forklift HRWL, and electrical licence — these are state-issued.",
+      "severity": "warning"
+    },
+    {
+      "id": "active_inactive_no_expiry_implication",
+      "rule": "true",
+      "message": "Note: ''active'' is a record-status flag, not derived from expiry_date. An active licence can be expired; the wallet UI shows it with an expired badge.",
+      "severity": "info"
+    }
+  ],
+  "x-eq-import-hints": {
+    "description": "Common patterns for importing licence/ticket data from various sources. Most commonly arrives as a per-staff-member export from an HR/training register or as a spreadsheet maintained by a safety officer.",
+    "common_sources": [
+      {
+        "name": "Generic training register spreadsheet",
+        "typical_columns": ["Name", "Licence Type", "Number", "Issue Date", "Expiry", "State"],
+        "watchouts": [
+          "Name column needs splitting into first/last and matching against staff.first_name + staff.last_name (fuzzy)",
+          "Single sheet often combines multiple staff — group by Name first",
+          "Expiry as ''no expiry'' or blank for White Cards"
+        ]
+      },
+      {
+        "name": "EQ Cards export (Cards-side dump)",
+        "typical_columns": ["user_id", "licence_type", "licence_number", "issue_date", "expiry_date", "issuing_authority", "state", "photo_front_url", "metadata"],
+        "watchouts": [
+          "user_id on Cards side maps to a Cards profiles row, not directly to canonical staff_id — needs staff lookup by email first",
+          "photo_front_url on Cards side is a storage path on the Cards Supabase bucket — needs photo migration in lockstep",
+          "metadata uses Cards-side conventions (irn, class) which carry through as-is"
+        ]
+      },
+      {
+        "name": "RTO / Training provider export",
+        "typical_columns": ["Student", "Course", "Date Issued", "Certificate Number"],
+        "watchouts": [
+          "Course needs mapping to a licence_type (e.g. ''HLTAID011 Provide First Aid'' -> ''first_aid'')",
+          "No explicit expiry — derive from licence_type default_validity (first_aid = 36mo, cpr = 12mo, etc.) and warn user",
+          "Multiple courses per student = multiple rows"
+        ]
+      }
+    ]
+  }
+}
+'::jsonb, 'A trade licence, ticket, or certification held by a staff member. White cards, driver licences, first aid certs, forklift HRWL, electrical licences, etc. Stored in canonical as the source of truth; surfaces in EQ Cards (mobile wallet) and any other module that needs to check what tickets a person holds (Field, Service, future Quotes).', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
 values ('prestart', 'cards', '1.0.0', '{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.eq.solutions/cards/prestart/v1.json",
@@ -3349,8 +4032,9 @@ values ('site', 'core', '1.0.0', '{
     },
     "country": {
       "type": ["string", "null"],
-      "description": "ISO 3166-1 alpha-2 code. Defaults to AU on import if not specified.",
+      "description": "ISO 3166-1 alpha-2 code. Defaults to AU on import if not specified. Input is coerced via @eq/validation''s coerceCountry so full names like ''Australia'' or short forms like ''USA''/''UK'' resolve to their alpha-2 codes before the length check runs.",
       "x-eq-source-aliases": ["nation", "country_code"],
+      "x-eq-coerce": "country-iso-alpha2",
       "default": "AU",
       "maxLength": 2
     },
