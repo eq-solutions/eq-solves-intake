@@ -23,7 +23,8 @@
  *   4. 003_schema_version_columns— schema_version + import mode
  *   5. 004_security_advisor_fix  — pin search_path + revoke PUBLIC on SECURITY DEFINER
  *   6. 005_licences_extensions   — RLS, indexes, storage bucket for licences
- *   7. seed_schema_registry      — inserts the JSON schemas as rows
+ *   7. 006_licences_commit_path  — extends eq_intake_commit_batch RPC for licences
+ *   8. seed_schema_registry      — inserts the JSON schemas as rows
  *
  * Idempotent: every CREATE / ALTER uses IF NOT EXISTS or IF EXISTS;
  * the seed uses INSERT ... ON CONFLICT DO UPDATE.
@@ -168,6 +169,12 @@ function main() {
     "-- ============================================================================",
     "",
     readSqlFile("005_licences_extensions.sql"),
+    "",
+    "-- ============================================================================",
+    "-- 7. LICENCES COMMIT PATH (extends eq_intake_commit_batch for the new entity)",
+    "-- ============================================================================",
+    "",
+    readSqlFile("006_licences_commit_path.sql"),
     "",
     seedSchemaRegistry(),
     "",
