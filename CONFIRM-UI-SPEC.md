@@ -300,6 +300,173 @@ For platform improvement (not for ad tracking):
 - Inline editing of canonical values in the preview (force fix-at-source for now)
 - Multi-file batch upload (single file at a time in v1; multi-file in v2)
 
+## Dedupe confirmation step
+
+**Added 2026-05-19.** Companion to column-mapping confirmation. See
+`eq-context/ops/decisions.md` 2026-05-19 entry "Dedupe Is Intake's Job,
+Not Per-App" for the architectural decision behind this section.
+
+### When it runs
+
+Inserted between column-mapping confirmation and the commit_batch
+call. So the flow is:
+
+```
+upload → AI maps columns → user confirms mapping →
+    [DEDUPE CONFIRMATION] →
+    user confirms dedupe → commit_batch
+```
+
+Skipped when:
+- Total row count below a threshold (e.g. 20 rows — small enough that
+  manual review of customer-list dupes isn't a UX win)
+- Target table has no canonical FK relationship that benefits from
+  dedupe (e.g. `incidents` doesn't dedupe by parent; `prestart_checks`
+  doesn't either)
+- Cached template explicitly disabled dedupe for this source (a user
+  who said "always keep duplicate rows" the first time they imported
+  AroFlo data)
+
+### What the AI proposes
+
+For each canonical entity in the import that has FK relationships
+(today: customers→sites, customers→contacts), the AI looks at the
+ROW data and proposes groups.
+
+Two confidence tiers:
+
+**HIGH confidence — auto-accept-by-default:**
+- Identical normalized name (lowercased, whitespace-trimmed,
+  punctuation-collapsed)
+- ABN match (if present) — same legal entity
+- Same `external_id` source-system ID
+
+UI: presents as a single bulk action: "Accept all 12 high-confidence
+groups (collapses 287 rows → 87 canonical rows)."
+
+**MEDIUM confidence — per-group review:**
+- Fuzzy name match (Jaro-Winkler ≥ 0.92) without ABN agreement
+- Same domain in email but different "name" strings ("AG Coombs" +
+  "A.G. Coombs (NSW) Pty Ltd" both with `agcoombs.com.au` emails)
+- Same primary phone, different name strings
+
+UI: each group renders as a card with the candidate rows shown
+side-by-side; user clicks "Merge" / "Keep separate" / "Skip for
+later" per group.
+
+**LOW confidence (below the threshold) — NOT shown:**
+- Below Jaro-Winkler 0.85
+- No supporting evidence beyond surface name similarity
+
+These never get proposed. If the source data has typos or genuinely
+hand-entered variations, leaving them as separate rows is the safe
+default — they can be merged later via a dedicated "tidy customers"
+admin screen if it ever becomes a real pain.
+
+### Screen sketch
+
+```
+┌────────────────────────────────────────────────────────────┐
+│  Dedupe check                                              │
+│                                                            │
+│  I spotted possible duplicates in your customers data.     │
+│  Confirm what to collapse before commit.                   │
+│                                                            │
+│  HIGH CONFIDENCE (accept all in one click)                 │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ ✓ Equinix Australia Pty Ltd                          │  │
+│  │   47 rows → 1 customer + 47 sites                    │  │
+│  │   (exact name + ABN match across all rows)           │  │
+│  │                                                      │  │
+│  │ ✓ Schneider Electric Pty Ltd                         │  │
+│  │   3 rows → 1 customer + 3 sites                      │  │
+│  │   (exact name match)                                 │  │
+│  │   ... +10 more high-confidence groups                │  │
+│  └──────────────────────────────────────────────────────┘  │
+│      [Accept all 12 high-confidence] [Review individually] │
+│                                                            │
+│  MEDIUM CONFIDENCE (review each)                           │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ ⚠ "A.G. Coombs (NSW) Pty Ltd" (12 rows)              │  │
+│  │   vs "AG Coombs NSW Pty Ltd" (3 rows)                │  │
+│  │   Same domain (agcoombs.com.au), Jaro-Winkler 0.94   │  │
+│  │   [Merge] [Keep separate] [Skip]                     │  │
+│  │                                                      │  │
+│  │ ⚠ "Schneider Electric" (2 rows)                      │  │
+│  │   vs "Schneider Electric (Newington)" (1 row)        │  │
+│  │   Same primary phone, Jaro-Winkler 0.93              │  │
+│  │   [Merge] [Keep separate] [Skip]                     │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                                                            │
+│         [Cancel back to mapping]    [Confirm and commit →] │
+└────────────────────────────────────────────────────────────┘
+```
+
+### Contact attachment rule
+
+After dedupe, contacts from the merged source rows attach to the
+canonical customer. Site attachment is heuristic:
+
+- Contact with site-specific email (e.g. `sy3-manager@equinix.com`)
+  or whose "Site" column matched a specific site row → tagged with
+  that `site_id`
+- Contact at HQ or with no site signal → company-level
+  (`site_id = NULL`)
+
+UI surfaces this as a sub-section under each accepted merge:
+
+```
+  Contacts attached to Equinix Australia Pty Ltd:
+    • Sujan Shrestha — sshrestha@ap.equinix.com → SY3 (auto-tagged)
+    • Naim Saffar    — nsaffar@ap.equinix.com   → company-wide
+    [Edit attachments]
+```
+
+### Signature caching
+
+Same pattern as column-mapping templates: hash the source-file
+column shape + dedupe choices on first import. Next time a matching
+shape arrives, propose the same dedupe groupings without re-running
+the AI. User can override; override updates the cached template.
+
+### Edge cases
+
+- **Same name, different ABN** → never merge automatically. ABN is
+  legal-identity-strong; matching names with conflicting ABNs are
+  almost certainly different entities.
+- **No ABN on any row** → fall back to name + email-domain +
+  phone-prefix evidence. If two of those three agree, MEDIUM
+  confidence; one agreement only, LOW (not shown).
+- **Identical contact across merged rows** → dedupe contacts too,
+  inside the merge action. UI shows: "5 'Sujan Shrestha' rows
+  collapse to 1 contact attached to Equinix Australia Pty Ltd."
+- **Conflicting addresses** → the customer-level record gets the
+  most-populated one; per-site rows preserve their own addresses on
+  the site rows.
+
+### Rollback
+
+A dedupe-applied import is reversible the same way any intake is:
+`SELECT eq_intake_rollback(intake_id)` removes every row tagged with
+that intake_id, including the deduped customers/sites/contacts.
+Test fixture: import → confirm dedupe → commit → rollback → confirm
+all rows gone.
+
+### Test fixtures required
+
+When implementing, validate against:
+- SimPRO CSV bundle (today's only real-world test data) — 267
+  customers / 524 sites / 393 contacts. Should collapse the
+  ~50-row Equinix block, the 12-row Akalan block, the 4-row 4 Fold
+  block, etc.
+- A synthetic CSV with deliberate fuzzy dupes ("AG Coombs" /
+  "A.G. Coombs") to exercise the MEDIUM tier
+- A clean CSV with zero dupes — Confirm-UI should skip the dedupe
+  screen entirely
+- An "all same name, different ABNs" CSV — should NOT propose
+  merging
+
 ## Version history
 
 - v1.0 (28 Apr 2026) — initial spec
+- v1.1 (19 May 2026) — added "Dedupe confirmation step" section

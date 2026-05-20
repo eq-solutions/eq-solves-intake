@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/service/maintenance-plan-item/v1.json",
+  "title": "Maintenance Plan Item",
+  "description": "A single task line item within a maintenance plan. Equivalent to eq-solves-service's job_plan_items table. Items can carry independent frequency flags (freq_monthly, freq_quarterly, ..., freq_10yr) so a single plan can cover items that recur at different cycles.",
+  "type": "object",
+  "x-eq-entity": "maintenance_plan_item",
+  "x-eq-module": "service",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "maintenance_plan_items",
+  "x-eq-table-aliases": ["job_plan_items"],
+  "required": ["item_id", "tenant_id", "plan_id", "description"],
+  "properties": {
+    "item_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-source-aliases": ["id", "item_id", "job_plan_item_id"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-system-managed": true
+    },
+    "plan_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Parent maintenance plan.",
+      "x-eq-foreign-key": "maintenance_plan.plan_id",
+      "x-eq-fk-fuzzy-match-on": ["maintenance_plan.code", "maintenance_plan.name"],
+      "x-eq-source-aliases": ["job_plan_id", "plan_id", "jp_id", "plan_code", "job_plan_code"]
+    },
+    "asset_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Optional asset this item targets. When null, the item applies to any asset the plan covers.",
+      "x-eq-foreign-key": "asset.asset_id",
+      "x-eq-fk-fuzzy-match-on": ["asset.external_id", "asset.name"],
+      "x-eq-source-aliases": ["asset", "asset_tag", "equipment", "tag"]
+    },
+    "external_id": {
+      "type": ["string", "null"],
+      "description": "External system task identifier (e.g. Maximo task id).",
+      "x-eq-source-aliases": ["maximo_task_id", "task_id", "external_task_id"],
+      "maxLength": 64
+    },
+    "description": {
+      "type": "string",
+      "description": "The task itself, e.g. 'Check earth connections', 'Record incoming voltage L1-L2'.",
+      "x-eq-source-aliases": ["task", "task_description", "item_description", "step", "instruction"],
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "sort_order": {
+      "type": "integer",
+      "description": "Display order within the plan.",
+      "x-eq-source-aliases": ["order", "sequence", "seq", "step_no"],
+      "x-eq-coerce": "number",
+      "minimum": 0,
+      "default": 0
+    },
+    "is_required": {
+      "type": "boolean",
+      "description": "Whether the technician must complete this item before the check can be closed.",
+      "x-eq-source-aliases": ["required", "mandatory", "is_mandatory"],
+      "x-eq-coerce": "boolean",
+      "default": true
+    },
+    "dark_site": {
+      "type": "boolean",
+      "description": "Item only runs at dark-site visits (no live electrical work).",
+      "x-eq-source-aliases": ["is_dark_site", "dark"],
+      "x-eq-coerce": "boolean",
+      "default": false
+    },
+    "freq_monthly": {
+      "type": "boolean",
+      "description": "Runs at monthly cycles. Multiple freq flags may be true.",
+      "x-eq-source-aliases": ["monthly", "freq_m"],
+      "x-eq-coerce": "boolean",
+      "default": false
+    },
+    "freq_quarterly": {
+      "type": "boolean",
+      "description": "Runs at quarterly cycles.",
+      "x-eq-source-aliases": ["quarterly", "freq_q", "freq_3m"],
+      "x-eq-coerce": "boolean",
+      "default": false
+    },
+    "freq_semi_annual": {
+      "type": "boolean",
+      "description": "Runs at semi-annual (6-month) cycles.",
+      "x-eq-source-aliases": ["semi_annual", "biannual", "freq_s", "freq_6m"],
+      "x-eq-coerce": "boolean",
+      "default": false
+    },
+    "freq_annual": {
+      "type": "boolean",
+      "description": "Runs at annual cycles.",
+      "x-eq-source-aliases": ["annual", "yearly", "freq_a", "freq_1y"],
+      "x-eq-coerce": "boolean",
+      "default": false
+    },
+    "freq_2yr": {
+      "type": "boolean",
+      "description": "Runs at 2-year cycles.",
+      "x-eq-source-aliases": ["freq_2y", "biennial"],
+      "x-eq-coerce": "boolean",
+      "default": false
+    },
+    "freq_3yr": {
+      "type": "boolean",
+      "description": "Runs at 3-year cycles.",
+      "x-eq-source-aliases": ["freq_3y", "triennial"],
+      "x-eq-coerce": "boolean",
+      "default": false
+    },
+    "freq_5yr": {
+      "type": "boolean",
+      "description": "Runs at 5-year cycles.",
+      "x-eq-source-aliases": ["freq_5y", "quinquennial"],
+      "x-eq-coerce": "boolean",
+      "default": false
+    },
+    "freq_8yr": {
+      "type": "boolean",
+      "description": "Runs at 8-year cycles.",
+      "x-eq-source-aliases": ["freq_8y"],
+      "x-eq-coerce": "boolean",
+      "default": false
+    },
+    "freq_10yr": {
+      "type": "boolean",
+      "description": "Runs at 10-year cycles.",
+      "x-eq-source-aliases": ["freq_10y", "decadal"],
+      "x-eq-coerce": "boolean",
+      "default": false
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["comment", "comments", "remarks", "note"],
+      "maxLength": 2000
+    },
+    "imported_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-eq-system-managed": true
+    },
+    "imported_from": {
+      "type": ["string", "null"],
+      "x-eq-system-managed": true
+    }
+  },
+  "x-eq-cross-field-rules": [],
+  "x-eq-import-hints": {
+    "description": "Plan items often arrive as a multi-column boolean matrix (Monthly | Quarterly | 6M | Annual | 2YR | 3YR | 5YR | 8YR | 10YR), one column per cycle, with an X mark when the item runs.",
+    "common_sources": [
+      {
+        "name": "Job plan tab with frequency matrix",
+        "typical_columns": ["Task #", "Task Description", "M", "Q", "6M", "A", "2YR", "3YR", "5YR", "8YR", "10YR"],
+        "watchouts": ["Each column maps to one freq_* boolean — X / Y / 1 / TRUE / 'yes' all coerce to true", "Some items have an asset-class column rather than a specific asset_id — leave asset_id null and resolve later"]
+      }
+    ]
+  }
+}

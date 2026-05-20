@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/service/acb-visual-check-item/v1.json",
+  "title": "ACB Visual Check Item",
+  "description": "A single qualitative pass/fail item from the visual inspection step of an ACB test (e.g. 'Earth connections OK', 'Arc chutes intact'). Stored in eq-solves-service inside the shared acb_test_readings table — EQ Intake canonicalises this as a distinct child entity because the semantics (pass/fail with no quantitative value) are different to electrical readings.",
+  "type": "object",
+  "x-eq-entity": "acb_visual_check_item",
+  "x-eq-module": "service",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "acb_test_readings",
+  "x-eq-table-discriminator": { "column": "value", "predicate": "value IN ('Pass','Fail','N/A')" },
+  "required": ["item_id", "tenant_id", "acb_test_id", "label", "is_pass"],
+  "properties": {
+    "item_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-source-aliases": ["id", "item_id", "reading_id"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-system-managed": true
+    },
+    "acb_test_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Parent ACB test.",
+      "x-eq-foreign-key": "acb_test.acb_test_id",
+      "x-eq-source-aliases": ["test_id", "acb_test"]
+    },
+    "label": {
+      "type": "string",
+      "description": "What is being inspected (e.g. 'Arc chutes intact', 'Earth connections OK').",
+      "x-eq-source-aliases": ["item", "check", "description", "inspection_item"],
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "is_pass": {
+      "type": ["boolean", "null"],
+      "description": "Pass/fail/N/A. True = pass, false = fail, null = N/A or not yet checked.",
+      "x-eq-source-aliases": ["pass", "result", "ok", "passed"],
+      "x-eq-coerce": "boolean"
+    },
+    "sort_order": {
+      "type": "integer",
+      "x-eq-source-aliases": ["order", "sequence", "seq"],
+      "x-eq-coerce": "number",
+      "minimum": 0,
+      "default": 0
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["comment", "comments", "remarks", "note"],
+      "maxLength": 2000
+    },
+    "imported_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-eq-system-managed": true
+    },
+    "imported_from": {
+      "type": ["string", "null"],
+      "x-eq-system-managed": true
+    }
+  },
+  "x-eq-import-hints": {
+    "description": "Visual check items appear as a block of rows on the SKS test sheet, each row labelled with a check description and ticked pass/fail.",
+    "common_sources": [
+      {
+        "name": "ACB test sheet — Visual Inspection block",
+        "typical_columns": ["Check", "Pass/Fail", "Notes"],
+        "watchouts": ["'P/F' values map to is_pass true/false; blank or 'N/A' becomes null"]
+      }
+    ]
+  }
+}

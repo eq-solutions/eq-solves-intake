@@ -42,9 +42,18 @@
       "x-eq-source-aliases": ["short_name", "abbr", "abbreviation", "tag"],
       "maxLength": 20
     },
+    "customer_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Customer (client company) this site belongs to. Set via FK resolver from client/customer name on import.",
+      "x-eq-foreign-key": "customer.customer_id",
+      "x-eq-fk-fuzzy-match-on": ["customer.name", "customer.code", "customer.customer_entity_legal_name"],
+      "x-eq-source-aliases": ["customer", "client", "customer_name", "client_name", "company"]
+    },
     "client_name": {
       "type": ["string", "null"],
-      "description": "Name of the client this site belongs to.",
+      "description": "DEPRECATED legacy free-text client name. Retained for round-trip on imports from sources that don't carry a stable customer_id. New imports should resolve to customer_id via the FK resolver; this column may be removed in v2.",
+      "x-eq-deprecated": true,
       "x-eq-source-aliases": ["client", "customer", "customer_name", "company"]
     },
     "site_type": {

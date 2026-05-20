@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/service/rcd-test/v1.json",
+  "title": "RCD Test",
+  "description": "Header row per (RCD board asset, visit). Groups all rcd_test_circuits for that board on that day. Maps to one tab in the Jemena multi-tab xlsx RCD report. Sign-off + technician metadata lives here; per-circuit timing values live on rcd_test_circuit.",
+  "type": "object",
+  "x-eq-entity": "rcd_test",
+  "x-eq-module": "service",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "rcd_tests",
+  "required": ["rcd_test_id", "tenant_id", "site_id", "asset_id", "test_date", "status", "active"],
+  "properties": {
+    "rcd_test_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-source-aliases": ["id", "rcd_test_id", "test_id"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-system-managed": true
+    },
+    "customer_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "x-eq-foreign-key": "customer.customer_id",
+      "x-eq-fk-fuzzy-match-on": ["customer.name", "customer.code"],
+      "x-eq-source-aliases": ["customer", "client", "customer_name", "client_name"]
+    },
+    "site_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-foreign-key": "site.site_id",
+      "x-eq-fk-fuzzy-match-on": ["site.name", "site.code"],
+      "x-eq-source-aliases": ["site", "site_name", "location"]
+    },
+    "asset_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "The board / distribution panel the RCD circuits live on.",
+      "x-eq-foreign-key": "asset.asset_id",
+      "x-eq-fk-fuzzy-match-on": ["asset.external_id", "asset.name", "asset.jemena_asset_id"],
+      "x-eq-source-aliases": ["asset", "board", "db", "panel", "board_tag", "jemena_id"]
+    },
+    "check_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Optional link to the parent maintenance_check (the 6-monthly visit). Null for ad-hoc tests outside the regular cycle.",
+      "x-eq-foreign-key": "maintenance_check.check_id",
+      "x-eq-source-aliases": ["maintenance_check_id", "check", "wo_id"]
+    },
+    "test_date": {
+      "type": "string",
+      "format": "date",
+      "x-eq-source-aliases": ["date", "test_dt", "date_tested"],
+      "x-eq-coerce": "date"
+    },
+    "technician_user_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "x-eq-foreign-key": "staff.user_id",
+      "x-eq-fk-fuzzy-match-on": ["staff.full_name", "staff.email"],
+      "x-eq-source-aliases": ["tested_by", "technician", "tech"]
+    },
+    "technician_name_snapshot": {
+      "type": ["string", "null"],
+      "description": "Snapshot of technician name at test time, in case the user record is later removed or renamed.",
+      "x-eq-source-aliases": ["technician_name", "tech_name", "tested_by_name"],
+      "maxLength": 200
+    },
+    "technician_initials": {
+      "type": ["string", "null"],
+      "description": "Short initials (e.g. 'AH') rendered inline on the per-row signature column of the xlsx report.",
+      "x-eq-source-aliases": ["initials", "tech_initials"],
+      "maxLength": 10
+    },
+    "site_signature_url": {
+      "type": ["string", "null"],
+      "format": "uri",
+      "description": "URL of the site rep's captured signature image.",
+      "x-eq-source-aliases": ["signature_url", "site_signature"]
+    },
+    "site_rep_name": {
+      "type": ["string", "null"],
+      "description": "Name of the site rep who signed off.",
+      "x-eq-source-aliases": ["customer_rep", "rep_name", "signed_by"],
+      "maxLength": 200
+    },
+    "equipment_used": {
+      "type": ["string", "null"],
+      "description": "Free-text record of the test instrument used (e.g. 'Fluke 1654B Tester #1234').",
+      "x-eq-source-aliases": ["instrument", "tester", "test_equipment"],
+      "maxLength": 200
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "complete", "archived"],
+      "x-eq-source-aliases": ["state", "test_status"],
+      "x-eq-enum-aliases": {
+        "draft": ["draft", "in_progress", "incomplete"],
+        "complete": ["complete", "completed", "done", "submitted"],
+        "archived": ["archived", "superseded"]
+      },
+      "default": "draft"
+    },
+    "active": {
+      "type": "boolean",
+      "x-eq-source-aliases": ["is_active", "current"],
+      "x-eq-coerce": "boolean",
+      "default": true
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["comment", "comments", "remarks", "note"],
+      "maxLength": 4000
+    },
+    "imported_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-eq-system-managed": true
+    },
+    "imported_from": {
+      "type": ["string", "null"],
+      "x-eq-system-managed": true
+    }
+  },
+  "x-eq-cross-field-rules": [],
+  "x-eq-import-hints": {
+    "description": "Jemena's RCD reports arrive as multi-tab .xlsx — one tab per board. Each tab maps to one rcd_test row + N rcd_test_circuit child rows. The board asset is keyed by jemena_asset_id (JM######).",
+    "common_sources": [
+      {
+        "name": "Jemena multi-tab RCD xlsx",
+        "typical_columns": ["Board", "Asset ID", "Date", "Technician", "Signature", "Site Rep"],
+        "watchouts": ["Board asset resolves via assets.jemena_asset_id, not name", "One tab per board — flatten by emitting one rcd_test per tab"]
+      }
+    ]
+  }
+}

@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/service/nsx-test/v1.json",
+  "title": "NSX Test",
+  "description": "Specialised test record for a Moulded Case Circuit Breaker (MCCB) — Schneider NSX range and equivalents. Mirrors the ACB test shape: one header row per (asset, test_date), with child rows for visual checks (nsx_visual_check_items) and electrical readings (nsx_electrical_readings).",
+  "type": "object",
+  "x-eq-entity": "nsx_test",
+  "x-eq-module": "service",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "nsx_tests",
+  "required": ["nsx_test_id", "tenant_id", "asset_id", "site_id", "test_date", "test_type", "overall_result", "active"],
+  "properties": {
+    "nsx_test_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-source-aliases": ["id", "nsx_test_id", "test_id"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-system-managed": true
+    },
+    "asset_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-foreign-key": "asset.asset_id",
+      "x-eq-fk-fuzzy-match-on": ["asset.external_id", "asset.name"],
+      "x-eq-source-aliases": ["asset", "asset_tag", "tag", "breaker_tag", "cb_tag"]
+    },
+    "site_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-foreign-key": "site.site_id",
+      "x-eq-fk-fuzzy-match-on": ["site.name", "site.code"],
+      "x-eq-source-aliases": ["site", "site_name", "location"]
+    },
+    "check_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "x-eq-foreign-key": "maintenance_check.check_id",
+      "x-eq-source-aliases": ["maintenance_check_id", "check", "wo_id"]
+    },
+    "test_date": {
+      "type": "string",
+      "format": "date",
+      "x-eq-source-aliases": ["date", "test_dt", "date_tested"],
+      "x-eq-coerce": "date"
+    },
+    "tested_by_user_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "x-eq-foreign-key": "staff.user_id",
+      "x-eq-fk-fuzzy-match-on": ["staff.full_name", "staff.email"],
+      "x-eq-source-aliases": ["tested_by", "technician", "tech", "tested_by_name"]
+    },
+    "test_type": {
+      "type": "string",
+      "enum": ["Initial", "Routine", "Special"],
+      "x-eq-source-aliases": ["type", "test_classification"],
+      "x-eq-enum-aliases": {
+        "Initial": ["initial", "commissioning", "first", "new_install"],
+        "Routine": ["routine", "periodic", "scheduled", "annual", "pm"],
+        "Special": ["special", "investigative", "post_fault", "ad_hoc"]
+      },
+      "default": "Routine"
+    },
+    "cb_make": {
+      "type": ["string", "null"],
+      "description": "Manufacturer (commonly Schneider for NSX).",
+      "x-eq-source-aliases": ["make", "manufacturer", "brand"],
+      "maxLength": 100
+    },
+    "cb_model": {
+      "type": ["string", "null"],
+      "description": "Model (e.g. 'NSX250F', 'NSX630N').",
+      "x-eq-source-aliases": ["model", "cb_model_number"],
+      "maxLength": 100
+    },
+    "cb_serial": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["serial", "serial_no", "cb_serial_number"],
+      "maxLength": 100
+    },
+    "cb_rating": {
+      "type": ["string", "null"],
+      "description": "Frame rating (e.g. '250A', '630A').",
+      "x-eq-source-aliases": ["rating", "frame_rating", "in_rating"],
+      "maxLength": 50
+    },
+    "cb_poles": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["poles", "n_poles"],
+      "maxLength": 10
+    },
+    "trip_unit": {
+      "type": ["string", "null"],
+      "description": "Trip unit (e.g. 'Micrologic 5.2 E', 'TMD', 'MA').",
+      "x-eq-source-aliases": ["trip", "trip_unit_model", "protection"],
+      "maxLength": 100
+    },
+    "overall_result": {
+      "type": "string",
+      "enum": ["Pending", "Pass", "Fail", "Defect"],
+      "x-eq-source-aliases": ["result", "outcome", "test_result"],
+      "x-eq-enum-aliases": {
+        "Pending": ["pending", "incomplete", "in_progress", "not_done"],
+        "Pass": ["pass", "passed", "ok", "p"],
+        "Fail": ["fail", "failed", "f"],
+        "Defect": ["defect", "defective", "raised_defect"]
+      },
+      "default": "Pending"
+    },
+    "active": {
+      "type": "boolean",
+      "x-eq-source-aliases": ["is_active", "current"],
+      "x-eq-coerce": "boolean",
+      "default": true
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["comment", "comments", "remarks", "note"],
+      "maxLength": 4000
+    },
+    "imported_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-eq-system-managed": true
+    },
+    "imported_from": {
+      "type": ["string", "null"],
+      "x-eq-system-managed": true
+    }
+  },
+  "x-eq-cross-field-rules": [],
+  "x-eq-import-hints": {
+    "description": "NSX test data uses the same SKS Excel sheet shape as ACB but with the MCCB-specific fields. Frame rating + trip unit are often stamped on the breaker face.",
+    "common_sources": [
+      {
+        "name": "SKS NSX Excel test sheet",
+        "typical_columns": ["Make", "Model", "Serial", "Rating", "Poles", "Trip Unit", "Date Tested", "Result"],
+        "watchouts": ["NSX trip units vary widely (TMD thermal-magnetic vs Micrologic electronic) — preserve verbatim", "Visual checks + electrical readings split into child rows like ACB"]
+      }
+    ]
+  }
+}
