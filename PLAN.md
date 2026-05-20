@@ -64,3 +64,24 @@ While exploring, I found that **`C:\Projects\eq-intake\eq-platform\packages\eq-s
 - Built `scripts/gen-types.mjs` — resolves `json-schema-to-typescript` from `eq-platform/node_modules` via `createRequire`, no top-level install required.
 - Generated 29 `*.d.ts` files in `types/` + an aggregator `types/index.d.ts`. Spot-checked `maintenance_check.d.ts` — clean output with full enum literals + JSDoc carried through from schema `description` fields.
 - Scheduling Tick 2 in ~20 min. Next: sample fixtures.
+
+---
+
+## 2026-05-20 morning — item §5 follow-up
+
+Picked up item §5 ("first INGEST consumer") from `prompts/03-continue-canonical-spine.md`.
+
+**Attempted:** new admin screen at `/admin/import` on eq-solves-service. Strict, ajv-validated against v1 maintenance_check + check_asset schemas. Mirrored both schemas into `lib/import/schemas/`. Added `lib/import/canonical-{validate,project}.ts`. New `commitDeltaCanonicalAction` projected each parsed row to canonical shape, ran ajv, then INSERTed via Database typed inserts. 7-test round-trip smoke verified parse → project → ajv → DB insert → inline export mirror equality. Landed as PR #177, merged 2026-05-20 ~09:36 UTC and auto-deployed.
+
+**Reviewed with Royce:** he asked the right question — "does this create a maintenance check based on Equinix?" — and pushed back on the language. The strict screen was a duplicate of `/maintenance/import` for the visible end result, and its strictness (no fuzzy match, no inline plan/asset create) was worse than the existing wizard's forgiveness for the real monthly run.
+
+**Reverted to fold:** PR #178 folded the useful bit — persisting the full Maximo payload (priority, work_type, crew_id, target_start/finish, failure_code, problem, cause, remedy, classification, ir_scan_result) onto each `check_asset` row — into the existing `commitDeltaImportAction` + `commitConsolidatedDeltaImportAction`. The /admin/import screen, canonical-validate, canonical-project, schemas mirror, ajv + ajv-formats deps and the round-trip test all removed. Helper extracted as `lib/import/delta-row-mapping.ts` (single-purpose, 17 unit tests on the enum normalisers + full mapping). Merged 2026-05-20 ~10:11 UTC.
+
+**Outcome:**
+- check_asset rows created via the monthly wizard now persist 16 columns instead of 5 (the 11 extra Maximo fields).
+- /api/admin/export?entity=check_asset returns the wider payload for any row created after PR #178.
+- "Schema-gated ingest end-to-end" is still parked. The persistence half is done; the validation gate isn't worth a parallel screen.
+
+**Lesson captured in memory:** see `[[feedback_use_plain_language]]` (jargon habit Royce flagged in the same session) + `[[project_eq_service_canonical_migration]]` (don't build parallel strict importers; fold canonical-shape persistence into the existing surface).
+
+**Next attempt at "canonical layer proves both directions":** ACB workflow ingest, per the locked sequencing in `[[project_eq_service_canonical_migration]]`.
