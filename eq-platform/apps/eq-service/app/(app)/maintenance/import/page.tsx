@@ -2,7 +2,7 @@ import { Breadcrumb } from '@/components/ui/Breadcrumb'
 import { createClient } from '@/lib/supabase/server'
 import { canWrite } from '@/lib/utils/roles'
 import type { Role } from '@/lib/types'
-import { ImportWizard } from './ImportWizard'
+import { ImportTabs } from './ImportTabs'
 import { redirect } from 'next/navigation'
 
 /**
@@ -56,12 +56,13 @@ export default async function MaintenanceImportPage() {
         />
         <h1 className="text-3xl font-bold text-eq-sky mt-2">Import Maintenance Checks</h1>
         <p className="text-sm text-eq-grey mt-1">
-          Upload the monthly Equinix Maximo <strong>Delta</strong> work-order spreadsheet
-          (<code>.xlsx</code>). Each group of rows becomes one maintenance check, with work-order
-          numbers attached to each asset.
+          Two ways in. The monthly Equinix Maximo <strong>Delta</strong> spreadsheet
+          (<code>.xlsx</code>) is the regular path. For ad-hoc / mid-cycle WO additions
+          that come in by email as <strong>PDFs</strong>, use the Maximo PDF tab — Claude
+          vision reads each page and emits the same canonical bundles for review.
         </p>
       </div>
-      <ImportWizard />
+      <ImportTabs />
     </div>
   )
 }
