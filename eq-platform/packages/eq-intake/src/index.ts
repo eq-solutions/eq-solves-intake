@@ -59,3 +59,33 @@ export type {
   ParseFileMeta,
   FileFormat,
 } from "./parse-file.js";
+
+// ── Skills ─────────────────────────────────────────────────────────
+// Higher-level document-type extractors. Compose the readers above but
+// emit canonical-shaped insert candidates for known source documents.
+export {
+  parseMaximoPdfWo,
+  groupKeyFor,
+  coerceMaximoDate,
+  parseAssetCell,
+  parseJobPlan,
+  MAXIMO_WO_EXTRACT_SCHEMA,
+} from "./skills/index.js";
+export type {
+  CheckAssetInsert,
+  CheckAssetStatus,
+  IrScanResult,
+  MaintenanceCheckBundle,
+  MaintenanceCheckInsert,
+  MaintenanceCheckStatus,
+  MaximoPdfWoResult,
+  MaximoWoRecord,
+  ParseMaximoPdfWoInput,
+  PriorityEnum,
+  SkillFileInput,
+  SkillFileSource,
+  SkillSourceTag,
+  SkillWarning,
+  SkillWarningCode,
+  WorkType,
+} from "./skills/index.js";

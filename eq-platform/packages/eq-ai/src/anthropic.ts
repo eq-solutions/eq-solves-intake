@@ -207,26 +207,33 @@ export class AnthropicProvider implements AIProvider {
     let retried = false;
     for (let attempt = 0; attempt <= this.opts.maxRetries; attempt++) {
       try {
+        // Anthropic requires different content-block types for images vs PDFs:
+        //   image/*       → { type: 'image',    source: {...} }
+        //   application/pdf → { type: 'document', source: {...} }
+        // Same base64 source shape; just the wrapping block type differs.
+        const isPdf = input.mediaType === 'application/pdf';
+        const fileBlock = {
+          type: isPdf ? ('document' as const) : ('image' as const),
+          source: {
+            type: 'base64' as const,
+            media_type: input.mediaType,
+            data: input.fileBase64,
+          },
+        };
         const response = await this.callMessages({
           model,
           system: VISION_EXTRACTION_SYSTEM_PROMPT,
           messages: [
             {
               role: 'user',
-              content: [
-                {
-                  type: 'image',
-                  source: {
-                    type: 'base64',
-                    media_type: input.mediaType,
-                    data: input.fileBase64,
-                  },
-                },
-                { type: 'text', text: userPrompt },
-              ],
+              content: [fileBlock, { type: 'text', text: userPrompt }],
             },
           ],
-          maxTokens: 8192,
+          // 32K matches Sonnet 4.5's comfortable output range. The system
+          // prompt mandates a verbatim raw_text echo as the audit anchor —
+          // for multi-record documents (e.g. PDFs with multiple stapled
+          // WOs) 8K wasn't enough and responses were truncated mid-string.
+          maxTokens: 32768,
           temperature: 0.0,
         });
 
