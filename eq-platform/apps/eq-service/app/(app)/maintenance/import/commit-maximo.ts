@@ -272,15 +272,6 @@ export async function commitMaximoPdfBundlesAction(
     // ── Pre-resolve sites + plans + assets ────────────────────────────
 
     const siteCodes = Array.from(new Set(bundles.map((b) => b.maintenance_check.site_code)))
-    const planCodes = Array.from(new Set(bundles.map((b) => b.maintenance_check.plan_code)))
-    const externalIds = Array.from(
-      new Set(
-        bundles
-          .flatMap((b) => b.check_assets)
-          .map((a) => a.asset_external_id)
-          .filter((x): x is string => x !== null && x.length > 0),
-      ),
-    )
 
     const [{ data: siteRows }, { data: planRows }] = await Promise.all([
       supabase
@@ -289,40 +280,76 @@ export async function commitMaximoPdfBundlesAction(
         .eq('tenant_id', tenantId)
         .eq('is_active', true)
         .in('code', siteCodes),
+      // Plans: SKS tenant convention is `code` = short Job Code ("ATS") and
+      // `name` = the E-number ("E1.8") — the value the Maximo PDF prints
+      // after the dash. We pull both columns and resolve against either,
+      // so callers don't have to know which column a given tenant uses.
       supabase
         .from('job_plans')
         .select('id, code, name')
         .eq('tenant_id', tenantId)
-        .eq('is_active', true)
-        .not('code', 'is', null),
+        .eq('is_active', true),
     ])
 
     const siteById = new Map<string, { id: string; name: string }>()
+    const siteIds: string[] = []
     for (const s of siteRows ?? []) {
-      if (s.code) siteById.set(s.code, { id: s.id, name: s.name })
+      if (s.code) {
+        siteById.set(s.code, { id: s.id, name: s.name })
+        siteIds.push(s.id)
+      }
     }
 
-    // Plans are case-insensitively matched — Maximo PDFs sometimes print
-    // codes in mixed case ("E1.8" vs "e1.8") and EQ is case-insensitive.
-    const planByLower = new Map<string, { id: string; code: string; name: string }>()
+    // Plans are case-insensitively matched against either `code` or `name`.
+    // First write wins (so if both columns hit the same lookup key, the
+    // earlier-listed plan is preferred — RLS-scoped result order is stable
+    // enough for this).
+    const planByLower = new Map<string, { id: string; code: string | null; name: string }>()
     for (const p of planRows ?? []) {
-      if (p.code) planByLower.set(p.code.toLowerCase(), { id: p.id, code: p.code, name: p.name })
+      const candidates = [p.code, p.name].filter((x): x is string => !!x && x.trim().length > 0)
+      for (const c of candidates) {
+        const k = c.trim().toLowerCase()
+        if (!planByLower.has(k)) planByLower.set(k, { id: p.id, code: p.code, name: p.name })
+      }
     }
 
-    // Asset resolution: exact match on `assets.maximo_id` first; fuzzy
-    // fallback on `assets.name` for rows without an external id printed.
-    const assetByExternalId = new Map<string, { id: string; name: string; siteId: string }>()
-    if (externalIds.length > 0) {
+    // Asset resolution — site-scoped to avoid cross-site collisions on the
+    // same maximo_id (e.g. "1070" exists at CA1 AND multiple SY* sites in
+    // SKS tenant). We pull every active asset at the in-scope sites and
+    // build two composite maps: by (siteId, maximo_id) and by
+    // (siteId, name.toLowerCase()). A bundle's row resolves against
+    // maximo_id first, then name fallback for CUFT-style rows where the
+    // skill couldn't extract a numeric ID.
+    const assetByCompositeKey = new Map<string, { id: string; name: string; siteId: string }>()
+    const assetByNameKey = new Map<string, { id: string; name: string; siteId: string }>()
+    if (siteIds.length > 0) {
       const { data: assetRows } = await supabase
         .from('assets')
         .select('id, name, site_id, maximo_id')
         .eq('tenant_id', tenantId)
         .eq('is_active', true)
-        .in('maximo_id', externalIds)
+        .in('site_id', siteIds)
       for (const a of assetRows ?? []) {
-        if (a.maximo_id)
-          assetByExternalId.set(a.maximo_id, { id: a.id, name: a.name, siteId: a.site_id })
+        const record = { id: a.id, name: a.name, siteId: a.site_id }
+        if (a.maximo_id) {
+          assetByCompositeKey.set(`${a.site_id}|${a.maximo_id}`, record)
+          // Also map the maximo_id as-if-a-name so a printed asset cell
+          // that leads with the alphanumeric ID ("CA1-PTP — ...") finds
+          // the row by its before-dash prefix.
+          assetByNameKey.set(`${a.site_id}|${a.maximo_id.toLowerCase()}`, record)
+        }
+        if (a.name) assetByNameKey.set(`${a.site_id}|${a.name.toLowerCase()}`, record)
       }
+    }
+
+    // Pull the printed-before-dash prefix from an asset_name string. The
+    // skill keeps the full printed cell ("1070 — CA1-TS-AC-29-ATS" or
+    // "CA1-PTP - CA1-Comprehensive Utility Failure Test (PTP)") on
+    // asset_name, so we can recover the alphanumeric ID even when the
+    // skill returned null for asset_external_id.
+    function extractPrefix(name: string): string | null {
+      const m = name.match(/^\s*([^\s—-][^—-]*?)\s*[—-]\s+/)
+      return m && m[1] ? m[1].trim() : null
     }
 
     // ── Walk bundles, create rows ─────────────────────────────────────
@@ -356,31 +383,38 @@ export async function commitMaximoPdfBundlesAction(
         continue
       }
 
-      // Resolve every asset in this bundle. Hard-fail on any miss — for
-      // demo correctness, surface unresolved assets rather than partially
-      // commit. Cards / EQ admin handles asset seeding.
+      // Resolve every asset in this bundle. Site-scoped lookup with
+      // graceful fall-back: external_id → name-prefix → full name.
+      // The skill emits asset_external_id null for CUFT-style rows where
+      // the printed cell doesn't lead with a numeric ID — we recover the
+      // before-dash prefix from asset_name and try matching against
+      // assets.maximo_id (which holds alphanumeric IDs like "CA1-PTP").
       const resolvedAssetByRow: { row: typeof bundle.check_assets[number]; assetId: string }[] = []
       let assetMiss: { wo: string; reason: string } | null = null
       for (const a of bundle.check_assets) {
-        if (!a.asset_external_id) {
-          assetMiss = {
-            wo: a.work_order_number,
-            reason: `WO ${a.work_order_number} ("${a.asset_name}") has no Maximo asset ID — fuzzy name match not enabled in demo cut.`,
-          }
-          break
+        let hit: { id: string; name: string; siteId: string } | undefined
+
+        if (a.asset_external_id) {
+          hit = assetByCompositeKey.get(`${site.id}|${a.asset_external_id}`)
         }
-        const hit = assetByExternalId.get(a.asset_external_id)
+        if (!hit) {
+          const prefix = extractPrefix(a.asset_name)
+          if (prefix) {
+            hit =
+              assetByCompositeKey.get(`${site.id}|${prefix}`) ??
+              assetByNameKey.get(`${site.id}|${prefix.toLowerCase()}`)
+          }
+        }
+        if (!hit) {
+          hit = assetByNameKey.get(`${site.id}|${a.asset_name.toLowerCase()}`)
+        }
+
         if (!hit) {
           assetMiss = {
             wo: a.work_order_number,
-            reason: `Asset external id "${a.asset_external_id}" not found under this tenant.`,
-          }
-          break
-        }
-        if (hit.siteId !== site.id) {
-          assetMiss = {
-            wo: a.work_order_number,
-            reason: `Asset "${a.asset_external_id}" lives on a different site than ${mc.site_code}.`,
+            reason: a.asset_external_id
+              ? `Asset "${a.asset_external_id}" (${a.asset_name}) not found at site ${mc.site_code}.`
+              : `Asset "${a.asset_name}" not found at site ${mc.site_code} (no Maximo ID printed; tried prefix + full-name lookup).`,
           }
           break
         }
