@@ -29,9 +29,18 @@ import type {
 } from '@eq/intake'
 import {
   commitMaximoPdfBundlesAction,
+  attachMaximoPdfEvidenceAction,
   type MaximoCommitSummary,
   type MaximoCommitFailure,
 } from './commit-maximo'
+
+interface EvidenceUploadOutcome {
+  check_id: string
+  group_key: string
+  attempted: number
+  succeeded: number
+  failures: { file_name: string; error: string }[]
+}
 
 const MAX_FILES = 4
 const MAX_FILE_MB = 25
@@ -61,7 +70,12 @@ export function MaximoPdfWizard() {
   const [commitState, setCommitState] = useState<
     | { phase: 'idle' }
     | { phase: 'committing' }
-    | { phase: 'success'; summary: MaximoCommitSummary & { failures: MaximoCommitFailure[] } }
+    | { phase: 'attaching'; summary: MaximoCommitSummary & { failures: MaximoCommitFailure[] } }
+    | {
+        phase: 'success'
+        summary: MaximoCommitSummary & { failures: MaximoCommitFailure[] }
+        evidence: EvidenceUploadOutcome[]
+      }
     | { phase: 'error'; message: string }
   >({ phase: 'idle' })
   const [, startCommit] = useTransition()
@@ -127,12 +141,58 @@ export function MaximoPdfWizard() {
           { bundles: keep },
           crypto.randomUUID(),
         )
-        if (res.success) {
-          setCommitState({ phase: 'success', summary: res.data })
-          router.refresh()
-        } else {
+        if (!res.success) {
           setCommitState({ phase: 'error', message: res.error })
+          return
         }
+
+        // Phase 3.1 — attach source PDFs as evidence on each created check.
+        // Best-effort: failures are surfaced in the summary view but don't
+        // undo the commit. Audit story is the goal; perfect uploads aren't.
+        setCommitState({ phase: 'attaching', summary: res.data })
+        const fileByName = new Map<string, File>()
+        for (const f of files) fileByName.set(f.file.name, f.file)
+
+        const sourceFilesByGroup = new Map<string, Set<string>>()
+        for (const b of result.bundles) {
+          const names = new Set<string>()
+          for (const a of b.check_assets) {
+            if (a.source.file_name) names.add(a.source.file_name)
+          }
+          sourceFilesByGroup.set(b.group_key, names)
+        }
+
+        const evidence: EvidenceUploadOutcome[] = []
+        for (const cb of res.data.bundles) {
+          const sourceNames = sourceFilesByGroup.get(cb.group_key) ?? new Set<string>()
+          const outcome: EvidenceUploadOutcome = {
+            check_id: cb.check_id,
+            group_key: cb.group_key,
+            attempted: sourceNames.size,
+            succeeded: 0,
+            failures: [],
+          }
+          for (const name of sourceNames) {
+            const blob = fileByName.get(name)
+            if (!blob) {
+              outcome.failures.push({ file_name: name, error: 'Source file not in local state.' })
+              continue
+            }
+            const fd = new FormData()
+            fd.append('file', blob, name)
+            try {
+              const up = await attachMaximoPdfEvidenceAction(cb.check_id, fd)
+              if (up.success) outcome.succeeded += 1
+              else outcome.failures.push({ file_name: name, error: up.error ?? 'unknown' })
+            } catch (e: unknown) {
+              outcome.failures.push({ file_name: name, error: (e as Error).message })
+            }
+          }
+          evidence.push(outcome)
+        }
+
+        setCommitState({ phase: 'success', summary: res.data, evidence })
+        router.refresh()
       } catch (e: unknown) {
         setCommitState({
           phase: 'error',
@@ -318,14 +378,26 @@ export function MaximoPdfWizard() {
           discarded={discarded}
           onToggleDiscard={toggleDiscard}
           onCommit={commitAll}
-          commitPhase={commitState.phase}
+          commitPhase={commitState.phase === 'attaching' ? 'committing' : commitState.phase}
           commitError={commitState.phase === 'error' ? commitState.message : null}
         />
       )}
 
+      {/* ── Attaching evidence ──────────────────────────────────── */}
+      {commitState.phase === 'attaching' && (
+        <div className="flex items-start gap-3 rounded-md border border-eq-sky/30 bg-eq-ice/50 p-4 text-sm text-eq-ink">
+          <Loader2 className="h-5 w-5 shrink-0 animate-spin text-eq-deep" aria-hidden="true" />
+          <p>Attaching source PDFs to each created check as evidence…</p>
+        </div>
+      )}
+
       {/* ── Commit success ──────────────────────────────────── */}
       {commitState.phase === 'success' && (
-        <CommitSummaryView summary={commitState.summary} onReset={clearAll} />
+        <CommitSummaryView
+          summary={commitState.summary}
+          evidence={commitState.evidence}
+          onReset={clearAll}
+        />
       )}
     </div>
   )
@@ -423,12 +495,19 @@ function ParseResults({
 
 function CommitSummaryView({
   summary,
+  evidence,
   onReset,
 }: {
   summary: MaximoCommitSummary & { failures: MaximoCommitFailure[] }
+  evidence: EvidenceUploadOutcome[]
   onReset: () => void
 }) {
   const allLanded = summary.failures.length === 0
+  const totalEvidenceAttempted = evidence.reduce((s, o) => s + o.attempted, 0)
+  const totalEvidenceSucceeded = evidence.reduce((s, o) => s + o.succeeded, 0)
+  const evidenceFailures = evidence.flatMap((o) =>
+    o.failures.map((f) => ({ check_id: o.check_id, ...f })),
+  )
   return (
     <div className="space-y-4">
       <div
@@ -493,6 +572,35 @@ function CommitSummaryView({
             ))}
           </ul>
         </details>
+      )}
+
+      {totalEvidenceAttempted > 0 && (
+        <div
+          className={[
+            'rounded-md border p-3 text-sm',
+            evidenceFailures.length === 0
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              : 'border-amber-200 bg-amber-50 text-amber-800',
+          ].join(' ')}
+        >
+          <p className="font-medium">
+            Attached {totalEvidenceSucceeded} of {totalEvidenceAttempted} source PDF
+            {totalEvidenceAttempted === 1 ? '' : 's'} as evidence on the created check
+            {summary.checks_created === 1 ? '' : 's'}.
+          </p>
+          {evidenceFailures.length > 0 && (
+            <details className="mt-2 text-xs">
+              <summary className="cursor-pointer">{evidenceFailures.length} upload failure{evidenceFailures.length === 1 ? '' : 's'}</summary>
+              <ul className="mt-1 space-y-1">
+                {evidenceFailures.map((f, i) => (
+                  <li key={i}>
+                    <span className="font-mono">{f.file_name}</span> → {f.error}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
       )}
 
       <div className="flex justify-end">

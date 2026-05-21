@@ -160,6 +160,92 @@ function lowerOrNull(s: string | null | undefined): string | null {
   return t.length === 0 ? null : t
 }
 
+// ── Evidence-attachment action ─────────────────────────────────────────
+
+const EVIDENCE_MAX_BYTES = 25 * 1024 * 1024 // matches the parse route's per-PDF cap
+
+export interface EvidenceUploadResult {
+  success: boolean
+  storage_path?: string
+  attachment_id?: string
+  error?: string
+}
+
+/**
+ * Upload a single source PDF as evidence on a created maintenance_check.
+ *
+ * Called by MaximoPdfWizard after `commitMaximoPdfBundlesAction` returns
+ * with check_ids. One call per (check_id, source PDF) — the wizard loops.
+ *
+ * Storage layout matches `uploadAttachmentAction`: `{tenant_id}/maintenance_check/{check_id}/{timestamp}_{name}`.
+ * On DB-insert failure we compensate by removing the storage object so we
+ * never leak orphan files.
+ */
+export async function attachMaximoPdfEvidenceAction(
+  checkId: string,
+  formData: FormData,
+): Promise<EvidenceUploadResult> {
+  const { supabase, user, tenantId, role } = await requireUser()
+  if (!canWrite(role)) return { success: false, error: 'Insufficient permissions.' }
+
+  const file = formData.get('file')
+  if (!(file instanceof File) || file.size === 0) {
+    return { success: false, error: 'No file provided.' }
+  }
+  if (file.size > EVIDENCE_MAX_BYTES) {
+    return {
+      success: false,
+      error: `File exceeds ${Math.round(EVIDENCE_MAX_BYTES / 1024 / 1024)} MB limit.`,
+    }
+  }
+  if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
+    return { success: false, error: `File "${file.name}" is not a PDF.` }
+  }
+
+  // Verify the check exists under the caller's tenant. RLS would block
+  // unauthorized inserts too, but an explicit check yields a clearer error.
+  const { data: check } = await supabase
+    .from('maintenance_checks')
+    .select('id')
+    .eq('id', checkId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  if (!check) {
+    return { success: false, error: 'Maintenance check not found under this tenant.' }
+  }
+
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+  const storagePath = `${tenantId}/maintenance_check/${checkId}/${Date.now()}_${safeName}`
+
+  const { error: uploadErr } = await supabase.storage
+    .from('attachments')
+    .upload(storagePath, file, { contentType: file.type || 'application/pdf', upsert: false })
+  if (uploadErr) return { success: false, error: uploadErr.message }
+
+  const { data: row, error: dbErr } = await supabase
+    .from('attachments')
+    .insert({
+      tenant_id: tenantId,
+      entity_type: 'maintenance_check',
+      entity_id: checkId,
+      attachment_type: 'evidence',
+      file_name: file.name,
+      file_size: file.size,
+      content_type: file.type || 'application/pdf',
+      storage_path: storagePath,
+      uploaded_by: user.id,
+    })
+    .select('id')
+    .single()
+
+  if (dbErr || !row) {
+    await supabase.storage.from('attachments').remove([storagePath])
+    return { success: false, error: dbErr?.message ?? 'Failed to record attachment.' }
+  }
+
+  return { success: true, storage_path: storagePath, attachment_id: row.id }
+}
+
 // ── Main action ─────────────────────────────────────────────────────────
 
 export async function commitMaximoPdfBundlesAction(
