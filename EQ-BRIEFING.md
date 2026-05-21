@@ -61,7 +61,9 @@ Modules:
   weeks. Will read/write canonical from day one.
 - **EQ Intake** — multi-source intake + reshape-out (SimPRO bundle →
   Xero / MYOB / Outlook / SharePoint / custom-template). Built in this
-  repo. Production-ready as a module; canonical wiring imminent.
+  repo. Running against real SimPRO exports; canonical wiring pending
+  the Supabase provisioning step. Honest qualifier: starting point,
+  real running will reveal flaws.
 - **EQ Quotes** — quoting tool for SKS. Stub placeholder today; reads
   customer/site/contact from canonical when built.
 
@@ -130,49 +132,25 @@ C:\Projects\eq-cards\             ← separate repo (EQ Cards)
 
 ---
 
-## Current state (2026-05-18)
+## Current state — read `git log` for the week, this for the shape
 
-**Built and tested:**
-- 12 canonical JSON Schemas (staff/site/asset/swms/prestart/jsa/toolbox/
-  incident/itp/schedule + new customer + contact)
-- SQL codegen producing per-entity `CREATE TABLE` from JSON Schemas
-- Migration sequencer producing a 154 KB combined SQL file ready to
-  paste into Supabase SQL editor
-- `@eq/shell` with Supabase Auth + lazy module routing + SKS palette
-- `@eq/intake-demo` (the Intake module) — production-ready, mounts in
-  shell at `/intake`. Supports SimPRO bundle drop → 5 destination
-  templates (SharePoint rollup / EQ Quotes-by-site / Xero ContactsImport
-  / MYOB Card File / Outlook contacts) + user-supplied templates
-- Standalone Node script `demos/simpro-customer-rollup/rollup.mjs` for
-  one-off CLI runs
-- 293 tests passing + 1 skipped
+A snapshot decays in days. Specific claims like "12 schemas" or "293 tests passing" stop being true the moment the next commit lands. So this section captures the *shape*, not the *count* — `git log` and the package source are authoritative for what's running today.
 
-**Waiting on Royce (unblocking step — Option C, two Supabase projects):**
-1. Create `eq-demo-canonical` Supabase project (Sydney) — ~5 min. This is
-   the proving ground; everything gets validated here first.
-2. Create `sks-canonical-eq` Supabase project (Sydney) — ~5 min. This is
-   the live SKS canonical; fed the same SQL once demo is proven.
-3. Drop demo credentials in `eq-platform/apps/eq-shell/.env.local` for
-   local dev. SKS credentials go straight into the SKS Netlify env vars
-   (no local copy needed — keeps SKS untouchable during iteration).
-4. Paste `eq-platform/.generated/all-migrations.sql` into BOTH Supabase
-   SQL editors → Run — ~1 min each.
-5. Add first user to each via Supabase dashboard.
+**Shape of what's running:**
+- A growing set of canonical JSON Schemas in `schemas/` (and a copy in `eq-platform/packages/eq-schemas/src/schemas/` that's mid-sync — see memory `project_eq_platform_schema_drift_pending`). 30+ entities across staff / site / asset / customer / contact / service / safety / tests as of the 21 May S2.A bundle.
+- SQL codegen + a migration sequencer producing a single SQL file paste-ready for any Supabase project.
+- `@eq/shell` with Supabase Auth + lazy module routing + SKS palette.
+- `@eq/intake-demo` (the Intake module) — running and exercised against real SimPRO exports. Mounts in shell at `/intake`. Supports SimPRO bundle drop → five destination templates (SharePoint rollup / Quotes-by-site / Xero ContactsImport / MYOB Card File / Outlook contacts).
+- `@eq/format-ui` — three SimPRO-quote reshape-out profiles (BOM, device-register, labour-summary). See `EQ-FORMAT.md`.
+- `/api/admin/export` live on eq-solves-service.netlify.app, returning canonical-shape JSON for the entities currently wired (memory `project_admin_export_endpoint` has the live list).
+- Cards licence-canonical entity work landed 2026-05-20 to 21 (Cards Unit 2.A) — see commits `06fdcbd`, `ac4ccc6`, the PR #5 merge.
+- Maximo PDF skill (`@eq/intake/skills/maximo-pdf-wo`) shipped and deliberately parked — see memory `project_maximo_pdf_wo_skill` for the cost/latency reasoning.
 
-**Next session (~30-45 min once `eq-demo-canonical` is live):**
-- Wire `IntakeModule`'s commit fn to call `eq_intake_commit_batch` RPC
-- Add "commit canonical + download CSV" to the bundle flow
-- Smoke-test end-to-end against demo
-- Hand to Royce for live testing on demo with bookkeeper, SKS after
+These are *starting points, not finished things*. Real running will reveal flaws. No "production-ready" claims for any of it.
 
-**Then live testing:** Royce + bookkeeper use EQ Intake for real SimPRO
-exports → real SharePoint quoting work. Feedback re-orders priorities.
+**Open: canonical Supabase still unprovisioned.** Per `EQ-TENANCY-MODEL.md`, every customer gets their own Supabase project. None exist yet. The decision to provision (Option C — `eq-demo-canonical` + `sks-canonical-eq`, both Sydney) was made 2026-05-18 and hasn't been actioned. Provisioning triggers when the first surface needs to commit canonical *and* Royce has explicit billing approval for the projects.
 
-**Then phases 2-4** per `EQ-TENANCY-MODEL.md`:
-- Build EQ Quotes proper, wire to canonical
-- Build EQ Service, wire to canonical
-- Phase 3: migrate Field LIVE onto canonical (planned cutover)
-- Phase 4: migrate Cards onto canonical (per `EQ-CARDS-INTAKE-BRIDGE.md`)
+**Where to look for what's next:** `PLAN-2026-05-22.md` carries the live 90-day plan. The short version: get Cards onto outside-SKS sparkies, fix the silent-drops the audit identified, run Equinix→SimPRO as Royce's parallel workstream. Phase-2/3/4 framing from this doc's earlier versions has been replaced by the named-pain-anchored sequence in PLAN-2026-05-22.
 
 ---
 

@@ -2,7 +2,7 @@
 
 > Read `EQ-AS-CONDUIT.md` first. This doc is the bridge between the running EQ Cards product (in `C:\Projects\eq-cards`) and the canonical EQ Intake spine being built in this repo.
 
-**Status as of 29 Apr 2026:** Path A decided (consolidate, one canonical spine). Migration deferred until end of Sprint 3 / start of Phase 2. Cards stays on its own Supabase project in pause-and-polish mode through Phase 1.
+**Status as of 2026-05-22:** Path A decision still holds (consolidate, one canonical spine). The original sequencing language ("end of Sprint 3 / start of Phase 2") no longer maps to how the work has played out — sprint terminology is dead. Migration triggers on either of: the canonical Supabase getting provisioned, or a second EQ surface needing to read shared user data. Cards stays on its own Supabase project until then.
 
 ---
 
@@ -28,9 +28,12 @@ The trade-offs are real (migration cost, blast-radius concentration, less indepe
 
 ## Migration timing
 
-**Cards keeps running on its own Supabase project through Sprint 1, 2, and 3.** None of that work touches user data. Sprint 1 is schemas in the canonical project. Sprint 2 is the validation engine. Sprint 3 is the AI mapping layer. Cards isn't affected.
+**Cards keeps running on its own Supabase project until the trigger fires.** The trigger is whichever happens first:
 
-**Migration window: between end of Sprint 3 and start of Phase 2.** That's when EQ Format becomes the first surface that needs to read shared user data from the canonical spine. By then the spine has been mature for months, schemas are stable, and Cards has had months of pause-and-polish to keep its shape locked.
+- The canonical Supabase (per `EQ-TENANCY-MODEL.md`) gets provisioned and the first EQ surface starts writing to it
+- A second EQ surface needs to read shared user data from canonical (Format, Quotes, Service)
+
+Whichever lands first, that's the cutover window. Until then, none of the spine work touches user data — schemas, validation engine, and AI mapping layer all sit downstream of the canonical project that doesn't yet exist. Cards is unaffected.
 
 The migration itself is one deliberate weekend of work:
 

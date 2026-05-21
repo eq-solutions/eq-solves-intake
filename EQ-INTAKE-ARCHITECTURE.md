@@ -98,11 +98,13 @@ The desktop surface. Drag any spreadsheet in. AI maps the columns to the canonic
 
 This is what gets the office out of "manually retype the SimPRO export into the new system" hell. Drag, confirm, done.
 
-### EQ Capture
+### EQ Capture (built, deliberately cold)
 
 The vision surface. Photos of paper SWMS. PDF supplier invoices. Forwarded emails. Handwritten prestart sheets. Vision AI extracts the structured data and routes it to the right canonical entity, preserving the raw text for audit.
 
-This is the single biggest time-recovery for any subbie still using paper for anything compliance-critical. SKS (50+ field staff, data centre projects) generates dozens of paper SWMS per week. Every one of them is currently a retype-or-scan-and-hope job.
+**Status as of 2026-05-22:** built end-to-end as the `maximo-pdf-wo` skill (`@eq/intake/skills/maximo-pdf-wo`) plus a wired eq-service integration (parked on branch `claude/wonderful-shannon-9a41a5`), then deliberately shelved. Measured cost was $0.05–0.30 per PDF and latency was 28–80 seconds per PDF on Claude Sonnet 4.5; Netlify's 26-second sync function cap was a hard production blocker on top. For the volume of third-party documents we actually see (Maximo WOs from Equinix maybe a handful of times a month), saving a few minutes of retype at that cost and wait isn't a workflow win.
+
+The OCR engine still runs inside Cards (mobile ML Kit + Claude Vision via Supabase Edge Function). Cards owns the high-leverage intake stories. The standalone Capture surface stays cold until either vision cost/latency drops by an order of magnitude or a real recurring document pain surfaces that Cards can't own.
 
 ---
 
