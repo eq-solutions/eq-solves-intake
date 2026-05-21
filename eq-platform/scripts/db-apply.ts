@@ -17,14 +17,20 @@
  * Output: eq-platform/.generated/all-migrations.sql
  *
  * Order:
- *   1. _all_tables.sql           — canonical entity tables (codegen)
- *   2. 001_intake_spine.sql      — eq_schema_registry, eq_intake_events, etc.
- *   3. 002_intake_module_columns — adds imported_at/from/intake_id to entities
- *   4. 003_schema_version_columns— schema_version + import mode
- *   5. 004_security_advisor_fix  — pin search_path + revoke PUBLIC on SECURITY DEFINER
- *   6. 005_licences_extensions   — RLS, indexes, storage bucket for licences
- *   7. 006_licences_commit_path  — extends eq_intake_commit_batch RPC for licences
- *   8. seed_schema_registry      — inserts the JSON schemas as rows
+ *   1.  _all_tables.sql              — canonical entity tables (codegen)
+ *   2.  001_intake_spine.sql         — eq_schema_registry, eq_intake_events, etc.
+ *   3.  002_intake_module_columns    — adds imported_at/from/intake_id to entities
+ *   4.  003_schema_version_columns   — schema_version + import mode
+ *   5.  004_security_advisor_fix     — pin search_path + revoke PUBLIC on SECURITY DEFINER
+ *   6.  005_licences_extensions      — RLS, indexes, storage bucket for licences
+ *   7.  006_licences_commit_path     — extends eq_intake_commit_batch RPC for licences
+ *   8.  007_schema_split_and_reshape — shell_control + app_data schema split (Unit 2)
+ *   9.  008_decompose_intake_commit_batch — per-domain RPCs + unwinders (Unit 3)
+ *   10. 009_quotes_domain            — 7 quote-domain tables + dispatch (Unit 4)
+ *   11. 010_field_domain             — 22 field-domain tables + view (Unit 5 part 1)
+ *   12. 010b_field_dispatch_and_router — Unit 5 part 2 (RPC dispatch + router)
+ *   13. 011_eq_list_module_entities  — registry-listing helper RPC (Unit 7)
+ *   14. seed_schema_registry         — inserts the JSON schemas as rows
  *
  * Idempotent: every CREATE / ALTER uses IF NOT EXISTS or IF EXISTS;
  * the seed uses INSERT ... ON CONFLICT DO UPDATE.
@@ -175,6 +181,42 @@ function main() {
     "-- ============================================================================",
     "",
     readSqlFile("006_licences_commit_path.sql"),
+    "",
+    "-- ============================================================================",
+    "-- 8. SCHEMA SPLIT + RESHAPE (Unit 2 — shell_control + app_data schemas)",
+    "-- ============================================================================",
+    "",
+    readSqlFile("007_schema_split_and_reshape.sql"),
+    "",
+    "-- ============================================================================",
+    "-- 9. DECOMPOSE INTAKE COMMIT BATCH (Unit 3 — per-domain RPCs + unwinders)",
+    "-- ============================================================================",
+    "",
+    readSqlFile("008_decompose_intake_commit_batch.sql"),
+    "",
+    "-- ============================================================================",
+    "-- 10. QUOTES DOMAIN (Unit 4 — 7 quote-domain tables + dispatch)",
+    "-- ============================================================================",
+    "",
+    readSqlFile("009_quotes_domain.sql"),
+    "",
+    "-- ============================================================================",
+    "-- 11. FIELD DOMAIN tables (Unit 5 part 1 — 22 tables + view + registry seed)",
+    "-- ============================================================================",
+    "",
+    readSqlFile("010_field_domain.sql"),
+    "",
+    "-- ============================================================================",
+    "-- 11b. FIELD dispatch + router update (Unit 5 part 2)",
+    "-- ============================================================================",
+    "",
+    readSqlFile("010b_field_dispatch_and_router.sql"),
+    "",
+    "-- ============================================================================",
+    "-- 12. eq_list_module_entities RPC (Unit 7 — registry-listing helper)",
+    "-- ============================================================================",
+    "",
+    readSqlFile("011_eq_list_module_entities.sql"),
     "",
     seedSchemaRegistry(),
     "",
