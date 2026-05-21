@@ -69,7 +69,19 @@ The skill should round-trip: PDF → canonical work_order rows → eq-service ma
 ## Status as of 2026-05-21
 
 - **Skill implemented in EQ Intake** — `eq-platform/packages/eq-intake/src/skills/maximo-pdf-wo/`. Public entry `parseMaximoPdfWo({ files, ai? })`. Returns `MaintenanceCheckBundle[]` of canonical insert candidates (one bundle per grouped check).
-- Fixture-driven tests live at `eq-platform/packages/eq-intake/test/skills/maximo-pdf-wo.test.ts`. They feed the 4 PDFs in this directory through a mock `AIProvider` (canned `work_orders[]` matching the table above) and assert: 2 maintenance_checks + 7 check_assets, correct grouping, idempotent re-parse, iteration-order-independent output.
+- Fixture-driven tests live at `eq-platform/packages/eq-intake/test/skills/maximo-pdf-wo.test.ts` (mock AI) and `maximo-pdf-wo.integration.test.ts` (real Claude vision, opt-in via `pnpm --filter @eq/intake test:integration`).
 - No new canonical schema was needed — `maintenance_check` + `check_asset` already cover the shape. The schema in `eq-intake/src/skills/maximo-pdf-wo/schema.ts` is the AI prompt's extraction schema only (wraps WO records in `{ work_orders: [...] }` for multi-WO PDFs).
 - Real-world routing: every PDF in this fixture is CCITTFax-encoded — `unpdf` returns zero extractable text, so all 4 hit the vision path. The skill still tries text first and would skip the AI call if Maximo ever ships a born-digital print.
-- eq-service integration is the next session's work: wire `parseMaximoPdfWo` behind the existing `/maintenance/new` PDF-upload affordance, run the returned bundles through `validate()` + `commitDeltaImportAction` (or its successor) and retire the manual-entry flow for these PDFs.
+
+### Live AI run, 2026-05-21 — what we actually saw
+
+First live-fire test against Claude Sonnet 4.5 vision surfaced two material facts the original README missed:
+
+- **The scanned PDFs are bigger than this README said.** "2 stapled WOs per scan" was an undercount. Claude found 6–7 WOs per scan (19 ATS WOs total across the 3 scans), all with legitimate sequential Maximo WO# format (4416948, 4417018, …). Treat the 7-row table at the top of this README as a minimum, not the truth.
+- **CUFT spans two days.** Target Start = 20-Jun-2026 (matches README), Target Finish = **21-Jun-2026** (README had 20-Jun on both). The skill picks `target_finish` as `due_date`, so the canonical bundle ends up on 21-Jun. Worth confirming with Equinix whether the WO is genuinely a 2-day visit or whether the PDF has a typo.
+
+Per-PDF latency on the live run: 28s (CUFT, 1 page) up to ~80s (multi-WO scans). Full 4-PDF run: 322s wall-clock, producing 3 bundles and 20 check_assets.
+
+### Integration into eq-service (next session)
+
+Wire `parseMaximoPdfWo` behind the existing `/maintenance/new` PDF-upload affordance, run the returned bundles through `validate()` + `commitDeltaImportAction` (or its successor), then surface a confirm-step UI so the technician can fix any vision misreads before the canonical rows commit. Retire the manual-entry flow for these PDFs.

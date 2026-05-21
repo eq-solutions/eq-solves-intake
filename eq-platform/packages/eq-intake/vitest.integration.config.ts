@@ -7,5 +7,6 @@ export default defineConfig({
     globals: false,
     // Vision calls can take 10-30s per PDF; give the suite room.
     testTimeout: 180_000,
+    setupFiles: ["./test/integration-setup.ts"],
   },
 });
