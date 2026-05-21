@@ -331,6 +331,180 @@ create index if not exists prestart_checks_tenant_id_idx on prestart_checks(tena
 create index if not exists prestart_checks_site_id_idx on prestart_checks(site_id);
 alter table prestart_checks enable row level security;
 
+-- ----- quote_attachment -----
+create table if not exists quote_attachment (
+  attachment_id uuid,
+  tenant_id uuid,
+  quote_id uuid not null,
+  file_name text not null,
+  file_size_bytes bigint,
+  mime_type text,
+  storage_path text,
+  sha256 text,
+  doc_type text check (doc_type is null or doc_type in ('docx', 'pdf', 'image', 'other')),
+  quote_snapshot jsonb,
+  generated_by_initials varchar(8),
+  generated_at timestamptz,
+  uploaded_at timestamptz,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists quote_attachment_tenant_id_idx on quote_attachment(tenant_id);
+create index if not exists quote_attachment_quote_id_idx on quote_attachment(quote_id);
+alter table quote_attachment enable row level security;
+
+-- ----- quote_email_outbox -----
+create table if not exists quote_email_outbox (
+  outbox_id uuid,
+  tenant_id uuid,
+  quote_id uuid not null,
+  to_email text not null,
+  to_name text,
+  cc_emails jsonb,
+  bcc_emails jsonb,
+  subject text not null,
+  body_html text,
+  body_text text,
+  attachment_ids jsonb,
+  status text not null default 'queued' check (status is null or status in ('queued', 'sending', 'sent', 'failed', 'cancelled')),
+  queued_at timestamptz,
+  sent_at timestamptz,
+  failed_at timestamptz,
+  error_message text,
+  attempt_count bigint default 0,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists quote_email_outbox_tenant_id_idx on quote_email_outbox(tenant_id);
+create index if not exists quote_email_outbox_quote_id_idx on quote_email_outbox(quote_id);
+alter table quote_email_outbox enable row level security;
+
+-- ----- quote_line_item -----
+create table if not exists quote_line_item (
+  line_item_id uuid,
+  tenant_id uuid,
+  quote_id uuid not null,
+  line_number bigint not null,
+  description text not null,
+  quantity_thousandths bigint default 1000,
+  unit varchar(16),
+  unit_rate_cents bigint default 0,
+  line_total_cents bigint default 0,
+  category text check (category is null or category in ('labour', 'material', 'equipment', 'subcontractor', 'other')),
+  notes text,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists quote_line_item_tenant_id_idx on quote_line_item(tenant_id);
+create index if not exists quote_line_item_quote_id_idx on quote_line_item(quote_id);
+alter table quote_line_item enable row level security;
+
+-- ----- quote_status_history -----
+create table if not exists quote_status_history (
+  history_id uuid,
+  tenant_id uuid,
+  quote_id uuid not null,
+  from_status text check (from_status is null or from_status in ('draft', 'sent', 'accepted', 'rejected', 'expired', 'superseded')),
+  to_status text not null check (to_status is null or to_status in ('draft', 'sent', 'accepted', 'rejected', 'expired', 'superseded')),
+  changed_by_initials varchar(8),
+  changed_by_user_id uuid,
+  reason text,
+  changed_at timestamptz,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists quote_status_history_tenant_id_idx on quote_status_history(tenant_id);
+create index if not exists quote_status_history_quote_id_idx on quote_status_history(quote_id);
+alter table quote_status_history enable row level security;
+
+-- ----- quote -----
+create table if not exists quote (
+  quote_id uuid primary key default gen_random_uuid(),
+  tenant_id uuid,
+  customer_id uuid not null,
+  contact_id uuid,
+  site_id uuid,
+  quote_number varchar(64),
+  external_id varchar(64),
+  project_name varchar(200),
+  attn_name varchar(100),
+  attn_first_name varchar(60),
+  attn_phone varchar(40),
+  address text,
+  scope_of_works text,
+  estimator_name varchar(100),
+  estimator_initials varchar(8),
+  status text not null default 'draft' check (status is null or status in ('draft', 'sent', 'accepted', 'rejected', 'expired', 'superseded')),
+  subtotal_cents bigint default 0,
+  gst_cents bigint default 0,
+  total_cents bigint default 0,
+  margin_pct numeric,
+  sent_at timestamptz,
+  sent_by_initials varchar(8),
+  notes text,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists quote_tenant_id_idx on quote(tenant_id);
+create index if not exists quote_customer_id_idx on quote(customer_id);
+create index if not exists quote_contact_id_idx on quote(contact_id);
+create index if not exists quote_site_id_idx on quote(site_id);
+alter table quote enable row level security;
+
+-- ----- rate_library -----
+create table if not exists rate_library (
+  rate_id uuid,
+  tenant_id uuid,
+  code text,
+  description text not null,
+  category text check (category is null or category in ('labour', 'material', 'equipment', 'subcontractor', 'other')),
+  unit varchar(16),
+  unit_cost_cents bigint default 0,
+  unit_sell_cents bigint default 0,
+  margin_pct numeric,
+  active boolean default true,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists rate_library_tenant_id_idx on rate_library(tenant_id);
+alter table rate_library enable row level security;
+
 -- ----- schedule -----
 create table if not exists schedule_entries (
   entry_id uuid primary key default gen_random_uuid(),
@@ -360,6 +534,27 @@ create index if not exists schedule_entries_staff_id_idx on schedule_entries(sta
 create index if not exists schedule_entries_site_id_idx on schedule_entries(site_id);
 create index if not exists schedule_entries_supervisor_id_idx on schedule_entries(supervisor_id);
 alter table schedule_entries enable row level security;
+
+-- ----- scope_template -----
+create table if not exists scope_template (
+  template_id uuid,
+  tenant_id uuid,
+  name varchar(100) not null,
+  category varchar(60),
+  body text not null,
+  sort_order bigint default 0,
+  active boolean default true,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists scope_template_tenant_id_idx on scope_template(tenant_id);
+alter table scope_template enable row level security;
 
 -- ----- site -----
 create table if not exists sites (
@@ -571,6 +766,46 @@ alter table prestart_checks drop constraint if exists prestart_checks_site_id_fk
 alter table prestart_checks add constraint prestart_checks_site_id_fk foreign key (site_id) references sites(site_id);
 alter table prestart_checks drop constraint if exists prestart_checks_source_enum_check;
 alter table prestart_checks add constraint prestart_checks_source_enum_check check (source is null or source in ('cards_mobile', 'import_spreadsheet', 'capture_pdf', 'capture_photo', 'manual_entry'));
+
+-- FKs for quote_attachment
+alter table quote_attachment drop constraint if exists quote_attachment_quote_id_fk;
+alter table quote_attachment add constraint quote_attachment_quote_id_fk foreign key (quote_id) references quote(quote_id);
+alter table quote_attachment drop constraint if exists quote_attachment_doc_type_enum_check;
+alter table quote_attachment add constraint quote_attachment_doc_type_enum_check check (doc_type is null or doc_type in ('docx', 'pdf', 'image', 'other'));
+
+-- FKs for quote_email_outbox
+alter table quote_email_outbox drop constraint if exists quote_email_outbox_quote_id_fk;
+alter table quote_email_outbox add constraint quote_email_outbox_quote_id_fk foreign key (quote_id) references quote(quote_id);
+alter table quote_email_outbox drop constraint if exists quote_email_outbox_status_enum_check;
+alter table quote_email_outbox add constraint quote_email_outbox_status_enum_check check (status is null or status in ('queued', 'sending', 'sent', 'failed', 'cancelled'));
+
+-- FKs for quote_line_item
+alter table quote_line_item drop constraint if exists quote_line_item_quote_id_fk;
+alter table quote_line_item add constraint quote_line_item_quote_id_fk foreign key (quote_id) references quote(quote_id);
+alter table quote_line_item drop constraint if exists quote_line_item_category_enum_check;
+alter table quote_line_item add constraint quote_line_item_category_enum_check check (category is null or category in ('labour', 'material', 'equipment', 'subcontractor', 'other'));
+
+-- FKs for quote_status_history
+alter table quote_status_history drop constraint if exists quote_status_history_quote_id_fk;
+alter table quote_status_history add constraint quote_status_history_quote_id_fk foreign key (quote_id) references quote(quote_id);
+alter table quote_status_history drop constraint if exists quote_status_history_from_status_enum_check;
+alter table quote_status_history add constraint quote_status_history_from_status_enum_check check (from_status is null or from_status in ('draft', 'sent', 'accepted', 'rejected', 'expired', 'superseded'));
+alter table quote_status_history drop constraint if exists quote_status_history_to_status_enum_check;
+alter table quote_status_history add constraint quote_status_history_to_status_enum_check check (to_status is null or to_status in ('draft', 'sent', 'accepted', 'rejected', 'expired', 'superseded'));
+
+-- FKs for quote
+alter table quote drop constraint if exists quote_customer_id_fk;
+alter table quote add constraint quote_customer_id_fk foreign key (customer_id) references customers(customer_id);
+alter table quote drop constraint if exists quote_contact_id_fk;
+alter table quote add constraint quote_contact_id_fk foreign key (contact_id) references contacts(contact_id);
+alter table quote drop constraint if exists quote_site_id_fk;
+alter table quote add constraint quote_site_id_fk foreign key (site_id) references sites(site_id);
+alter table quote drop constraint if exists quote_status_enum_check;
+alter table quote add constraint quote_status_enum_check check (status is null or status in ('draft', 'sent', 'accepted', 'rejected', 'expired', 'superseded'));
+
+-- FKs for rate_library
+alter table rate_library drop constraint if exists rate_library_category_enum_check;
+alter table rate_library add constraint rate_library_category_enum_check check (category is null or category in ('labour', 'material', 'equipment', 'subcontractor', 'other'));
 
 -- FKs for schedule
 alter table schedule_entries drop constraint if exists schedule_entries_staff_id_fk;
@@ -2555,6 +2790,2380 @@ $$;
 
 
 -- ============================================================================
+-- 8. SCHEMA SPLIT + RESHAPE (Unit 2 — shell_control + app_data schemas)
+-- ============================================================================
+
+-- ============================================================================
+-- 007 — Schema split + entity reshape (canonical-readiness Unit 2)
+-- ============================================================================
+-- Splits public.* into shell_control.* (auth + tenancy + intake plumbing)
+-- and app_data.* (canonical entity tables). Applies Unit 1 audit findings:
+--   - tenant_id NOT NULL + JWT default on every entity table (Finding 1)
+--   - schedule_entries.entry_id → schedule_id rename (Finding 2)
+--   - staff.user_id FK to shell_control.users — the missing user↔staff link
+--     (Finding 7, discovered during Unit 1 verification)
+--   - site.track_hours, site.budget_hours, site.slug (Finding from sites audit)
+--   - staff additions: notify_roster, dob_day, dob_month, digest_opt_in,
+--     digest_cron_schedule, tafe_day, year_level
+--   - Re-label safety entities in eq_schema_registry from module='cards' to
+--     module='field' (prestart, toolbox_talk, swms, jsa, itp, incident).
+--     Cards keeps only licence as a canonical entity.
+--
+-- Locked decisions (per eq/canonical-readiness/plan.md, 2026-05-20 review):
+--   - Schema split now (Prereq B)
+--   - prestart_checks + toolbox_talks: canonical shape wins (Option A)
+--   - Per-tenant deploy is template-first via pnpm db:apply bundle
+--   - PostgREST relies on search_path (no client-side Accept-Profile header)
+--
+-- Idempotent: every action uses IF NOT EXISTS / IF EXISTS / CREATE OR REPLACE.
+-- Atomic: wrapped in BEGIN ... COMMIT.
+-- ============================================================================
+
+begin;
+
+-- ----------------------------------------------------------------------------
+-- 1. Create schemas
+-- ----------------------------------------------------------------------------
+
+create schema if not exists shell_control;
+create schema if not exists app_data;
+
+comment on schema shell_control is
+  'Auth + tenancy + intake plumbing. Tables: tenants, users, module_entitlements, '
+  'user_invites, eq_schema_registry, eq_intake_templates, eq_intake_events, '
+  'eq_intake_row_audit, eq_export_events, eq_export_profiles. '
+  'Owned by the shell. Stays in primary region under any future regional sharding.';
+
+comment on schema app_data is
+  'Tenant business data — canonical entity tables. Currently 13 entities: '
+  'customer, contact, site, staff, schedule_entries, prestart_checks, '
+  'toolbox_talks, swms, jsa_records, itp_records, incidents, licences, assets. '
+  'Future regional sharding target.';
+
+-- ----------------------------------------------------------------------------
+-- 2. Move tables to their target schemas
+-- ----------------------------------------------------------------------------
+-- ALTER TABLE SET SCHEMA moves the table + indexes + constraints + policies +
+-- triggers atomically. FK references update transparently (Postgres stores
+-- FKs by OID, not by qualified name).
+-- ----------------------------------------------------------------------------
+
+-- shell_control tables (control plane + intake plumbing)
+do $$
+begin
+  if exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'tenants') then
+    alter table public.tenants set schema shell_control;
+  end if;
+  if exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'users') then
+    alter table public.users set schema shell_control;
+  end if;
+  if exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'module_entitlements') then
+    alter table public.module_entitlements set schema shell_control;
+  end if;
+  if exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'user_invites') then
+    alter table public.user_invites set schema shell_control;
+  end if;
+  if exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'eq_schema_registry') then
+    alter table public.eq_schema_registry set schema shell_control;
+  end if;
+  if exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'eq_intake_templates') then
+    alter table public.eq_intake_templates set schema shell_control;
+  end if;
+  if exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'eq_intake_events') then
+    alter table public.eq_intake_events set schema shell_control;
+  end if;
+  if exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'eq_intake_row_audit') then
+    alter table public.eq_intake_row_audit set schema shell_control;
+  end if;
+  if exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'eq_export_events') then
+    alter table public.eq_export_events set schema shell_control;
+  end if;
+  if exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'eq_export_profiles') then
+    alter table public.eq_export_profiles set schema shell_control;
+  end if;
+end $$;
+
+-- app_data tables (canonical entity layer)
+do $$
+begin
+  if exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'customers') then
+    alter table public.customers set schema app_data;
+  end if;
+  if exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'contacts') then
+    alter table public.contacts set schema app_data;
+  end if;
+  if exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'sites') then
+    alter table public.sites set schema app_data;
+  end if;
+  if exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'staff') then
+    alter table public.staff set schema app_data;
+  end if;
+  if exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'schedule_entries') then
+    alter table public.schedule_entries set schema app_data;
+  end if;
+  if exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'prestart_checks') then
+    alter table public.prestart_checks set schema app_data;
+  end if;
+  if exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'toolbox_talks') then
+    alter table public.toolbox_talks set schema app_data;
+  end if;
+  if exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'swms') then
+    alter table public.swms set schema app_data;
+  end if;
+  if exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'jsa_records') then
+    alter table public.jsa_records set schema app_data;
+  end if;
+  if exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'itp_records') then
+    alter table public.itp_records set schema app_data;
+  end if;
+  if exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'incidents') then
+    alter table public.incidents set schema app_data;
+  end if;
+  if exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'licences') then
+    alter table public.licences set schema app_data;
+  end if;
+  if exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'assets') then
+    alter table public.assets set schema app_data;
+  end if;
+end $$;
+
+-- ----------------------------------------------------------------------------
+-- 3. Update search_path on the public roles
+-- ----------------------------------------------------------------------------
+-- Order: app_data first (most common reads/writes), shell_control second
+-- (control-plane reads), public third (extensions + anything legacy), then
+-- extensions explicitly. This means clients calling /rest/v1/customer
+-- resolve to app_data.customer without needing Accept-Profile header.
+-- ----------------------------------------------------------------------------
+
+alter role authenticated set search_path = app_data, shell_control, public, extensions;
+alter role service_role set search_path = app_data, shell_control, public, extensions;
+alter role anon set search_path = app_data, shell_control, public, extensions;
+
+-- ----------------------------------------------------------------------------
+-- 4. Update search_path on all RPCs and trigger functions
+-- ----------------------------------------------------------------------------
+-- Functions have their own SET search_path which overrides role-level
+-- search_path. Each function we own needs the new schemas added so it can
+-- still find the entity tables it touches.
+-- ----------------------------------------------------------------------------
+
+do $$
+declare
+  fn record;
+begin
+  for fn in
+    select n.nspname as schema_name, p.proname, pg_get_function_identity_arguments(p.oid) as args
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname like 'eq_%'
+  loop
+    execute format(
+      'alter function %I.%I(%s) set search_path = app_data, shell_control, public, extensions',
+      fn.schema_name, fn.proname, fn.args
+    );
+  end loop;
+end $$;
+
+-- ----------------------------------------------------------------------------
+-- 5. tenant_id hardening — NOT NULL + JWT default (Finding 1)
+-- ----------------------------------------------------------------------------
+-- Every entity table gets tenant_id NOT NULL with a default that pulls from
+-- the JWT app_metadata claim. This closes the "ghost row" footgun: any
+-- INSERT by an authenticated user auto-populates tenant_id; service_role
+-- INSERTs still have to set it explicitly (default doesn't fire if value
+-- is provided).
+-- ----------------------------------------------------------------------------
+
+do $$
+declare
+  entity_table text;
+  entity_tables text[] := array[
+    'customers', 'contacts', 'sites', 'staff', 'schedule_entries',
+    'prestart_checks', 'toolbox_talks', 'swms', 'jsa_records', 'itp_records',
+    'incidents', 'licences', 'assets'
+  ];
+begin
+  foreach entity_table in array entity_tables
+  loop
+    -- Backfill any existing NULL tenant_ids (there should be none in core today)
+    -- Skip; we don't have a fallback tenant to assign
+
+    -- Set NOT NULL only if no NULLs exist
+    if not exists (
+      select 1 from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'app_data' and c.relname = entity_table
+    ) then
+      continue;
+    end if;
+
+    execute format(
+      'alter table app_data.%I alter column tenant_id set default (auth.jwt() -> ''app_metadata'' ->> ''tenant_id'')::uuid',
+      entity_table
+    );
+
+    -- Only set NOT NULL if no NULLs (idempotent re-runs should not break if column already NOT NULL)
+    begin
+      execute format('alter table app_data.%I alter column tenant_id set not null', entity_table);
+    exception when others then
+      raise notice 'Could not set tenant_id NOT NULL on app_data.%: %', entity_table, sqlerrm;
+    end;
+  end loop;
+end $$;
+
+-- ----------------------------------------------------------------------------
+-- 6. Per-table reshapes from Unit 1 audit
+-- ----------------------------------------------------------------------------
+
+-- 6.1 — app_data.sites — add Field-domain columns
+alter table app_data.sites
+  add column if not exists track_hours boolean not null default false,
+  add column if not exists budget_hours numeric(10,2) null,
+  add column if not exists slug text null;
+
+comment on column app_data.sites.track_hours is
+  'Opt site into project hours tracking. Default false. From Field v3.4.71.';
+comment on column app_data.sites.budget_hours is
+  'Initial hour budget set at kickoff. Editable. Null = no budget set.';
+comment on column app_data.sites.slug is
+  'URL-safe slug for shell routing (e.g. /core/field/sites/{slug}).';
+
+create index if not exists sites_track_hours_idx
+  on app_data.sites (tenant_id, track_hours)
+  where track_hours = true;
+
+create unique index if not exists sites_tenant_slug_uq
+  on app_data.sites (tenant_id, slug)
+  where slug is not null;
+
+-- 6.2 — app_data.staff — add Field-domain columns + the missing user↔staff link (Finding 7)
+alter table app_data.staff
+  add column if not exists user_id uuid null,
+  add column if not exists notify_roster boolean not null default false,
+  add column if not exists dob_day smallint null,
+  add column if not exists dob_month smallint null,
+  add column if not exists digest_opt_in boolean not null default false,
+  add column if not exists digest_cron_schedule text null,
+  add column if not exists tafe_day text null,
+  add column if not exists year_level smallint null;
+
+-- staff.user_id FK to shell_control.users (cross-schema FK)
+-- ON DELETE SET NULL: deleting a user shouldn't cascade-delete their staff record
+-- (the staff member might still be on the roster as a "deactivated user" placeholder)
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'staff_user_id_fk'
+      and conrelid = 'app_data.staff'::regclass
+  ) then
+    alter table app_data.staff
+      add constraint staff_user_id_fk foreign key (user_id)
+      references shell_control.users(id) on delete set null;
+  end if;
+end $$;
+
+-- CHECK constraints with idempotent guards
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'staff_dob_day_range') then
+    alter table app_data.staff
+      add constraint staff_dob_day_range check (dob_day is null or dob_day between 1 and 31);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'staff_dob_month_range') then
+    alter table app_data.staff
+      add constraint staff_dob_month_range check (dob_month is null or dob_month between 1 and 12);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'staff_tafe_day_range') then
+    alter table app_data.staff
+      add constraint staff_tafe_day_range check (tafe_day is null or tafe_day in ('mon','tue','wed','thu','fri'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'staff_year_level_range') then
+    alter table app_data.staff
+      add constraint staff_year_level_range check (year_level is null or year_level between 1 and 4);
+  end if;
+end $$;
+
+create index if not exists staff_user_id_idx
+  on app_data.staff (user_id)
+  where user_id is not null;
+
+comment on column app_data.staff.user_id is
+  'FK to shell_control.users — the canonical user↔staff link. NULL for staff '
+  'who never log in (e.g. labour-hire). Added Unit 2 (Finding 7).';
+comment on column app_data.staff.notify_roster is
+  'When true, staff member receives an email when their schedule changes. Field v3.4.3+';
+comment on column app_data.staff.dob_day is
+  'DOB day-of-month (1-31). Year never stored to avoid age-based surfacing.';
+comment on column app_data.staff.dob_month is
+  'DOB month (1-12). Year never stored to avoid age-based surfacing.';
+comment on column app_data.staff.digest_opt_in is
+  'When true, staff member receives manager digest emails (per Field 2026-04-19).';
+comment on column app_data.staff.digest_cron_schedule is
+  'Cron schedule for digest delivery. NULL = use tenant default.';
+comment on column app_data.staff.tafe_day is
+  'TAFE day for apprentices (mon|tue|wed|thu|fri). NULL for non-apprentices.';
+comment on column app_data.staff.year_level is
+  'Apprentice year level (1-4). NULL for non-apprentices.';
+
+-- 6.3 — app_data.schedule_entries — rename entry_id → schedule_id (Finding 2)
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'app_data' and table_name = 'schedule_entries' and column_name = 'entry_id'
+  ) then
+    alter table app_data.schedule_entries rename column entry_id to schedule_id;
+  end if;
+end $$;
+
+-- ----------------------------------------------------------------------------
+-- 7. Re-label safety entities in eq_schema_registry (cards → field)
+-- ----------------------------------------------------------------------------
+-- Per 2026-05-20 plan-review: Field is the primary writer of safety registers
+-- (prestart, toolbox_talk, swms, jsa, itp, incident). Cards is one mobile
+-- capture surface among several. Cards retains only `licence` as a canonical
+-- entity. The module label drives per-domain RPC dispatch in Unit 3.
+-- ----------------------------------------------------------------------------
+
+update shell_control.eq_schema_registry
+set module = 'field'
+where entity in ('prestart', 'toolbox_talk', 'swms', 'jsa', 'itp', 'incident')
+  and module = 'cards';
+
+-- ----------------------------------------------------------------------------
+-- 8. RLS policy gap fill — entity tables had only SELECT before
+-- ----------------------------------------------------------------------------
+-- Most entity tables today have only a SELECT policy. INSERT/UPDATE/DELETE
+-- are blocked because no policy grants them — writes go through
+-- eq_intake_commit_batch SECURITY DEFINER RPC which bypasses RLS as
+-- service_role implicit. This is fine. But for any direct PostgREST writes
+-- (e.g. status updates from a UI without going through Intake), we need
+-- explicit policies. Adding INSERT + UPDATE + DELETE on every entity table
+-- now for completeness — predicate is the same tenant_id match.
+--
+-- These are additive (no existing policy is dropped). Authenticated users
+-- whose JWT carries app_metadata.tenant_id can write rows whose tenant_id
+-- matches.
+-- ----------------------------------------------------------------------------
+
+do $$
+declare
+  entity_table text;
+  entity_tables text[] := array[
+    'customers', 'contacts', 'sites', 'staff', 'schedule_entries',
+    'prestart_checks', 'toolbox_talks', 'swms', 'jsa_records', 'itp_records',
+    'incidents', 'licences', 'assets'
+  ];
+  policy_name text;
+begin
+  foreach entity_table in array entity_tables
+  loop
+    -- INSERT
+    policy_name := entity_table || '_insert';
+    if not exists (select 1 from pg_policies where schemaname = 'app_data' and tablename = entity_table and policyname = policy_name) then
+      execute format(
+        'create policy %I on app_data.%I for insert to authenticated '
+        'with check (tenant_id = ((auth.jwt() -> ''app_metadata'' ->> ''tenant_id'')::uuid))',
+        policy_name, entity_table
+      );
+    end if;
+
+    -- UPDATE
+    policy_name := entity_table || '_update';
+    if not exists (select 1 from pg_policies where schemaname = 'app_data' and tablename = entity_table and policyname = policy_name) then
+      execute format(
+        'create policy %I on app_data.%I for update to authenticated '
+        'using (tenant_id = ((auth.jwt() -> ''app_metadata'' ->> ''tenant_id'')::uuid)) '
+        'with check (tenant_id = ((auth.jwt() -> ''app_metadata'' ->> ''tenant_id'')::uuid))',
+        policy_name, entity_table
+      );
+    end if;
+
+    -- DELETE
+    policy_name := entity_table || '_delete';
+    if not exists (select 1 from pg_policies where schemaname = 'app_data' and tablename = entity_table and policyname = policy_name) then
+      execute format(
+        'create policy %I on app_data.%I for delete to authenticated '
+        'using (tenant_id = ((auth.jwt() -> ''app_metadata'' ->> ''tenant_id'')::uuid))',
+        policy_name, entity_table
+      );
+    end if;
+  end loop;
+end $$;
+
+-- ----------------------------------------------------------------------------
+-- 9. Grant search_path includes app_data + shell_control for PostgREST
+-- ----------------------------------------------------------------------------
+-- PostgREST reads from db.schemas in its config. The Supabase default is
+-- 'public, graphql_public'. We need to ensure 'app_data' and 'shell_control'
+-- are reachable by the API role. The role-level search_path (set above)
+-- handles this for SQL execution; but PostgREST's URL routing (e.g.
+-- /rest/v1/customer) needs the schemas added to its exposed-schemas list.
+--
+-- The actual config change is done via Supabase Dashboard:
+--   Project Settings → API → Exposed schemas → add 'app_data' + 'shell_control'
+-- (Or via management API.) This SQL migration cannot toggle that — it's an
+-- API-gateway config, not a database setting. Operational step flagged here.
+-- ----------------------------------------------------------------------------
+
+-- (Operational: add app_data + shell_control to PostgREST exposed schemas)
+
+commit;
+
+-- ============================================================================
+-- Verification (run separately after the migration commits):
+--
+-- select schemaname, count(*) as tables
+-- from pg_tables
+-- where schemaname in ('app_data', 'shell_control', 'public')
+-- group by schemaname;
+--
+-- -- Expect: app_data ~13, shell_control ~10, public 0 (canonical tables moved)
+--
+-- select entity, module from shell_control.eq_schema_registry order by module, entity;
+--
+-- -- Expect: 7 field, 3 core, 1 cards (licence), 1 service (asset), 1 cards or field? prestart_check
+--
+-- select column_name, is_nullable from information_schema.columns
+-- where table_schema = 'app_data' and table_name = 'staff' and column_name = 'user_id';
+--
+-- -- Expect: user_id, YES (nullable)
+-- ============================================================================
+
+
+-- ============================================================================
+-- 9. DECOMPOSE INTAKE COMMIT BATCH (Unit 3 — per-domain RPCs + unwinders)
+-- ============================================================================
+
+-- ============================================================================
+-- 008 — Decompose eq_intake_commit_batch (canonical-readiness Unit 3)
+-- ============================================================================
+-- Decomposes the mega-RPC into:
+--   - 4 private shared library functions (_eq_intake_check_tenant_match,
+--     _eq_intake_load_event_meta, _eq_intake_record_committed,
+--     _eq_intake_apply_metadata)
+--   - 5 per-domain public RPCs (eq_intake_commit_batch_core,
+--     _cards, _field, _quotes, _service)
+--   - 5 per-domain private unwinders for rollback
+--   - Rewritten public eq_intake_commit_batch as a thin router that looks
+--     up the entity's module via eq_schema_registry and dispatches
+--   - Rewritten public eq_intake_rollback that dispatches to unwinders
+--
+-- Plus additive changes (Unit 3 architectural decisions):
+--   - eq_intake_events.source_app text — JWT app_metadata.source_app claim
+--   - eq_intake_events.intake_mode text default 'strict' — validation strictness
+--   - eq_intake_row_audit.source_app text — for per-row attribution
+--
+-- Backwards-compatible: public eq_intake_commit_batch keeps its existing
+-- 5-arg signature; p_intake_mode is the 6th arg with default 'strict'.
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- 1. Additive columns
+-- ----------------------------------------------------------------------------
+
+alter table shell_control.eq_intake_events
+  add column if not exists source_app text,
+  add column if not exists intake_mode text default 'strict';
+
+alter table shell_control.eq_intake_row_audit
+  add column if not exists source_app text;
+
+comment on column shell_control.eq_intake_events.source_app is
+  'App that initiated the intake (e.g. ''shell'', ''cards'', ''field'', ''capture''). '
+  'Read from app_metadata.source_app JWT claim by the calling client.';
+comment on column shell_control.eq_intake_events.intake_mode is
+  'Validation strictness: ''strict''|''lenient''|''ocr-best-effort''. '
+  'Strict = full validation (live mobile capture). Lenient = optional fields '
+  'allowed (bulk backfill). OCR-best-effort = future EQ Capture OCR path.';
+
+-- ----------------------------------------------------------------------------
+-- 2. Private shared library functions
+-- ----------------------------------------------------------------------------
+
+create or replace function _eq_intake_check_tenant_match(p_tenant_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = app_data, shell_control, public, extensions
+as $$
+begin
+  if (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid <> p_tenant_id then
+    raise exception 'tenant_id mismatch (JWT does not authorise this tenant)';
+  end if;
+end $$;
+
+create or replace function _eq_intake_load_event_meta(
+  p_intake_id uuid,
+  p_tenant_id uuid
+)
+returns table (
+  source_signature text,
+  import_mode      text,
+  schema_version   text,
+  source_app       text,
+  intake_mode      text
+)
+language plpgsql
+security definer
+set search_path = app_data, shell_control, public, extensions
+as $$
+begin
+  return query
+  select
+    coalesce(e.source_filename, e.source_kind || ':' || e.source_subkind, 'unknown') as source_signature,
+    e.import_mode,
+    e.schema_version,
+    e.source_app,
+    e.intake_mode
+  from shell_control.eq_intake_events e
+  where e.intake_id = p_intake_id and e.tenant_id = p_tenant_id;
+end $$;
+
+create or replace function _eq_intake_record_committed(
+  p_intake_id uuid,
+  p_count int
+)
+returns void
+language plpgsql
+security definer
+set search_path = app_data, shell_control, public, extensions
+as $$
+begin
+  update shell_control.eq_intake_events
+    set rows_committed = rows_committed + p_count
+    where intake_id = p_intake_id;
+end $$;
+
+create or replace function _eq_intake_apply_metadata(
+  p_row             jsonb,
+  p_tenant_id       uuid,
+  p_intake_id       uuid,
+  p_source_sig      text,
+  p_schema_version  text
+)
+returns jsonb
+language sql
+immutable
+as $$
+  select p_row
+    || jsonb_build_object('tenant_id', p_tenant_id)
+    || jsonb_build_object('intake_id', p_intake_id)
+    || jsonb_build_object('imported_at', to_jsonb(now()))
+    || jsonb_build_object('imported_from', to_jsonb(p_source_sig))
+    || jsonb_build_object('schema_version', to_jsonb(p_schema_version));
+$$;
+
+-- ----------------------------------------------------------------------------
+-- 3. Per-domain commit RPCs
+-- ----------------------------------------------------------------------------
+-- Each per-domain RPC:
+--   1. Verifies tenant match
+--   2. Validates p_table belongs to this domain
+--   3. Loads event metadata
+--   4. Handles replace mode (DELETE prior rows by imported_from signature)
+--   5. Per-row: apply metadata + dispatch to entity INSERT/UPSERT
+--   6. Records committed count on event
+--   7. Returns (count, ids)
+-- ----------------------------------------------------------------------------
+
+-- 3.1 — CORE domain (customers, contacts, sites)
+create or replace function eq_intake_commit_batch_core(
+  p_intake_id        uuid,
+  p_tenant_id        uuid,
+  p_table            text,
+  p_rows             jsonb,
+  p_confirm_replace  boolean default false,
+  p_intake_mode      text    default 'strict'
+)
+returns table (committed_count int, committed_ids uuid[])
+language plpgsql
+security definer
+set search_path = app_data, shell_control, public, extensions
+as $$
+declare
+  v_count int := 0;
+  v_ids uuid[] := array[]::uuid[];
+  v_row jsonb;
+  v_id  uuid;
+  v_source_sig text;
+  v_import_mode text;
+  v_schema_version text;
+  v_source_app text;
+  v_intake_mode text;
+  v_replace_count int;
+begin
+  perform _eq_intake_check_tenant_match(p_tenant_id);
+
+  if p_table not in ('customers', 'contacts', 'sites') then
+    raise exception 'table % is not a core-domain entity (expected: customers/contacts/sites)', p_table;
+  end if;
+
+  select source_signature, import_mode, schema_version, source_app, intake_mode
+  into v_source_sig, v_import_mode, v_schema_version, v_source_app, v_intake_mode
+  from _eq_intake_load_event_meta(p_intake_id, p_tenant_id);
+
+  if v_source_sig is null then
+    raise exception 'intake_id % not found for tenant', p_intake_id;
+  end if;
+
+  if v_import_mode = 'replace' then
+    if not p_confirm_replace then
+      raise exception 'replace mode requires p_confirm_replace = true (destructive)';
+    end if;
+    execute format('delete from app_data.%I where tenant_id = $1 and imported_from = $2', p_table) using p_tenant_id, v_source_sig;
+    get diagnostics v_replace_count = row_count;
+    raise notice 'replace mode: deleted % prior rows from app_data.%', v_replace_count, p_table;
+  end if;
+
+  for v_row in select * from jsonb_array_elements(p_rows)
+  loop
+    v_row := _eq_intake_apply_metadata(v_row, p_tenant_id, p_intake_id, v_source_sig, v_schema_version);
+
+    case p_table
+      when 'customers' then
+        if v_import_mode = 'upsert' then
+          insert into app_data.customers
+            select * from jsonb_populate_record(null::app_data.customers, v_row)
+          on conflict (customer_id) do update set
+            company_name=excluded.company_name, first_name=excluded.first_name, last_name=excluded.last_name,
+            external_id=excluded.external_id, type=excluded.type, abn=excluded.abn, acn=excluded.acn,
+            street_address=excluded.street_address, suburb=excluded.suburb, state=excluded.state, postcode=excluded.postcode,
+            email=excluded.email, primary_phone=excluded.primary_phone, mobile_phone=excluded.mobile_phone,
+            notes=excluded.notes, active=excluded.active,
+            imported_at=excluded.imported_at, imported_from=excluded.imported_from,
+            intake_id=excluded.intake_id, schema_version=excluded.schema_version
+          returning customer_id into v_id;
+        else
+          insert into app_data.customers select * from jsonb_populate_record(null::app_data.customers, v_row) returning customer_id into v_id;
+        end if;
+
+      when 'contacts' then
+        if v_import_mode = 'upsert' then
+          insert into app_data.contacts
+            select * from jsonb_populate_record(null::app_data.contacts, v_row)
+          on conflict (contact_id) do update set
+            first_name=excluded.first_name, last_name=excluded.last_name, email=excluded.email,
+            work_phone=excluded.work_phone, mobile_phone=excluded.mobile_phone,
+            customer_id=excluded.customer_id, external_id=excluded.external_id, position=excluded.position,
+            active=excluded.active,
+            imported_at=excluded.imported_at, imported_from=excluded.imported_from,
+            intake_id=excluded.intake_id, schema_version=excluded.schema_version
+          returning contact_id into v_id;
+        else
+          insert into app_data.contacts select * from jsonb_populate_record(null::app_data.contacts, v_row) returning contact_id into v_id;
+        end if;
+
+      when 'sites' then
+        if v_import_mode = 'upsert' then
+          insert into app_data.sites
+            select * from jsonb_populate_record(null::app_data.sites, v_row)
+          on conflict (site_id) do update set
+            name=excluded.name, code=excluded.code, address_line_1=excluded.address_line_1,
+            suburb=excluded.suburb, state=excluded.state, postcode=excluded.postcode,
+            active=excluded.active,
+            imported_at=excluded.imported_at, imported_from=excluded.imported_from,
+            intake_id=excluded.intake_id, schema_version=excluded.schema_version
+          returning site_id into v_id;
+        else
+          insert into app_data.sites select * from jsonb_populate_record(null::app_data.sites, v_row) returning site_id into v_id;
+        end if;
+    end case;
+
+    if v_id is not null then
+      v_count := v_count + 1;
+      v_ids := array_append(v_ids, v_id);
+    end if;
+  end loop;
+
+  perform _eq_intake_record_committed(p_intake_id, v_count);
+  return query select v_count, v_ids;
+end $$;
+
+-- 3.2 — FIELD domain (staff, schedule, safety registers — full set after Unit 5)
+create or replace function eq_intake_commit_batch_field(
+  p_intake_id        uuid,
+  p_tenant_id        uuid,
+  p_table            text,
+  p_rows             jsonb,
+  p_confirm_replace  boolean default false,
+  p_intake_mode      text    default 'strict'
+)
+returns table (committed_count int, committed_ids uuid[])
+language plpgsql
+security definer
+set search_path = app_data, shell_control, public, extensions
+as $$
+declare
+  v_count int := 0;
+  v_ids uuid[] := array[]::uuid[];
+  v_row jsonb;
+  v_id  uuid;
+  v_source_sig text;
+  v_import_mode text;
+  v_schema_version text;
+  v_source_app text;
+  v_intake_mode text;
+  v_replace_count int;
+begin
+  perform _eq_intake_check_tenant_match(p_tenant_id);
+
+  -- Field-domain whitelist (will grow when Unit 5 adds Field entities)
+  if p_table not in ('staff', 'schedule_entries', 'prestart_checks', 'toolbox_talks',
+                      'swms', 'jsa_records', 'itp_records', 'incidents') then
+    raise exception 'table % is not a field-domain entity', p_table;
+  end if;
+
+  select source_signature, import_mode, schema_version, source_app, intake_mode
+  into v_source_sig, v_import_mode, v_schema_version, v_source_app, v_intake_mode
+  from _eq_intake_load_event_meta(p_intake_id, p_tenant_id);
+
+  if v_source_sig is null then
+    raise exception 'intake_id % not found for tenant', p_intake_id;
+  end if;
+
+  if v_import_mode = 'replace' then
+    if not p_confirm_replace then
+      raise exception 'replace mode requires p_confirm_replace = true';
+    end if;
+    execute format('delete from app_data.%I where tenant_id = $1 and imported_from = $2', p_table) using p_tenant_id, v_source_sig;
+    get diagnostics v_replace_count = row_count;
+  end if;
+
+  for v_row in select * from jsonb_array_elements(p_rows)
+  loop
+    v_row := _eq_intake_apply_metadata(v_row, p_tenant_id, p_intake_id, v_source_sig, v_schema_version);
+
+    case p_table
+      when 'staff' then
+        if v_import_mode = 'upsert' then
+          insert into app_data.staff
+            select * from jsonb_populate_record(null::app_data.staff, v_row)
+          on conflict (staff_id) do update set
+            first_name=excluded.first_name, last_name=excluded.last_name,
+            email=excluded.email, phone=excluded.phone,
+            employment_type=excluded.employment_type, active=excluded.active,
+            imported_at=excluded.imported_at, imported_from=excluded.imported_from,
+            intake_id=excluded.intake_id, schema_version=excluded.schema_version
+          returning staff_id into v_id;
+        else
+          insert into app_data.staff select * from jsonb_populate_record(null::app_data.staff, v_row) returning staff_id into v_id;
+        end if;
+
+      when 'schedule_entries' then
+        insert into app_data.schedule_entries
+          select * from jsonb_populate_record(null::app_data.schedule_entries, v_row)
+        returning schedule_id into v_id;
+
+      when 'prestart_checks' then
+        insert into app_data.prestart_checks
+          select * from jsonb_populate_record(null::app_data.prestart_checks, v_row)
+        returning prestart_id into v_id;
+
+      when 'toolbox_talks' then
+        insert into app_data.toolbox_talks
+          select * from jsonb_populate_record(null::app_data.toolbox_talks, v_row)
+        returning talk_id into v_id;
+
+      when 'swms' then
+        insert into app_data.swms
+          select * from jsonb_populate_record(null::app_data.swms, v_row)
+        returning swms_id into v_id;
+
+      when 'jsa_records' then
+        insert into app_data.jsa_records
+          select * from jsonb_populate_record(null::app_data.jsa_records, v_row)
+        returning jsa_id into v_id;
+
+      when 'itp_records' then
+        insert into app_data.itp_records
+          select * from jsonb_populate_record(null::app_data.itp_records, v_row)
+        returning itp_id into v_id;
+
+      when 'incidents' then
+        insert into app_data.incidents
+          select * from jsonb_populate_record(null::app_data.incidents, v_row)
+        returning incident_id into v_id;
+    end case;
+
+    if v_id is not null then
+      v_count := v_count + 1;
+      v_ids := array_append(v_ids, v_id);
+    end if;
+  end loop;
+
+  perform _eq_intake_record_committed(p_intake_id, v_count);
+  return query select v_count, v_ids;
+end $$;
+
+-- 3.3 — CARDS domain (licence only)
+create or replace function eq_intake_commit_batch_cards(
+  p_intake_id        uuid,
+  p_tenant_id        uuid,
+  p_table            text,
+  p_rows             jsonb,
+  p_confirm_replace  boolean default false,
+  p_intake_mode      text    default 'strict'
+)
+returns table (committed_count int, committed_ids uuid[])
+language plpgsql
+security definer
+set search_path = app_data, shell_control, public, extensions
+as $$
+declare
+  v_count int := 0;
+  v_ids uuid[] := array[]::uuid[];
+  v_row jsonb;
+  v_id  uuid;
+  v_source_sig text;
+  v_import_mode text;
+  v_schema_version text;
+  v_source_app text;
+  v_intake_mode text;
+  v_replace_count int;
+begin
+  perform _eq_intake_check_tenant_match(p_tenant_id);
+
+  if p_table not in ('licences') then
+    raise exception 'table % is not a cards-domain entity (expected: licences)', p_table;
+  end if;
+
+  select source_signature, import_mode, schema_version, source_app, intake_mode
+  into v_source_sig, v_import_mode, v_schema_version, v_source_app, v_intake_mode
+  from _eq_intake_load_event_meta(p_intake_id, p_tenant_id);
+
+  if v_source_sig is null then
+    raise exception 'intake_id % not found for tenant', p_intake_id;
+  end if;
+
+  if v_import_mode = 'replace' then
+    if not p_confirm_replace then
+      raise exception 'replace mode requires p_confirm_replace = true';
+    end if;
+    execute format('delete from app_data.%I where tenant_id = $1 and imported_from = $2', p_table) using p_tenant_id, v_source_sig;
+    get diagnostics v_replace_count = row_count;
+  end if;
+
+  for v_row in select * from jsonb_array_elements(p_rows)
+  loop
+    v_row := _eq_intake_apply_metadata(v_row, p_tenant_id, p_intake_id, v_source_sig, v_schema_version);
+
+    if v_import_mode = 'upsert' then
+      insert into app_data.licences
+        select * from jsonb_populate_record(null::app_data.licences, v_row)
+      on conflict (licence_id) do update set
+        staff_id=excluded.staff_id, external_id=excluded.external_id,
+        licence_type=excluded.licence_type, licence_number=excluded.licence_number,
+        issuing_authority=excluded.issuing_authority, state=excluded.state,
+        issue_date=excluded.issue_date, expiry_date=excluded.expiry_date,
+        photo_front_path=excluded.photo_front_path, photo_back_path=excluded.photo_back_path,
+        notes=excluded.notes, metadata=excluded.metadata, active=excluded.active,
+        imported_at=excluded.imported_at, imported_from=excluded.imported_from,
+        intake_id=excluded.intake_id, schema_version=excluded.schema_version
+      returning licence_id into v_id;
+    else
+      insert into app_data.licences select * from jsonb_populate_record(null::app_data.licences, v_row) returning licence_id into v_id;
+    end if;
+
+    if v_id is not null then
+      v_count := v_count + 1;
+      v_ids := array_append(v_ids, v_id);
+    end if;
+  end loop;
+
+  perform _eq_intake_record_committed(p_intake_id, v_count);
+  return query select v_count, v_ids;
+end $$;
+
+-- 3.4 — SERVICE domain (asset only)
+create or replace function eq_intake_commit_batch_service(
+  p_intake_id        uuid,
+  p_tenant_id        uuid,
+  p_table            text,
+  p_rows             jsonb,
+  p_confirm_replace  boolean default false,
+  p_intake_mode      text    default 'strict'
+)
+returns table (committed_count int, committed_ids uuid[])
+language plpgsql
+security definer
+set search_path = app_data, shell_control, public, extensions
+as $$
+declare
+  v_count int := 0;
+  v_ids uuid[] := array[]::uuid[];
+  v_row jsonb;
+  v_id  uuid;
+  v_source_sig text;
+  v_import_mode text;
+  v_schema_version text;
+  v_source_app text;
+  v_intake_mode text;
+  v_replace_count int;
+begin
+  perform _eq_intake_check_tenant_match(p_tenant_id);
+
+  if p_table not in ('assets') then
+    raise exception 'table % is not a service-domain entity (expected: assets)', p_table;
+  end if;
+
+  select source_signature, import_mode, schema_version, source_app, intake_mode
+  into v_source_sig, v_import_mode, v_schema_version, v_source_app, v_intake_mode
+  from _eq_intake_load_event_meta(p_intake_id, p_tenant_id);
+
+  if v_source_sig is null then
+    raise exception 'intake_id % not found for tenant', p_intake_id;
+  end if;
+
+  if v_import_mode = 'replace' then
+    if not p_confirm_replace then
+      raise exception 'replace mode requires p_confirm_replace = true';
+    end if;
+    execute format('delete from app_data.%I where tenant_id = $1 and imported_from = $2', p_table) using p_tenant_id, v_source_sig;
+    get diagnostics v_replace_count = row_count;
+  end if;
+
+  for v_row in select * from jsonb_array_elements(p_rows)
+  loop
+    v_row := _eq_intake_apply_metadata(v_row, p_tenant_id, p_intake_id, v_source_sig, v_schema_version);
+
+    if v_import_mode = 'upsert' then
+      insert into app_data.assets
+        select * from jsonb_populate_record(null::app_data.assets, v_row)
+      on conflict (asset_id) do update set
+        name=excluded.name, asset_type=excluded.asset_type,
+        make=excluded.make, model=excluded.model, serial_number=excluded.serial_number,
+        last_service_date=excluded.last_service_date, next_service_due=excluded.next_service_due,
+        imported_at=excluded.imported_at, imported_from=excluded.imported_from,
+        intake_id=excluded.intake_id, schema_version=excluded.schema_version
+      returning asset_id into v_id;
+    else
+      insert into app_data.assets select * from jsonb_populate_record(null::app_data.assets, v_row) returning asset_id into v_id;
+    end if;
+
+    if v_id is not null then
+      v_count := v_count + 1;
+      v_ids := array_append(v_ids, v_id);
+    end if;
+  end loop;
+
+  perform _eq_intake_record_committed(p_intake_id, v_count);
+  return query select v_count, v_ids;
+end $$;
+
+-- 3.5 — QUOTES domain (empty until Unit 4 populates)
+create or replace function eq_intake_commit_batch_quotes(
+  p_intake_id        uuid,
+  p_tenant_id        uuid,
+  p_table            text,
+  p_rows             jsonb,
+  p_confirm_replace  boolean default false,
+  p_intake_mode      text    default 'strict'
+)
+returns table (committed_count int, committed_ids uuid[])
+language plpgsql
+security definer
+set search_path = app_data, shell_control, public, extensions
+as $$
+begin
+  perform _eq_intake_check_tenant_match(p_tenant_id);
+  raise exception 'quotes domain has no entities yet (Unit 4 will populate). p_table = %', p_table;
+end $$;
+
+-- ----------------------------------------------------------------------------
+-- 4. Public dispatcher (router) — rewrites eq_intake_commit_batch
+-- ----------------------------------------------------------------------------
+-- The router maps singular registry entity names to plural table names,
+-- looks up the module, and dispatches to the appropriate per-domain RPC.
+-- Backwards-compatible — same external signature.
+-- ----------------------------------------------------------------------------
+
+create or replace function eq_intake_commit_batch(
+  p_intake_id        uuid,
+  p_tenant_id        uuid,
+  p_table            text,
+  p_rows             jsonb,
+  p_confirm_replace  boolean default false,
+  p_intake_mode      text    default 'strict'
+)
+returns table (committed_count int, committed_ids uuid[])
+language plpgsql
+security definer
+set search_path = app_data, shell_control, public, extensions
+as $$
+declare
+  v_entity text;
+  v_module text;
+begin
+  perform _eq_intake_check_tenant_match(p_tenant_id);
+
+  -- Map plural table name to singular registry entity
+  v_entity := case p_table
+    when 'customers' then 'customer'
+    when 'contacts' then 'contact'
+    when 'sites' then 'site'
+    when 'staff' then 'staff'
+    when 'schedule_entries' then 'schedule'
+    when 'prestart_checks' then 'prestart'
+    when 'toolbox_talks' then 'toolbox_talk'
+    when 'swms' then 'swms'
+    when 'jsa_records' then 'jsa'
+    when 'itp_records' then 'itp'
+    when 'incidents' then 'incident'
+    when 'licences' then 'licence'
+    when 'assets' then 'asset'
+    else null
+  end;
+
+  if v_entity is null then
+    raise exception 'commit not permitted to table % (unknown entity)', p_table;
+  end if;
+
+  -- Look up module
+  select module into v_module
+  from shell_control.eq_schema_registry
+  where entity = v_entity and is_current = true;
+
+  if v_module is null then
+    raise exception 'no current schema registered for entity %', v_entity;
+  end if;
+
+  -- Dispatch
+  if v_module = 'core' then
+    return query select * from eq_intake_commit_batch_core(p_intake_id, p_tenant_id, p_table, p_rows, p_confirm_replace, p_intake_mode);
+  elsif v_module = 'field' then
+    return query select * from eq_intake_commit_batch_field(p_intake_id, p_tenant_id, p_table, p_rows, p_confirm_replace, p_intake_mode);
+  elsif v_module = 'cards' then
+    return query select * from eq_intake_commit_batch_cards(p_intake_id, p_tenant_id, p_table, p_rows, p_confirm_replace, p_intake_mode);
+  elsif v_module = 'quotes' then
+    return query select * from eq_intake_commit_batch_quotes(p_intake_id, p_tenant_id, p_table, p_rows, p_confirm_replace, p_intake_mode);
+  elsif v_module = 'service' then
+    return query select * from eq_intake_commit_batch_service(p_intake_id, p_tenant_id, p_table, p_rows, p_confirm_replace, p_intake_mode);
+  else
+    raise exception 'unknown module %', v_module;
+  end if;
+end $$;
+
+-- ----------------------------------------------------------------------------
+-- 5. Per-domain unwinders (private)
+-- ----------------------------------------------------------------------------
+-- Each unwinder deletes rows from its domain's tables by intake_id.
+-- Called from the public eq_intake_rollback dispatcher.
+-- ----------------------------------------------------------------------------
+
+create or replace function _eq_intake_unwind_core(p_intake_id uuid, p_tenant_id uuid)
+returns int
+language plpgsql
+security definer
+set search_path = app_data, shell_control, public, extensions
+as $$
+declare v_total int := 0; v_n int;
+begin
+  delete from app_data.customers where intake_id = p_intake_id and tenant_id = p_tenant_id;
+  get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.contacts where intake_id = p_intake_id and tenant_id = p_tenant_id;
+  get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.sites where intake_id = p_intake_id and tenant_id = p_tenant_id;
+  get diagnostics v_n = row_count; v_total := v_total + v_n;
+  return v_total;
+end $$;
+
+create or replace function _eq_intake_unwind_field(p_intake_id uuid, p_tenant_id uuid)
+returns int
+language plpgsql
+security definer
+set search_path = app_data, shell_control, public, extensions
+as $$
+declare v_total int := 0; v_n int;
+begin
+  -- Order: leaf entities first, then anything with FK dependents
+  delete from app_data.incidents where intake_id = p_intake_id and tenant_id = p_tenant_id;
+  get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.itp_records where intake_id = p_intake_id and tenant_id = p_tenant_id;
+  get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.jsa_records where intake_id = p_intake_id and tenant_id = p_tenant_id;
+  get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.swms where intake_id = p_intake_id and tenant_id = p_tenant_id;
+  get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.toolbox_talks where intake_id = p_intake_id and tenant_id = p_tenant_id;
+  get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.prestart_checks where intake_id = p_intake_id and tenant_id = p_tenant_id;
+  get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.schedule_entries where intake_id = p_intake_id and tenant_id = p_tenant_id;
+  get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.staff where intake_id = p_intake_id and tenant_id = p_tenant_id;
+  get diagnostics v_n = row_count; v_total := v_total + v_n;
+  return v_total;
+end $$;
+
+create or replace function _eq_intake_unwind_cards(p_intake_id uuid, p_tenant_id uuid)
+returns int
+language plpgsql
+security definer
+set search_path = app_data, shell_control, public, extensions
+as $$
+declare v_total int := 0;
+begin
+  delete from app_data.licences where intake_id = p_intake_id and tenant_id = p_tenant_id;
+  get diagnostics v_total = row_count;
+  return v_total;
+end $$;
+
+create or replace function _eq_intake_unwind_service(p_intake_id uuid, p_tenant_id uuid)
+returns int
+language plpgsql
+security definer
+set search_path = app_data, shell_control, public, extensions
+as $$
+declare v_total int := 0;
+begin
+  delete from app_data.assets where intake_id = p_intake_id and tenant_id = p_tenant_id;
+  get diagnostics v_total = row_count;
+  return v_total;
+end $$;
+
+create or replace function _eq_intake_unwind_quotes(p_intake_id uuid, p_tenant_id uuid)
+returns int
+language plpgsql
+security definer
+set search_path = app_data, shell_control, public, extensions
+as $$
+begin
+  -- Empty until Unit 4 populates quote entities
+  return 0;
+end $$;
+
+-- ----------------------------------------------------------------------------
+-- 6. Rewrite eq_intake_rollback as a dispatcher
+-- ----------------------------------------------------------------------------
+
+create or replace function eq_intake_rollback(p_intake_id uuid, p_reason text)
+returns table (unwound_count int)
+language plpgsql
+security definer
+set search_path = app_data, shell_control, public, extensions
+as $$
+declare
+  v_tenant_id uuid;
+  v_total int := 0;
+  v_n int;
+begin
+  -- Look up the tenant for this intake
+  select tenant_id into v_tenant_id
+  from shell_control.eq_intake_events
+  where intake_id = p_intake_id;
+
+  if v_tenant_id is null then
+    raise exception 'intake_id % not found', p_intake_id;
+  end if;
+
+  perform _eq_intake_check_tenant_match(v_tenant_id);
+
+  -- Call every per-domain unwinder. Each is idempotent (returns 0 if no rows).
+  -- Order: dependents first (cards licences FK to staff; field tables FK to sites)
+  v_n := _eq_intake_unwind_cards(p_intake_id, v_tenant_id); v_total := v_total + v_n;
+  v_n := _eq_intake_unwind_field(p_intake_id, v_tenant_id); v_total := v_total + v_n;
+  v_n := _eq_intake_unwind_service(p_intake_id, v_tenant_id); v_total := v_total + v_n;
+  v_n := _eq_intake_unwind_quotes(p_intake_id, v_tenant_id); v_total := v_total + v_n;
+  v_n := _eq_intake_unwind_core(p_intake_id, v_tenant_id); v_total := v_total + v_n;
+
+  -- Mark the event as rolled back
+  update shell_control.eq_intake_events
+  set status = 'rolled_back',
+      rolled_back_at = now(),
+      rolled_back_reason = p_reason
+  where intake_id = p_intake_id;
+
+  return query select v_total;
+end $$;
+
+-- ----------------------------------------------------------------------------
+-- 7. Permission grants
+-- ----------------------------------------------------------------------------
+
+grant execute on function eq_intake_commit_batch(uuid, uuid, text, jsonb, boolean, text) to authenticated;
+grant execute on function eq_intake_commit_batch_core(uuid, uuid, text, jsonb, boolean, text) to authenticated;
+grant execute on function eq_intake_commit_batch_field(uuid, uuid, text, jsonb, boolean, text) to authenticated;
+grant execute on function eq_intake_commit_batch_cards(uuid, uuid, text, jsonb, boolean, text) to authenticated;
+grant execute on function eq_intake_commit_batch_quotes(uuid, uuid, text, jsonb, boolean, text) to authenticated;
+grant execute on function eq_intake_commit_batch_service(uuid, uuid, text, jsonb, boolean, text) to authenticated;
+grant execute on function eq_intake_rollback(uuid, text) to authenticated;
+
+revoke execute on function _eq_intake_check_tenant_match(uuid) from public;
+revoke execute on function _eq_intake_load_event_meta(uuid, uuid) from public;
+revoke execute on function _eq_intake_record_committed(uuid, int) from public;
+revoke execute on function _eq_intake_apply_metadata(jsonb, uuid, uuid, text, text) from public;
+revoke execute on function _eq_intake_unwind_core(uuid, uuid) from public;
+revoke execute on function _eq_intake_unwind_field(uuid, uuid) from public;
+revoke execute on function _eq_intake_unwind_cards(uuid, uuid) from public;
+revoke execute on function _eq_intake_unwind_quotes(uuid, uuid) from public;
+revoke execute on function _eq_intake_unwind_service(uuid, uuid) from public;
+
+
+-- ============================================================================
+-- 10. QUOTES DOMAIN (Unit 4 — 7 quote-domain tables + dispatch)
+-- ============================================================================
+
+-- ============================================================================
+-- 009 — Quotes domain (canonical-readiness Unit 4)
+-- ============================================================================
+-- Adds 7 quote-domain tables to app_data, registers schemas in
+-- shell_control.eq_schema_registry (module='quotes'), populates dispatch
+-- in eq_intake_commit_batch_quotes, and updates the public router to
+-- recognise the new table names.
+--
+-- Conventions (per eq-quotes-port/docs/architecture.md + 2026-05-20 plan
+-- review):
+--   - Money as INTEGER cents (never float)
+--   - Quantities as INTEGER thousandths (qty_display = qty / 1000)
+--   - Line items as separate table app_data.quote_line_item (Decision 5)
+--   - Storage in per-tenant bucket tenant-{tenant_id} with quotes/{quote_id}/... paths
+--   - Status taxonomy: draft, sent, accepted, rejected, expired, superseded
+--   - Sharing app_data.customer, contact, site from core (no SKS-prefixed types)
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- 1. Tables
+-- ----------------------------------------------------------------------------
+
+-- 1.1 quote (header)
+create table if not exists app_data.quote (
+  quote_id              uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  customer_id           uuid not null references app_data.customers(customer_id) on delete restrict,
+  contact_id            uuid null references app_data.contacts(contact_id) on delete set null,
+  site_id               uuid null references app_data.sites(site_id) on delete set null,
+  quote_number          text null,
+  external_id           text null,
+  project_name          text null,
+  attn_name             text null,
+  attn_first_name       text null,
+  attn_phone            text null,
+  address               text null,
+  scope_of_works        text null,
+  estimator_name        text null,
+  estimator_initials    text null,
+  status                text not null default 'draft',
+  subtotal_cents        bigint not null default 0,
+  gst_cents             bigint not null default 0,
+  total_cents           bigint not null default 0,
+  margin_pct            numeric(5,2) null,
+  sent_at               timestamptz null,
+  sent_by_initials      text null,
+  notes                 text null,
+  imported_at           timestamptz null,
+  imported_from         text null,
+  intake_id             uuid null,
+  schema_version        text null,
+  created_at            timestamptz not null default now(),
+  updated_at            timestamptz not null default now(),
+  created_by            uuid null,
+  updated_by            uuid null,
+  constraint quote_status_check check (status in ('draft','sent','accepted','rejected','expired','superseded')),
+  constraint quote_amounts_non_negative check (subtotal_cents >= 0 and gst_cents >= 0 and total_cents >= 0)
+);
+
+create index if not exists quote_tenant_idx on app_data.quote (tenant_id);
+create index if not exists quote_customer_idx on app_data.quote (customer_id);
+create index if not exists quote_status_idx on app_data.quote (tenant_id, status, created_at desc);
+create index if not exists quote_number_idx on app_data.quote (tenant_id, quote_number) where quote_number is not null;
+
+comment on table app_data.quote is
+  'Quote header. Money fields are cents (bigint). Line items live in '
+  'app_data.quote_line_item (separate table per 2026-05-20 Decision 5).';
+
+-- 1.2 quote_line_item
+create table if not exists app_data.quote_line_item (
+  line_item_id          uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  quote_id              uuid not null references app_data.quote(quote_id) on delete cascade,
+  line_number           int not null,
+  description           text not null,
+  quantity_thousandths  bigint not null default 1000,
+  unit                  text null,
+  unit_rate_cents       bigint not null default 0,
+  line_total_cents      bigint not null default 0,
+  category              text null,
+  notes                 text null,
+  imported_at           timestamptz null,
+  imported_from         text null,
+  intake_id             uuid null,
+  schema_version        text null,
+  created_at            timestamptz not null default now(),
+  updated_at            timestamptz not null default now(),
+  created_by            uuid null,
+  updated_by            uuid null,
+  constraint line_qty_non_negative check (quantity_thousandths >= 0),
+  constraint line_unit_rate_non_negative check (unit_rate_cents >= 0),
+  constraint line_total_non_negative check (line_total_cents >= 0),
+  constraint line_category_valid check (category is null or category in ('labour','material','equipment','subcontractor','other'))
+);
+
+create index if not exists quote_line_item_quote_idx on app_data.quote_line_item (quote_id, line_number);
+create index if not exists quote_line_item_tenant_idx on app_data.quote_line_item (tenant_id);
+
+-- 1.3 quote_status_history
+create table if not exists app_data.quote_status_history (
+  history_id            uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  quote_id              uuid not null references app_data.quote(quote_id) on delete cascade,
+  from_status           text null,
+  to_status             text not null,
+  changed_by_initials   text null,
+  changed_by_user_id    uuid null references shell_control.users(id) on delete set null,
+  reason                text null,
+  changed_at            timestamptz not null default now(),
+  imported_at           timestamptz null,
+  imported_from         text null,
+  intake_id             uuid null,
+  schema_version        text null,
+  constraint qsh_to_status_check check (to_status in ('draft','sent','accepted','rejected','expired','superseded')),
+  constraint qsh_from_status_check check (from_status is null or from_status in ('draft','sent','accepted','rejected','expired','superseded'))
+);
+
+create index if not exists quote_status_history_quote_idx on app_data.quote_status_history (quote_id, changed_at desc);
+
+-- 1.4 quote_attachment (generated docs + uploaded files)
+create table if not exists app_data.quote_attachment (
+  attachment_id         uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  quote_id              uuid not null references app_data.quote(quote_id) on delete cascade,
+  file_name             text not null,
+  file_size_bytes       bigint null,
+  mime_type             text null,
+  storage_path          text null,
+  sha256                text null,
+  doc_type              text null,
+  quote_snapshot        jsonb null,
+  generated_by_initials text null,
+  generated_at          timestamptz null,
+  uploaded_at           timestamptz not null default now(),
+  imported_at           timestamptz null,
+  imported_from         text null,
+  intake_id             uuid null,
+  schema_version        text null,
+  constraint qa_doc_type_valid check (doc_type is null or doc_type in ('docx','pdf','image','other'))
+);
+
+create index if not exists quote_attachment_quote_idx on app_data.quote_attachment (quote_id, uploaded_at desc);
+
+-- 1.5 scope_template (reusable scope phrases)
+create table if not exists app_data.scope_template (
+  template_id           uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  name                  text not null,
+  category              text null,
+  body                  text not null,
+  sort_order            int not null default 0,
+  active                boolean not null default true,
+  imported_at           timestamptz null,
+  imported_from         text null,
+  intake_id             uuid null,
+  schema_version        text null,
+  created_at            timestamptz not null default now(),
+  updated_at            timestamptz not null default now(),
+  created_by            uuid null,
+  updated_by            uuid null
+);
+
+create index if not exists scope_template_tenant_idx on app_data.scope_template (tenant_id, sort_order) where active = true;
+
+-- 1.6 rate_library (curated rates for quoting)
+create table if not exists app_data.rate_library (
+  rate_id               uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  code                  text null,
+  description           text not null,
+  category              text null,
+  unit                  text null,
+  unit_cost_cents       bigint not null default 0,
+  unit_sell_cents       bigint not null default 0,
+  margin_pct            numeric(5,2) null,
+  active                boolean not null default true,
+  imported_at           timestamptz null,
+  imported_from         text null,
+  intake_id             uuid null,
+  schema_version        text null,
+  created_at            timestamptz not null default now(),
+  updated_at            timestamptz not null default now(),
+  created_by            uuid null,
+  updated_by            uuid null,
+  constraint rate_category_valid check (category is null or category in ('labour','material','equipment','subcontractor','other')),
+  constraint rate_cost_non_negative check (unit_cost_cents >= 0 and unit_sell_cents >= 0)
+);
+
+create unique index if not exists rate_library_tenant_code_uq on app_data.rate_library (tenant_id, code) where code is not null;
+create index if not exists rate_library_active_idx on app_data.rate_library (tenant_id, category) where active = true;
+
+-- 1.7 quote_email_outbox
+create table if not exists app_data.quote_email_outbox (
+  outbox_id             uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  quote_id              uuid not null references app_data.quote(quote_id) on delete cascade,
+  to_email              text not null,
+  to_name               text null,
+  cc_emails             text[] null,
+  bcc_emails            text[] null,
+  subject               text not null,
+  body_html             text null,
+  body_text             text null,
+  attachment_ids        uuid[] null,
+  status                text not null default 'queued',
+  queued_at             timestamptz not null default now(),
+  sent_at               timestamptz null,
+  failed_at             timestamptz null,
+  error_message         text null,
+  attempt_count         int not null default 0,
+  imported_at           timestamptz null,
+  imported_from         text null,
+  intake_id             uuid null,
+  schema_version        text null,
+  constraint qeo_status_valid check (status in ('queued','sending','sent','failed','cancelled'))
+);
+
+create index if not exists quote_email_outbox_status_idx on app_data.quote_email_outbox (tenant_id, status, queued_at);
+create index if not exists quote_email_outbox_quote_idx on app_data.quote_email_outbox (quote_id);
+
+-- ----------------------------------------------------------------------------
+-- 2. updated_at triggers (using existing eq_set_imported_at pattern... actually
+-- we need a generic updated_at trigger. Reusing the pattern from Field migrations.)
+-- ----------------------------------------------------------------------------
+
+create or replace function app_data._set_updated_at()
+returns trigger language plpgsql as $$
+begin new.updated_at = now(); return new; end $$;
+
+do $$
+declare t text;
+declare tables_with_updated_at text[] := array['quote','quote_line_item','scope_template','rate_library'];
+begin
+  foreach t in array tables_with_updated_at loop
+    execute format('drop trigger if exists trg_%I_updated_at on app_data.%I', t, t);
+    execute format('create trigger trg_%I_updated_at before update on app_data.%I for each row execute function app_data._set_updated_at()', t, t);
+  end loop;
+end $$;
+
+-- ----------------------------------------------------------------------------
+-- 3. RLS — enable + add policies per the 2026-05-20 pattern
+-- ----------------------------------------------------------------------------
+
+do $$
+declare t text;
+declare quote_tables text[] := array['quote','quote_line_item','quote_status_history','quote_attachment','scope_template','rate_library','quote_email_outbox'];
+declare pn text;
+begin
+  foreach t in array quote_tables loop
+    execute format('alter table app_data.%I enable row level security', t);
+
+    pn := t || '_select';
+    if not exists (select 1 from pg_policies where schemaname = 'app_data' and tablename = t and policyname = pn) then
+      execute format('create policy %I on app_data.%I for select to authenticated using (tenant_id = ((auth.jwt() -> ''app_metadata'' ->> ''tenant_id'')::uuid))', pn, t);
+    end if;
+
+    pn := t || '_insert';
+    if not exists (select 1 from pg_policies where schemaname = 'app_data' and tablename = t and policyname = pn) then
+      execute format('create policy %I on app_data.%I for insert to authenticated with check (tenant_id = ((auth.jwt() -> ''app_metadata'' ->> ''tenant_id'')::uuid))', pn, t);
+    end if;
+
+    pn := t || '_update';
+    if not exists (select 1 from pg_policies where schemaname = 'app_data' and tablename = t and policyname = pn) then
+      execute format('create policy %I on app_data.%I for update to authenticated using (tenant_id = ((auth.jwt() -> ''app_metadata'' ->> ''tenant_id'')::uuid)) with check (tenant_id = ((auth.jwt() -> ''app_metadata'' ->> ''tenant_id'')::uuid))', pn, t);
+    end if;
+
+    pn := t || '_delete';
+    if not exists (select 1 from pg_policies where schemaname = 'app_data' and tablename = t and policyname = pn) then
+      execute format('create policy %I on app_data.%I for delete to authenticated using (tenant_id = ((auth.jwt() -> ''app_metadata'' ->> ''tenant_id'')::uuid))', pn, t);
+    end if;
+  end loop;
+end $$;
+
+-- ----------------------------------------------------------------------------
+-- 4. Update eq_intake_commit_batch_quotes RPC with dispatch + the router
+-- ----------------------------------------------------------------------------
+
+create or replace function eq_intake_commit_batch_quotes(
+  p_intake_id uuid, p_tenant_id uuid, p_table text, p_rows jsonb,
+  p_confirm_replace boolean default false, p_intake_mode text default 'strict')
+returns table (committed_count int, committed_ids uuid[])
+language plpgsql security definer set search_path = app_data, shell_control, public, extensions as $$
+declare v_count int := 0; v_ids uuid[] := array[]::uuid[]; v_row jsonb; v_id uuid;
+  v_source_sig text; v_import_mode text; v_schema_version text; v_source_app text; v_intake_mode text;
+begin
+  perform _eq_intake_check_tenant_match(p_tenant_id);
+  if p_table not in ('quote','quote_line_item','quote_status_history','quote_attachment','scope_template','rate_library','quote_email_outbox') then
+    raise exception 'table % not quotes-domain', p_table;
+  end if;
+  select source_signature, import_mode, schema_version, source_app, intake_mode
+  into v_source_sig, v_import_mode, v_schema_version, v_source_app, v_intake_mode
+  from _eq_intake_load_event_meta(p_intake_id, p_tenant_id);
+  if v_source_sig is null then raise exception 'intake_id % not found', p_intake_id; end if;
+  if v_import_mode = 'replace' then
+    if not p_confirm_replace then raise exception 'replace requires p_confirm_replace=true'; end if;
+    execute format('delete from app_data.%I where tenant_id = $1 and imported_from = $2', p_table) using p_tenant_id, v_source_sig;
+  end if;
+  for v_row in select * from jsonb_array_elements(p_rows) loop
+    v_row := _eq_intake_apply_metadata(v_row, p_tenant_id, p_intake_id, v_source_sig, v_schema_version);
+    case p_table
+      when 'quote' then
+        insert into app_data.quote select * from jsonb_populate_record(null::app_data.quote, v_row) returning quote_id into v_id;
+      when 'quote_line_item' then
+        insert into app_data.quote_line_item select * from jsonb_populate_record(null::app_data.quote_line_item, v_row) returning line_item_id into v_id;
+      when 'quote_status_history' then
+        insert into app_data.quote_status_history select * from jsonb_populate_record(null::app_data.quote_status_history, v_row) returning history_id into v_id;
+      when 'quote_attachment' then
+        insert into app_data.quote_attachment select * from jsonb_populate_record(null::app_data.quote_attachment, v_row) returning attachment_id into v_id;
+      when 'scope_template' then
+        insert into app_data.scope_template select * from jsonb_populate_record(null::app_data.scope_template, v_row) returning template_id into v_id;
+      when 'rate_library' then
+        insert into app_data.rate_library select * from jsonb_populate_record(null::app_data.rate_library, v_row) returning rate_id into v_id;
+      when 'quote_email_outbox' then
+        insert into app_data.quote_email_outbox select * from jsonb_populate_record(null::app_data.quote_email_outbox, v_row) returning outbox_id into v_id;
+    end case;
+    if v_id is not null then v_count := v_count + 1; v_ids := array_append(v_ids, v_id); end if;
+  end loop;
+  perform _eq_intake_record_committed(p_intake_id, v_count);
+  return query select v_count, v_ids;
+end $$;
+
+-- Update the router to recognise quote-domain table names
+create or replace function eq_intake_commit_batch(
+  p_intake_id uuid, p_tenant_id uuid, p_table text, p_rows jsonb,
+  p_confirm_replace boolean default false, p_intake_mode text default 'strict')
+returns table (committed_count int, committed_ids uuid[])
+language plpgsql security definer set search_path = app_data, shell_control, public, extensions as $$
+declare v_entity text; v_module text;
+begin
+  perform _eq_intake_check_tenant_match(p_tenant_id);
+  v_entity := case p_table
+    when 'customers' then 'customer' when 'contacts' then 'contact' when 'sites' then 'site'
+    when 'staff' then 'staff' when 'schedule_entries' then 'schedule'
+    when 'prestart_checks' then 'prestart' when 'toolbox_talks' then 'toolbox_talk'
+    when 'swms' then 'swms' when 'jsa_records' then 'jsa' when 'itp_records' then 'itp'
+    when 'incidents' then 'incident' when 'licences' then 'licence' when 'assets' then 'asset'
+    -- Quotes domain (Unit 4)
+    when 'quote' then 'quote' when 'quote_line_item' then 'quote_line_item'
+    when 'quote_status_history' then 'quote_status_history' when 'quote_attachment' then 'quote_attachment'
+    when 'scope_template' then 'scope_template' when 'rate_library' then 'rate_library'
+    when 'quote_email_outbox' then 'quote_email_outbox'
+    else null end;
+  if v_entity is null then raise exception 'commit not permitted to table % (unknown)', p_table; end if;
+  select module into v_module from shell_control.eq_schema_registry where entity = v_entity and is_current = true;
+  if v_module is null then raise exception 'no current schema for entity %', v_entity; end if;
+  if v_module = 'core' then
+    return query select * from eq_intake_commit_batch_core(p_intake_id, p_tenant_id, p_table, p_rows, p_confirm_replace, p_intake_mode);
+  elsif v_module = 'field' then
+    return query select * from eq_intake_commit_batch_field(p_intake_id, p_tenant_id, p_table, p_rows, p_confirm_replace, p_intake_mode);
+  elsif v_module = 'cards' then
+    return query select * from eq_intake_commit_batch_cards(p_intake_id, p_tenant_id, p_table, p_rows, p_confirm_replace, p_intake_mode);
+  elsif v_module = 'quotes' then
+    return query select * from eq_intake_commit_batch_quotes(p_intake_id, p_tenant_id, p_table, p_rows, p_confirm_replace, p_intake_mode);
+  elsif v_module = 'service' then
+    return query select * from eq_intake_commit_batch_service(p_intake_id, p_tenant_id, p_table, p_rows, p_confirm_replace, p_intake_mode);
+  else raise exception 'unknown module %', v_module; end if;
+end $$;
+
+-- Update the unwinder
+create or replace function _eq_intake_unwind_quotes(p_intake_id uuid, p_tenant_id uuid) returns int
+language plpgsql security definer set search_path = app_data, shell_control, public, extensions as $$
+declare v_total int := 0; v_n int;
+begin
+  -- Order: leaf (FK dependents) first
+  delete from app_data.quote_email_outbox where intake_id = p_intake_id and tenant_id = p_tenant_id;
+  get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.quote_attachment where intake_id = p_intake_id and tenant_id = p_tenant_id;
+  get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.quote_status_history where intake_id = p_intake_id and tenant_id = p_tenant_id;
+  get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.quote_line_item where intake_id = p_intake_id and tenant_id = p_tenant_id;
+  get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.quote where intake_id = p_intake_id and tenant_id = p_tenant_id;
+  get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.scope_template where intake_id = p_intake_id and tenant_id = p_tenant_id;
+  get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.rate_library where intake_id = p_intake_id and tenant_id = p_tenant_id;
+  get diagnostics v_n = row_count; v_total := v_total + v_n;
+  return v_total;
+end $$;
+
+-- ============================================================================
+-- 11. FIELD DOMAIN tables (Unit 5 part 1 — 22 tables + view + registry seed)
+-- ============================================================================
+
+-- ============================================================================
+-- 010 — Field domain (canonical-readiness Unit 5)
+-- ============================================================================
+-- Single migration. Adds the Field domain entities to canonical so EQ
+-- Solutions' next-generation Field module(s) can be built fresh in shell.
+-- 23 new tables across 4 groups + 2 workflow event tables. Per 2026-05-20
+-- review: no data migration, no dual operation. SKS NSW Labour stays on
+-- its own infrastructure.
+--
+-- Groups (TOC):
+--   1. CORE FIELD TABLES (~5): timesheets, leave_requests, leave_balances, checkins, tenant_app_configs
+--   2. TENDER CLUSTER (~6): tenders, tender_enrichments, tender_nominations,
+--      tender_nomination_clashes (view), tender_import_runs, tender_review_decisions
+--   3. SITE REPORTS V2 (~2): site_diaries, weekly_reports
+--   4. APPRENTICE CLUSTER (~8): apprentice_profiles, skills_ratings,
+--      feedback_entries, rotations, buddy_checkins, quarterly_reviews,
+--      engagement_logs, tafe_calendars
+--   5. WORKFLOW EVENT LOGS (2): schedule_change_logs, leave_approval_logs
+--
+-- Conventions:
+--   - Plural table names (matching existing canonical)
+--   - Money in cents (bigint)
+--   - tenant_id NOT NULL with JWT default
+--   - RLS predicates use auth.jwt() app_metadata.tenant_id
+--   - Per-tenant storage bucket tenant-{tenant_id} for photos
+--   - Following Field's freeform shape where appropriate (e.g. site_diaries jsonb
+--     for weather/repeating sections) but with canonical FK conventions
+--
+-- pending_schedule DROPPED (dead code per 2026-05-20 review Q1).
+-- managers SUNSET — digest opt-in moves to staff (Unit 2).
+-- ============================================================================
+
+-- ============================================================================
+-- GROUP 1: CORE FIELD TABLES
+-- ============================================================================
+
+-- 1.1 timesheets
+create table if not exists app_data.timesheets (
+  timesheet_id          uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  staff_id              uuid not null references app_data.staff(staff_id) on delete restrict,
+  site_id               uuid null references app_data.sites(site_id) on delete set null,
+  schedule_id           uuid null references app_data.schedule_entries(schedule_id) on delete set null,
+  date                  date not null,
+  start_time            time null,
+  end_time              time null,
+  hours                 numeric(6,2) not null default 0,
+  break_minutes         int not null default 0,
+  shift                 text null,
+  task                  text null,
+  status                text not null default 'draft',
+  submitted_at          timestamptz null,
+  approved_at           timestamptz null,
+  approved_by_user_id   uuid null references shell_control.users(id) on delete set null,
+  paid_at               timestamptz null,
+  notes                 text null,
+  imported_at           timestamptz null, imported_from text null, intake_id uuid null, schema_version text null,
+  created_at            timestamptz not null default now(),
+  updated_at            timestamptz not null default now(),
+  created_by            uuid null, updated_by uuid null,
+  constraint timesheet_status_check check (status in ('draft','submitted','approved','rejected','paid')),
+  constraint timesheet_hours_non_negative check (hours >= 0),
+  constraint timesheet_shift_valid check (shift is null or shift in ('day','night','split','arvo'))
+);
+create index if not exists timesheets_tenant_date_idx on app_data.timesheets (tenant_id, date desc);
+create index if not exists timesheets_staff_date_idx on app_data.timesheets (staff_id, date desc);
+create index if not exists timesheets_site_date_idx on app_data.timesheets (site_id, date desc) where site_id is not null;
+
+-- 1.2 leave_requests
+create table if not exists app_data.leave_requests (
+  leave_request_id      uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  staff_id              uuid not null references app_data.staff(staff_id) on delete restrict,
+  leave_type            text not null,
+  from_date             date not null,
+  to_date               date not null,
+  hours_requested       numeric(6,2) not null default 0,
+  status                text not null default 'pending',
+  reason                text null,
+  approver_required     boolean not null default true,
+  approver_id           uuid null references shell_control.users(id) on delete set null,
+  decided_at            timestamptz null,
+  decision_notes        text null,
+  archived              boolean not null default false,
+  imported_at timestamptz null, imported_from text null, intake_id uuid null, schema_version text null,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  created_by uuid null, updated_by uuid null,
+  constraint leave_request_status_check check (status in ('pending','approved','rejected','cancelled')),
+  constraint leave_request_type_check check (leave_type in ('annual','sick','personal','long_service','unpaid','tafe','other')),
+  constraint leave_request_dates_valid check (to_date >= from_date),
+  constraint leave_request_hours_non_negative check (hours_requested >= 0)
+);
+create index if not exists leave_requests_staff_idx on app_data.leave_requests (staff_id, from_date desc);
+create index if not exists leave_requests_tenant_status_idx on app_data.leave_requests (tenant_id, status) where archived = false;
+
+-- 1.3 leave_balances
+create table if not exists app_data.leave_balances (
+  leave_balance_id            uuid primary key default gen_random_uuid(),
+  tenant_id                   uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  staff_id                    uuid not null references app_data.staff(staff_id) on delete restrict,
+  al_balance_hours            numeric(6,2) not null default 0,
+  sick_balance_hours          numeric(6,2) not null default 0,
+  long_service_balance_hours  numeric(6,2) not null default 0,
+  personal_balance_hours      numeric(6,2) not null default 0,
+  notes                       text null,
+  updated_by_user_id          uuid null references shell_control.users(id) on delete set null,
+  imported_at timestamptz null, imported_from text null, intake_id uuid null, schema_version text null,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+create unique index if not exists leave_balances_staff_uq on app_data.leave_balances (tenant_id, staff_id);
+
+-- 1.4 checkins
+create table if not exists app_data.checkins (
+  checkin_id            uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  staff_id              uuid not null references app_data.staff(staff_id) on delete restrict,
+  site_id               uuid null references app_data.sites(site_id) on delete set null,
+  week                  text null,
+  checked_in_at         timestamptz not null default now(),
+  latitude              numeric(10,7) null,
+  longitude             numeric(10,7) null,
+  device_id             text null,
+  imported_at timestamptz null, imported_from text null, intake_id uuid null, schema_version text null
+);
+create index if not exists checkins_staff_idx on app_data.checkins (staff_id, checked_in_at desc);
+create index if not exists checkins_site_idx on app_data.checkins (site_id, checked_in_at desc) where site_id is not null;
+
+-- 1.5 tenant_app_configs (Field-specific tenant toggles per Decision 4)
+create table if not exists app_data.tenant_app_configs (
+  config_id             uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  feature_flags         jsonb not null default '{}'::jsonb,
+  field_settings        jsonb not null default '{}'::jsonb,
+  notes                 text null,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+create unique index if not exists tenant_app_configs_tenant_uq on app_data.tenant_app_configs (tenant_id);
+
+-- ============================================================================
+-- GROUP 2: TENDER CLUSTER
+-- ============================================================================
+
+-- 2.1 tenders
+create table if not exists app_data.tenders (
+  tender_id             uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  tender_number         text null,
+  external_id           text null,
+  title                 text not null,
+  client_name           text null,
+  customer_id           uuid null references app_data.customers(customer_id) on delete set null,
+  stage                 text not null default 'watch',
+  estimated_value_cents bigint null,
+  close_date            date null,
+  department            text null,
+  estimator_user_id     uuid null references shell_control.users(id) on delete set null,
+  scope_summary         text null,
+  notes                 text null,
+  imported_at timestamptz null, imported_from text null, intake_id uuid null, schema_version text null,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  created_by uuid null, updated_by uuid null,
+  constraint tender_stage_check check (stage in ('watch','confirmed','likely','won','lost','withdrawn')),
+  constraint tender_value_non_negative check (estimated_value_cents is null or estimated_value_cents >= 0)
+);
+create index if not exists tenders_tenant_stage_idx on app_data.tenders (tenant_id, stage, close_date);
+create index if not exists tenders_close_date_idx on app_data.tenders (close_date) where close_date is not null;
+
+-- 2.2 tender_enrichments
+create table if not exists app_data.tender_enrichments (
+  enrichment_id         uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  tender_id             uuid not null references app_data.tenders(tender_id) on delete cascade,
+  source                text null,
+  source_url            text null,
+  content               jsonb null,
+  attachments           jsonb null,
+  notes                 text null,
+  imported_at timestamptz null, imported_from text null, intake_id uuid null, schema_version text null,
+  created_at timestamptz not null default now(),
+  created_by uuid null
+);
+create index if not exists tender_enrichments_tender_idx on app_data.tender_enrichments (tender_id);
+
+-- 2.3 tender_nominations
+create table if not exists app_data.tender_nominations (
+  nomination_id         uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  tender_id             uuid not null references app_data.tenders(tender_id) on delete cascade,
+  staff_id              uuid null references app_data.staff(staff_id) on delete set null,
+  role                  text null,
+  nominated_by_user_id  uuid null references shell_control.users(id) on delete set null,
+  start_date            date null,
+  end_date              date null,
+  notes                 text null,
+  status                text not null default 'proposed',
+  imported_at timestamptz null, imported_from text null, intake_id uuid null, schema_version text null,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  constraint tender_nomination_status_check check (status in ('proposed','confirmed','withdrawn','clashed'))
+);
+create index if not exists tender_nominations_tender_idx on app_data.tender_nominations (tender_id);
+create index if not exists tender_nominations_staff_idx on app_data.tender_nominations (staff_id, start_date) where staff_id is not null;
+
+-- 2.4 tender_nomination_clashes (view) — identifies overlapping nominations
+create or replace view app_data.tender_nomination_clashes as
+select
+  a.nomination_id as nomination_a_id,
+  b.nomination_id as nomination_b_id,
+  a.staff_id,
+  a.tender_id as tender_a_id,
+  b.tender_id as tender_b_id,
+  greatest(a.start_date, b.start_date) as overlap_start,
+  least(a.end_date, b.end_date) as overlap_end,
+  a.tenant_id
+from app_data.tender_nominations a
+join app_data.tender_nominations b
+  on a.staff_id = b.staff_id
+ and a.tenant_id = b.tenant_id
+ and a.nomination_id < b.nomination_id
+ and a.start_date is not null and b.start_date is not null
+ and a.end_date is not null and b.end_date is not null
+ and a.start_date <= b.end_date and b.start_date <= a.end_date
+ and a.status not in ('withdrawn')
+ and b.status not in ('withdrawn');
+
+-- 2.5 tender_import_runs
+create table if not exists app_data.tender_import_runs (
+  import_run_id         uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  source_filename       text not null,
+  rows_processed        int not null default 0,
+  rows_created          int not null default 0,
+  rows_updated          int not null default 0,
+  rows_skipped          int not null default 0,
+  status                text not null default 'completed',
+  error_message         text null,
+  started_at            timestamptz not null default now(),
+  completed_at          timestamptz null,
+  imported_at timestamptz null, imported_from text null, intake_id uuid null, schema_version text null,
+  constraint tir_status_check check (status in ('running','completed','failed'))
+);
+create index if not exists tender_import_runs_tenant_idx on app_data.tender_import_runs (tenant_id, started_at desc);
+
+-- 2.6 tender_review_decisions
+create table if not exists app_data.tender_review_decisions (
+  decision_id           uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  tender_id             uuid not null references app_data.tenders(tender_id) on delete cascade,
+  review_date           date not null,
+  decision              text not null,
+  rationale             text null,
+  decided_by_user_id    uuid null references shell_control.users(id) on delete set null,
+  imported_at timestamptz null, imported_from text null, intake_id uuid null, schema_version text null,
+  created_at timestamptz not null default now(),
+  constraint trd_decision_check check (decision in ('keep_watching','escalate','bid','pass','park'))
+);
+create index if not exists tender_review_decisions_tender_idx on app_data.tender_review_decisions (tender_id, review_date desc);
+
+-- ============================================================================
+-- GROUP 3: SITE REPORTS V2
+-- ============================================================================
+
+-- 3.1 site_diaries (full shift picture per site — mirrors Field's site_diaries v1)
+create table if not exists app_data.site_diaries (
+  site_diary_id         uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  site_id               uuid not null references app_data.sites(site_id) on delete restrict,
+  diary_date            date not null,
+  shift_type            text null,
+  start_time            time null,
+  end_time              time null,
+  supervisor_name       text null,
+  supervisor_user_id    uuid null references shell_control.users(id) on delete set null,
+  subcontractor         text null,
+  weather               jsonb not null default '{}'::jsonb,
+  work_areas            jsonb not null default '[]'::jsonb,
+  delays                jsonb not null default '[]'::jsonb,
+  incidents             jsonb not null default '[]'::jsonb,
+  visitors              jsonb not null default '[]'::jsonb,
+  materials_received    text null,
+  equipment_status      text null,
+  notes                 text null,
+  attendance            jsonb not null default '[]'::jsonb,
+  photo_paths           jsonb not null default '[]'::jsonb,
+  status                text not null default 'draft',
+  submitted_at          timestamptz null,
+  submitted_by_user_id  uuid null references shell_control.users(id) on delete set null,
+  imported_at timestamptz null, imported_from text null, intake_id uuid null, schema_version text null,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  created_by uuid null, updated_by uuid null,
+  constraint site_diary_status_check check (status in ('draft','submitted')),
+  constraint site_diary_shift_check check (shift_type is null or shift_type in ('day','night','split'))
+);
+create index if not exists site_diaries_tenant_date_idx on app_data.site_diaries (tenant_id, diary_date desc);
+create index if not exists site_diaries_site_date_idx on app_data.site_diaries (site_id, diary_date desc);
+
+-- 3.2 weekly_reports (placeholder — Field's actual Weekly Report build is gated on Diary usage signal)
+create table if not exists app_data.weekly_reports (
+  weekly_report_id      uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  site_id               uuid not null references app_data.sites(site_id) on delete restrict,
+  week_ending_date      date not null,
+  hseq_metrics          jsonb not null default '{}'::jsonb,
+  itp_summary           jsonb not null default '[]'::jsonb,
+  hold_points           jsonb not null default '[]'::jsonb,
+  rfis                  jsonb not null default '[]'::jsonb,
+  progress_summary      text null,
+  next_week_focus       text null,
+  notes                 text null,
+  attendance_summary    jsonb not null default '{}'::jsonb,
+  status                text not null default 'draft',
+  submitted_at          timestamptz null,
+  submitted_by_user_id  uuid null references shell_control.users(id) on delete set null,
+  imported_at timestamptz null, imported_from text null, intake_id uuid null, schema_version text null,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  created_by uuid null, updated_by uuid null,
+  constraint weekly_report_status_check check (status in ('draft','submitted'))
+);
+create unique index if not exists weekly_reports_site_week_uq on app_data.weekly_reports (site_id, week_ending_date);
+
+-- ============================================================================
+-- GROUP 4: APPRENTICE CLUSTER
+-- ============================================================================
+
+-- 4.1 apprentice_profiles
+create table if not exists app_data.apprentice_profiles (
+  apprentice_profile_id uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  staff_id              uuid not null references app_data.staff(staff_id) on delete restrict,
+  trade                 text null,
+  year_level            smallint null,
+  tafe_provider         text null,
+  rto_code              text null,
+  mentor_user_id        uuid null references shell_control.users(id) on delete set null,
+  buddy_staff_id        uuid null references app_data.staff(staff_id) on delete set null,
+  start_date            date null,
+  expected_completion   date null,
+  notes                 text null,
+  active                boolean not null default true,
+  imported_at timestamptz null, imported_from text null, intake_id uuid null, schema_version text null,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  constraint apprentice_year_level_check check (year_level is null or year_level between 1 and 4)
+);
+create unique index if not exists apprentice_profiles_staff_uq on app_data.apprentice_profiles (staff_id);
+
+-- 4.2 skills_ratings
+create table if not exists app_data.skills_ratings (
+  skills_rating_id      uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  apprentice_profile_id uuid not null references app_data.apprentice_profiles(apprentice_profile_id) on delete cascade,
+  skill_name            text not null,
+  rating                smallint not null,
+  rated_by_user_id      uuid null references shell_control.users(id) on delete set null,
+  rated_at              timestamptz not null default now(),
+  notes                 text null,
+  imported_at timestamptz null, imported_from text null, intake_id uuid null, schema_version text null,
+  constraint skills_rating_range_check check (rating between 1 and 5)
+);
+create index if not exists skills_ratings_apprentice_idx on app_data.skills_ratings (apprentice_profile_id, rated_at desc);
+
+-- 4.3 feedback_entries
+create table if not exists app_data.feedback_entries (
+  feedback_entry_id     uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  apprentice_profile_id uuid not null references app_data.apprentice_profiles(apprentice_profile_id) on delete cascade,
+  feedback_text         text not null,
+  feedback_type         text null,
+  from_user_id          uuid null references shell_control.users(id) on delete set null,
+  occurred_at           timestamptz not null default now(),
+  imported_at timestamptz null, imported_from text null, intake_id uuid null, schema_version text null,
+  constraint feedback_type_check check (feedback_type is null or feedback_type in ('positive','constructive','incident','observation'))
+);
+create index if not exists feedback_entries_apprentice_idx on app_data.feedback_entries (apprentice_profile_id, occurred_at desc);
+
+-- 4.4 rotations
+create table if not exists app_data.rotations (
+  rotation_id           uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  apprentice_profile_id uuid not null references app_data.apprentice_profiles(apprentice_profile_id) on delete cascade,
+  site_id               uuid null references app_data.sites(site_id) on delete set null,
+  focus                 text null,
+  start_date            date not null,
+  end_date              date null,
+  outcome_notes         text null,
+  imported_at timestamptz null, imported_from text null, intake_id uuid null, schema_version text null,
+  created_at timestamptz not null default now()
+);
+create index if not exists rotations_apprentice_idx on app_data.rotations (apprentice_profile_id, start_date desc);
+
+-- 4.5 buddy_checkins
+create table if not exists app_data.buddy_checkins (
+  buddy_checkin_id      uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  apprentice_profile_id uuid not null references app_data.apprentice_profiles(apprentice_profile_id) on delete cascade,
+  buddy_staff_id        uuid null references app_data.staff(staff_id) on delete set null,
+  checked_in_at         timestamptz not null default now(),
+  notes                 text null,
+  rating                smallint null,
+  imported_at timestamptz null, imported_from text null, intake_id uuid null, schema_version text null,
+  constraint buddy_checkin_rating_check check (rating is null or rating between 1 and 5)
+);
+create index if not exists buddy_checkins_apprentice_idx on app_data.buddy_checkins (apprentice_profile_id, checked_in_at desc);
+
+-- 4.6 quarterly_reviews
+create table if not exists app_data.quarterly_reviews (
+  quarterly_review_id   uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  apprentice_profile_id uuid not null references app_data.apprentice_profiles(apprentice_profile_id) on delete cascade,
+  quarter               smallint not null,
+  year                  smallint not null,
+  reviewer_user_id      uuid null references shell_control.users(id) on delete set null,
+  content               jsonb not null default '{}'::jsonb,
+  outcome               text null,
+  decided_at            timestamptz null,
+  imported_at timestamptz null, imported_from text null, intake_id uuid null, schema_version text null,
+  created_at timestamptz not null default now(),
+  constraint qr_quarter_check check (quarter between 1 and 4),
+  constraint qr_year_check check (year between 2020 and 2099),
+  constraint qr_outcome_check check (outcome is null or outcome in ('on_track','at_risk','needs_intervention','complete'))
+);
+create unique index if not exists quarterly_reviews_apprentice_qy_uq on app_data.quarterly_reviews (apprentice_profile_id, year, quarter);
+
+-- 4.7 engagement_logs
+create table if not exists app_data.engagement_logs (
+  engagement_log_id     uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  apprentice_profile_id uuid not null references app_data.apprentice_profiles(apprentice_profile_id) on delete cascade,
+  event_type            text not null,
+  event_summary         text null,
+  occurred_at           timestamptz not null default now(),
+  recorded_by_user_id   uuid null references shell_control.users(id) on delete set null,
+  imported_at timestamptz null, imported_from text null, intake_id uuid null, schema_version text null
+);
+create index if not exists engagement_logs_apprentice_idx on app_data.engagement_logs (apprentice_profile_id, occurred_at desc);
+
+-- 4.8 tafe_calendars
+create table if not exists app_data.tafe_calendars (
+  tafe_calendar_id      uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  year                  smallint not null,
+  trade                 text null,
+  year_level            smallint null,
+  term_dates            jsonb not null default '[]'::jsonb,
+  public_holidays       jsonb not null default '[]'::jsonb,
+  imported_at timestamptz null, imported_from text null, intake_id uuid null, schema_version text null,
+  created_at timestamptz not null default now(),
+  constraint tafe_year_check check (year between 2020 and 2099),
+  constraint tafe_year_level_check check (year_level is null or year_level between 1 and 4)
+);
+
+-- ============================================================================
+-- GROUP 5: WORKFLOW EVENT LOGS (per 2026-05-20 audit-log hybrid Q4 decision)
+-- ============================================================================
+
+-- 5.1 schedule_change_logs
+create table if not exists app_data.schedule_change_logs (
+  log_id                uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  schedule_id           uuid null references app_data.schedule_entries(schedule_id) on delete set null,
+  staff_id              uuid null references app_data.staff(staff_id) on delete set null,
+  site_id               uuid null references app_data.sites(site_id) on delete set null,
+  change_type           text not null,
+  old_value             jsonb null,
+  new_value             jsonb null,
+  changed_by_user_id    uuid null references shell_control.users(id) on delete set null,
+  changed_at            timestamptz not null default now(),
+  reason                text null,
+  imported_at timestamptz null, imported_from text null, intake_id uuid null, schema_version text null,
+  constraint schedule_change_type_check check (change_type in ('created','staff_changed','site_changed','date_changed','hours_changed','status_changed','deleted','reassigned'))
+);
+create index if not exists schedule_change_logs_schedule_idx on app_data.schedule_change_logs (schedule_id, changed_at desc) where schedule_id is not null;
+
+-- 5.2 leave_approval_logs
+create table if not exists app_data.leave_approval_logs (
+  log_id                uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null default (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid,
+  leave_request_id      uuid not null references app_data.leave_requests(leave_request_id) on delete cascade,
+  from_status           text null,
+  to_status             text not null,
+  decided_by_user_id    uuid null references shell_control.users(id) on delete set null,
+  decision_notes        text null,
+  decided_at            timestamptz not null default now(),
+  imported_at timestamptz null, imported_from text null, intake_id uuid null, schema_version text null,
+  constraint leave_approval_log_status_check check (to_status in ('pending','approved','rejected','cancelled'))
+);
+create index if not exists leave_approval_logs_request_idx on app_data.leave_approval_logs (leave_request_id, decided_at desc);
+
+-- ============================================================================
+-- updated_at triggers
+-- ============================================================================
+
+do $$
+declare t text;
+declare tables_with_updated_at text[] := array[
+  'timesheets','leave_requests','leave_balances','tenant_app_configs',
+  'tenders','tender_nominations','site_diaries','weekly_reports',
+  'apprentice_profiles'
+];
+begin
+  foreach t in array tables_with_updated_at loop
+    execute format('drop trigger if exists trg_%I_updated_at on app_data.%I', t, t);
+    execute format('create trigger trg_%I_updated_at before update on app_data.%I for each row execute function app_data._set_updated_at()', t, t);
+  end loop;
+end $$;
+
+-- ============================================================================
+-- RLS: enable + tenant-scoped policies for all new tables
+-- ============================================================================
+
+do $$
+declare t text;
+declare field_tables text[] := array[
+  'timesheets','leave_requests','leave_balances','checkins','tenant_app_configs',
+  'tenders','tender_enrichments','tender_nominations','tender_import_runs','tender_review_decisions',
+  'site_diaries','weekly_reports',
+  'apprentice_profiles','skills_ratings','feedback_entries','rotations','buddy_checkins','quarterly_reviews','engagement_logs','tafe_calendars',
+  'schedule_change_logs','leave_approval_logs'
+];
+declare pn text;
+begin
+  foreach t in array field_tables loop
+    execute format('alter table app_data.%I enable row level security', t);
+    pn := t || '_select';
+    if not exists (select 1 from pg_policies where schemaname = 'app_data' and tablename = t and policyname = pn) then
+      execute format('create policy %I on app_data.%I for select to authenticated using (tenant_id = ((auth.jwt() -> ''app_metadata'' ->> ''tenant_id'')::uuid))', pn, t);
+    end if;
+    pn := t || '_insert';
+    if not exists (select 1 from pg_policies where schemaname = 'app_data' and tablename = t and policyname = pn) then
+      execute format('create policy %I on app_data.%I for insert to authenticated with check (tenant_id = ((auth.jwt() -> ''app_metadata'' ->> ''tenant_id'')::uuid))', pn, t);
+    end if;
+    pn := t || '_update';
+    if not exists (select 1 from pg_policies where schemaname = 'app_data' and tablename = t and policyname = pn) then
+      execute format('create policy %I on app_data.%I for update to authenticated using (tenant_id = ((auth.jwt() -> ''app_metadata'' ->> ''tenant_id'')::uuid)) with check (tenant_id = ((auth.jwt() -> ''app_metadata'' ->> ''tenant_id'')::uuid))', pn, t);
+    end if;
+    pn := t || '_delete';
+    if not exists (select 1 from pg_policies where schemaname = 'app_data' and tablename = t and policyname = pn) then
+      execute format('create policy %I on app_data.%I for delete to authenticated using (tenant_id = ((auth.jwt() -> ''app_metadata'' ->> ''tenant_id'')::uuid))', pn, t);
+    end if;
+  end loop;
+end $$;
+
+-- ============================================================================
+-- Register schemas in eq_schema_registry (placeholders; JSON files in @eq/schemas)
+-- ============================================================================
+
+insert into shell_control.eq_schema_registry (entity, module, version, schema_json, description, is_current) values
+  ('timesheet', 'field', '1.0.0', '{"x-eq-entity":"timesheet","x-eq-module":"field","x-eq-version":"1.0.0","type":"object","description":"Worked hours per staff member per day."}'::jsonb, 'Worked hours per staff member per day.', true),
+  ('leave_request', 'field', '1.0.0', '{"x-eq-entity":"leave_request","x-eq-module":"field","x-eq-version":"1.0.0","type":"object","description":"Staff leave request with approval workflow."}'::jsonb, 'Staff leave request.', true),
+  ('leave_balance', 'field', '1.0.0', '{"x-eq-entity":"leave_balance","x-eq-module":"field","x-eq-version":"1.0.0","type":"object","description":"Per-staff annual / sick / long-service leave balances."}'::jsonb, 'Leave balances.', true),
+  ('checkin', 'field', '1.0.0', '{"x-eq-entity":"checkin","x-eq-module":"field","x-eq-version":"1.0.0","type":"object","description":"Site check-in with optional GPS."}'::jsonb, 'Site check-in.', true),
+  ('tenant_app_config', 'field', '1.0.0', '{"x-eq-entity":"tenant_app_config","x-eq-module":"field","x-eq-version":"1.0.0","type":"object","description":"Field-specific tenant feature flags + settings."}'::jsonb, 'Tenant app config.', true),
+  ('tender', 'field', '1.0.0', '{"x-eq-entity":"tender","x-eq-module":"field","x-eq-version":"1.0.0","type":"object","description":"Tender pipeline opportunity."}'::jsonb, 'Tender opportunity.', true),
+  ('tender_enrichment', 'field', '1.0.0', '{"x-eq-entity":"tender_enrichment","x-eq-module":"field","x-eq-version":"1.0.0","type":"object","description":"Supplementary tender data."}'::jsonb, 'Tender enrichment.', true),
+  ('tender_nomination', 'field', '1.0.0', '{"x-eq-entity":"tender_nomination","x-eq-module":"field","x-eq-version":"1.0.0","type":"object","description":"Staff nominated for a tender."}'::jsonb, 'Tender nomination.', true),
+  ('tender_import_run', 'field', '1.0.0', '{"x-eq-entity":"tender_import_run","x-eq-module":"field","x-eq-version":"1.0.0","type":"object","description":"Tender CSV import audit."}'::jsonb, 'Tender import run.', true),
+  ('tender_review_decision', 'field', '1.0.0', '{"x-eq-entity":"tender_review_decision","x-eq-module":"field","x-eq-version":"1.0.0","type":"object","description":"Fortnightly tender review decision."}'::jsonb, 'Tender review decision.', true),
+  ('site_diary', 'field', '1.0.0', '{"x-eq-entity":"site_diary","x-eq-module":"field","x-eq-version":"1.0.0","type":"object","description":"Daily site diary."}'::jsonb, 'Site diary.', true),
+  ('weekly_report', 'field', '1.0.0', '{"x-eq-entity":"weekly_report","x-eq-module":"field","x-eq-version":"1.0.0","type":"object","description":"Weekly site report (placeholder shape)."}'::jsonb, 'Weekly report.', true),
+  ('apprentice_profile', 'field', '1.0.0', '{"x-eq-entity":"apprentice_profile","x-eq-module":"field","x-eq-version":"1.0.0","type":"object","description":"Apprentice extension of a staff record."}'::jsonb, 'Apprentice profile.', true),
+  ('skills_rating', 'field', '1.0.0', '{"x-eq-entity":"skills_rating","x-eq-module":"field","x-eq-version":"1.0.0","type":"object","description":"Skills rating for an apprentice (1-5)."}'::jsonb, 'Skills rating.', true),
+  ('feedback_entry', 'field', '1.0.0', '{"x-eq-entity":"feedback_entry","x-eq-module":"field","x-eq-version":"1.0.0","type":"object","description":"Feedback for an apprentice."}'::jsonb, 'Feedback entry.', true),
+  ('rotation', 'field', '1.0.0', '{"x-eq-entity":"rotation","x-eq-module":"field","x-eq-version":"1.0.0","type":"object","description":"Apprentice site rotation."}'::jsonb, 'Rotation.', true),
+  ('buddy_checkin', 'field', '1.0.0', '{"x-eq-entity":"buddy_checkin","x-eq-module":"field","x-eq-version":"1.0.0","type":"object","description":"Apprentice buddy check-in."}'::jsonb, 'Buddy check-in.', true),
+  ('quarterly_review', 'field', '1.0.0', '{"x-eq-entity":"quarterly_review","x-eq-module":"field","x-eq-version":"1.0.0","type":"object","description":"Apprentice quarterly review."}'::jsonb, 'Quarterly review.', true),
+  ('engagement_log', 'field', '1.0.0', '{"x-eq-entity":"engagement_log","x-eq-module":"field","x-eq-version":"1.0.0","type":"object","description":"Apprentice engagement event log."}'::jsonb, 'Engagement log.', true),
+  ('tafe_calendar', 'field', '1.0.0', '{"x-eq-entity":"tafe_calendar","x-eq-module":"field","x-eq-version":"1.0.0","type":"object","description":"TAFE term dates + public holidays per trade/year."}'::jsonb, 'TAFE calendar.', true),
+  ('schedule_change_log', 'field', '1.0.0', '{"x-eq-entity":"schedule_change_log","x-eq-module":"field","x-eq-version":"1.0.0","type":"object","description":"Schedule change workflow audit log."}'::jsonb, 'Schedule change log.', true),
+  ('leave_approval_log', 'field', '1.0.0', '{"x-eq-entity":"leave_approval_log","x-eq-module":"field","x-eq-version":"1.0.0","type":"object","description":"Leave approval workflow audit log."}'::jsonb, 'Leave approval log.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json, description = excluded.description, module = excluded.module;
+
+
+-- ============================================================================
+-- 11b. FIELD dispatch + router update (Unit 5 part 2)
+-- ============================================================================
+
+-- ============================================================================
+-- 010b — Field dispatch + router update (canonical-readiness Unit 5 part 2)
+-- ============================================================================
+-- Applied separately from 010 because 010 creates the tables and 010b extends
+-- the RPC dispatch. Both belong to Unit 5; split into two files keeps each
+-- file under the 250-line review threshold.
+--
+-- Idempotent — CREATE OR REPLACE on every function.
+-- ============================================================================
+
+create or replace function eq_intake_commit_batch_field(
+  p_intake_id uuid, p_tenant_id uuid, p_table text, p_rows jsonb,
+  p_confirm_replace boolean default false, p_intake_mode text default 'strict')
+returns table (committed_count int, committed_ids uuid[])
+language plpgsql security definer set search_path = app_data, shell_control, public, extensions as $$
+declare v_count int := 0; v_ids uuid[] := array[]::uuid[]; v_row jsonb; v_id uuid;
+  v_source_sig text; v_import_mode text; v_schema_version text; v_source_app text; v_intake_mode text;
+begin
+  perform _eq_intake_check_tenant_match(p_tenant_id);
+  if p_table not in (
+    'staff','schedule_entries','prestart_checks','toolbox_talks','swms','jsa_records','itp_records','incidents',
+    'timesheets','leave_requests','leave_balances','checkins','tenant_app_configs',
+    'tenders','tender_enrichments','tender_nominations','tender_import_runs','tender_review_decisions',
+    'site_diaries','weekly_reports',
+    'apprentice_profiles','skills_ratings','feedback_entries','rotations','buddy_checkins','quarterly_reviews','engagement_logs','tafe_calendars',
+    'schedule_change_logs','leave_approval_logs'
+  ) then
+    raise exception 'table % not field-domain', p_table;
+  end if;
+  select source_signature, import_mode, schema_version, source_app, intake_mode
+  into v_source_sig, v_import_mode, v_schema_version, v_source_app, v_intake_mode
+  from _eq_intake_load_event_meta(p_intake_id, p_tenant_id);
+  if v_source_sig is null then raise exception 'intake_id % not found', p_intake_id; end if;
+  if v_import_mode = 'replace' then
+    if not p_confirm_replace then raise exception 'replace requires p_confirm_replace=true'; end if;
+    execute format('delete from app_data.%I where tenant_id = $1 and imported_from = $2', p_table) using p_tenant_id, v_source_sig;
+  end if;
+  for v_row in select * from jsonb_array_elements(p_rows) loop
+    v_row := _eq_intake_apply_metadata(v_row, p_tenant_id, p_intake_id, v_source_sig, v_schema_version);
+    case p_table
+      when 'staff' then
+        if v_import_mode = 'upsert' then
+          insert into app_data.staff select * from jsonb_populate_record(null::app_data.staff, v_row)
+          on conflict (staff_id) do update set first_name=excluded.first_name, last_name=excluded.last_name,
+            email=excluded.email, phone=excluded.phone, employment_type=excluded.employment_type,
+            active=excluded.active, imported_at=excluded.imported_at, imported_from=excluded.imported_from,
+            intake_id=excluded.intake_id, schema_version=excluded.schema_version
+          returning staff_id into v_id;
+        else
+          insert into app_data.staff select * from jsonb_populate_record(null::app_data.staff, v_row) returning staff_id into v_id;
+        end if;
+      when 'schedule_entries' then insert into app_data.schedule_entries select * from jsonb_populate_record(null::app_data.schedule_entries, v_row) returning schedule_id into v_id;
+      when 'prestart_checks' then insert into app_data.prestart_checks select * from jsonb_populate_record(null::app_data.prestart_checks, v_row) returning prestart_id into v_id;
+      when 'toolbox_talks' then insert into app_data.toolbox_talks select * from jsonb_populate_record(null::app_data.toolbox_talks, v_row) returning talk_id into v_id;
+      when 'swms' then insert into app_data.swms select * from jsonb_populate_record(null::app_data.swms, v_row) returning swms_id into v_id;
+      when 'jsa_records' then insert into app_data.jsa_records select * from jsonb_populate_record(null::app_data.jsa_records, v_row) returning jsa_id into v_id;
+      when 'itp_records' then insert into app_data.itp_records select * from jsonb_populate_record(null::app_data.itp_records, v_row) returning itp_id into v_id;
+      when 'incidents' then insert into app_data.incidents select * from jsonb_populate_record(null::app_data.incidents, v_row) returning incident_id into v_id;
+      when 'timesheets' then insert into app_data.timesheets select * from jsonb_populate_record(null::app_data.timesheets, v_row) returning timesheet_id into v_id;
+      when 'leave_requests' then insert into app_data.leave_requests select * from jsonb_populate_record(null::app_data.leave_requests, v_row) returning leave_request_id into v_id;
+      when 'leave_balances' then insert into app_data.leave_balances select * from jsonb_populate_record(null::app_data.leave_balances, v_row) returning leave_balance_id into v_id;
+      when 'checkins' then insert into app_data.checkins select * from jsonb_populate_record(null::app_data.checkins, v_row) returning checkin_id into v_id;
+      when 'tenant_app_configs' then insert into app_data.tenant_app_configs select * from jsonb_populate_record(null::app_data.tenant_app_configs, v_row) returning config_id into v_id;
+      when 'tenders' then insert into app_data.tenders select * from jsonb_populate_record(null::app_data.tenders, v_row) returning tender_id into v_id;
+      when 'tender_enrichments' then insert into app_data.tender_enrichments select * from jsonb_populate_record(null::app_data.tender_enrichments, v_row) returning enrichment_id into v_id;
+      when 'tender_nominations' then insert into app_data.tender_nominations select * from jsonb_populate_record(null::app_data.tender_nominations, v_row) returning nomination_id into v_id;
+      when 'tender_import_runs' then insert into app_data.tender_import_runs select * from jsonb_populate_record(null::app_data.tender_import_runs, v_row) returning import_run_id into v_id;
+      when 'tender_review_decisions' then insert into app_data.tender_review_decisions select * from jsonb_populate_record(null::app_data.tender_review_decisions, v_row) returning decision_id into v_id;
+      when 'site_diaries' then insert into app_data.site_diaries select * from jsonb_populate_record(null::app_data.site_diaries, v_row) returning site_diary_id into v_id;
+      when 'weekly_reports' then insert into app_data.weekly_reports select * from jsonb_populate_record(null::app_data.weekly_reports, v_row) returning weekly_report_id into v_id;
+      when 'apprentice_profiles' then insert into app_data.apprentice_profiles select * from jsonb_populate_record(null::app_data.apprentice_profiles, v_row) returning apprentice_profile_id into v_id;
+      when 'skills_ratings' then insert into app_data.skills_ratings select * from jsonb_populate_record(null::app_data.skills_ratings, v_row) returning skills_rating_id into v_id;
+      when 'feedback_entries' then insert into app_data.feedback_entries select * from jsonb_populate_record(null::app_data.feedback_entries, v_row) returning feedback_entry_id into v_id;
+      when 'rotations' then insert into app_data.rotations select * from jsonb_populate_record(null::app_data.rotations, v_row) returning rotation_id into v_id;
+      when 'buddy_checkins' then insert into app_data.buddy_checkins select * from jsonb_populate_record(null::app_data.buddy_checkins, v_row) returning buddy_checkin_id into v_id;
+      when 'quarterly_reviews' then insert into app_data.quarterly_reviews select * from jsonb_populate_record(null::app_data.quarterly_reviews, v_row) returning quarterly_review_id into v_id;
+      when 'engagement_logs' then insert into app_data.engagement_logs select * from jsonb_populate_record(null::app_data.engagement_logs, v_row) returning engagement_log_id into v_id;
+      when 'tafe_calendars' then insert into app_data.tafe_calendars select * from jsonb_populate_record(null::app_data.tafe_calendars, v_row) returning tafe_calendar_id into v_id;
+      when 'schedule_change_logs' then insert into app_data.schedule_change_logs select * from jsonb_populate_record(null::app_data.schedule_change_logs, v_row) returning log_id into v_id;
+      when 'leave_approval_logs' then insert into app_data.leave_approval_logs select * from jsonb_populate_record(null::app_data.leave_approval_logs, v_row) returning log_id into v_id;
+    end case;
+    if v_id is not null then v_count := v_count + 1; v_ids := array_append(v_ids, v_id); end if;
+  end loop;
+  perform _eq_intake_record_committed(p_intake_id, v_count);
+  return query select v_count, v_ids;
+end $$;
+
+-- Updated router (recognises Quotes + Field Unit 5 + Cards/Core/Service)
+create or replace function eq_intake_commit_batch(
+  p_intake_id uuid, p_tenant_id uuid, p_table text, p_rows jsonb,
+  p_confirm_replace boolean default false, p_intake_mode text default 'strict')
+returns table (committed_count int, committed_ids uuid[])
+language plpgsql security definer set search_path = app_data, shell_control, public, extensions as $$
+declare v_entity text; v_module text;
+begin
+  perform _eq_intake_check_tenant_match(p_tenant_id);
+  v_entity := case p_table
+    when 'customers' then 'customer' when 'contacts' then 'contact' when 'sites' then 'site'
+    when 'staff' then 'staff' when 'schedule_entries' then 'schedule'
+    when 'prestart_checks' then 'prestart' when 'toolbox_talks' then 'toolbox_talk'
+    when 'swms' then 'swms' when 'jsa_records' then 'jsa' when 'itp_records' then 'itp' when 'incidents' then 'incident'
+    when 'licences' then 'licence' when 'assets' then 'asset'
+    when 'quote' then 'quote' when 'quote_line_item' then 'quote_line_item'
+    when 'quote_status_history' then 'quote_status_history' when 'quote_attachment' then 'quote_attachment'
+    when 'scope_template' then 'scope_template' when 'rate_library' then 'rate_library'
+    when 'quote_email_outbox' then 'quote_email_outbox'
+    when 'timesheets' then 'timesheet' when 'leave_requests' then 'leave_request'
+    when 'leave_balances' then 'leave_balance' when 'checkins' then 'checkin'
+    when 'tenant_app_configs' then 'tenant_app_config'
+    when 'tenders' then 'tender' when 'tender_enrichments' then 'tender_enrichment'
+    when 'tender_nominations' then 'tender_nomination' when 'tender_import_runs' then 'tender_import_run'
+    when 'tender_review_decisions' then 'tender_review_decision'
+    when 'site_diaries' then 'site_diary' when 'weekly_reports' then 'weekly_report'
+    when 'apprentice_profiles' then 'apprentice_profile' when 'skills_ratings' then 'skills_rating'
+    when 'feedback_entries' then 'feedback_entry' when 'rotations' then 'rotation'
+    when 'buddy_checkins' then 'buddy_checkin' when 'quarterly_reviews' then 'quarterly_review'
+    when 'engagement_logs' then 'engagement_log' when 'tafe_calendars' then 'tafe_calendar'
+    when 'schedule_change_logs' then 'schedule_change_log' when 'leave_approval_logs' then 'leave_approval_log'
+    else null end;
+  if v_entity is null then raise exception 'commit not permitted to table % (unknown)', p_table; end if;
+  select module into v_module from shell_control.eq_schema_registry where entity = v_entity and is_current = true;
+  if v_module is null then raise exception 'no current schema for entity %', v_entity; end if;
+  if v_module = 'core' then return query select * from eq_intake_commit_batch_core(p_intake_id, p_tenant_id, p_table, p_rows, p_confirm_replace, p_intake_mode);
+  elsif v_module = 'field' then return query select * from eq_intake_commit_batch_field(p_intake_id, p_tenant_id, p_table, p_rows, p_confirm_replace, p_intake_mode);
+  elsif v_module = 'cards' then return query select * from eq_intake_commit_batch_cards(p_intake_id, p_tenant_id, p_table, p_rows, p_confirm_replace, p_intake_mode);
+  elsif v_module = 'quotes' then return query select * from eq_intake_commit_batch_quotes(p_intake_id, p_tenant_id, p_table, p_rows, p_confirm_replace, p_intake_mode);
+  elsif v_module = 'service' then return query select * from eq_intake_commit_batch_service(p_intake_id, p_tenant_id, p_table, p_rows, p_confirm_replace, p_intake_mode);
+  else raise exception 'unknown module %', v_module; end if;
+end $$;
+
+-- Updated field unwinder
+create or replace function _eq_intake_unwind_field(p_intake_id uuid, p_tenant_id uuid) returns int
+language plpgsql security definer set search_path = app_data, shell_control, public, extensions as $$
+declare v_total int := 0; v_n int;
+begin
+  delete from app_data.leave_approval_logs where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.schedule_change_logs where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.engagement_logs where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.quarterly_reviews where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.buddy_checkins where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.rotations where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.feedback_entries where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.skills_ratings where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.apprentice_profiles where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.tafe_calendars where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.weekly_reports where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.site_diaries where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.tender_review_decisions where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.tender_import_runs where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.tender_nominations where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.tender_enrichments where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.tenders where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.tenant_app_configs where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.checkins where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.leave_balances where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.leave_requests where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.timesheets where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.incidents where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.itp_records where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.jsa_records where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.swms where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.toolbox_talks where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.prestart_checks where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.schedule_entries where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  delete from app_data.staff where intake_id = p_intake_id and tenant_id = p_tenant_id; get diagnostics v_n = row_count; v_total := v_total + v_n;
+  return v_total;
+end $$;
+
+
+-- ============================================================================
+-- 12. eq_list_module_entities RPC (Unit 7 — registry-listing helper)
+-- ============================================================================
+
+-- ============================================================================
+-- 011 — eq_list_module_entities helper RPC (canonical-readiness Unit 7)
+-- ============================================================================
+-- Used by Unit 7's per-domain landing pages (eq-shell DomainLanding.tsx) to
+-- list registered entities for a given module via PostgREST RPC (avoids
+-- the PostgREST schema-exposure dance for shell_control.eq_schema_registry).
+--
+-- Idempotent — CREATE OR REPLACE.
+-- ============================================================================
+
+create or replace function eq_list_module_entities(p_module text)
+returns table (entity text, version text, description text)
+language sql security definer set search_path = app_data, shell_control, public, extensions stable
+as $$
+  select r.entity, r.version, r.description
+  from shell_control.eq_schema_registry r
+  where r.module = p_module and r.is_current = true
+  order by r.entity;
+$$;
+
+grant execute on function eq_list_module_entities(text) to authenticated;
+
+
+-- ============================================================================
 -- 6. SEED eq_schema_registry
 -- ============================================================================
 -- Upsert each canonical schema. ON CONFLICT (entity, version) DO UPDATE so
@@ -4071,6 +6680,235 @@ on conflict (entity, version) do update set
   module = excluded.module;
 
 insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('quote_attachment', 'quotes', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/quotes/quote-attachment/v1.json",
+  "title": "Quote Attachment",
+  "description": "A generated document (docx/pdf) or uploaded file attached to a quote. Storage path is within the per-tenant bucket tenant-{tenant_id}.",
+  "type": "object",
+  "x-eq-entity": "quote_attachment",
+  "x-eq-module": "quotes",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "quote_attachment",
+  "required": ["attachment_id", "tenant_id", "quote_id", "file_name"],
+  "properties": {
+    "attachment_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "quote_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "quote.quote_id" },
+    "file_name": { "type": "string", "description": "Display name, e.g. ''QTE-1042 — Project Name.docx''." },
+    "file_size_bytes": { "type": ["integer", "null"], "minimum": 0 },
+    "mime_type": { "type": ["string", "null"] },
+    "storage_path": { "type": ["string", "null"], "description": "Path within tenant-{tenant_id} bucket, e.g. ''quotes/{quote_id}/{file_name}''." },
+    "sha256": { "type": ["string", "null"], "description": "Content hash for integrity." },
+    "doc_type": { "type": ["string", "null"], "enum": ["docx", "pdf", "image", "other", null] },
+    "quote_snapshot": { "type": ["object", "null"], "description": "Frozen quote state at generation time; reproduces historical docs exactly." },
+    "generated_by_initials": { "type": ["string", "null"], "maxLength": 8 },
+    "generated_at": { "type": ["string", "null"], "format": "date-time" },
+    "uploaded_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}
+'::jsonb, 'A generated document (docx/pdf) or uploaded file attached to a quote. Storage path is within the per-tenant bucket tenant-{tenant_id}.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('quote_email_outbox', 'quotes', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/quotes/quote-email-outbox/v1.json",
+  "title": "Quote Email Outbox",
+  "description": "Outbound email queue for quote-related emails (sender daemon consumes — Resend/SendGrid).",
+  "type": "object",
+  "x-eq-entity": "quote_email_outbox",
+  "x-eq-module": "quotes",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "quote_email_outbox",
+  "required": ["outbox_id", "tenant_id", "quote_id", "to_email", "subject", "status"],
+  "properties": {
+    "outbox_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "quote_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "quote.quote_id" },
+    "to_email": { "type": "string", "format": "email" },
+    "to_name": { "type": ["string", "null"] },
+    "cc_emails": { "type": ["array", "null"], "items": { "type": "string", "format": "email" } },
+    "bcc_emails": { "type": ["array", "null"], "items": { "type": "string", "format": "email" } },
+    "subject": { "type": "string" },
+    "body_html": { "type": ["string", "null"] },
+    "body_text": { "type": ["string", "null"] },
+    "attachment_ids": { "type": ["array", "null"], "items": { "type": "string", "format": "uuid" } },
+    "status": { "type": "string", "default": "queued", "enum": ["queued", "sending", "sent", "failed", "cancelled"] },
+    "queued_at": { "type": ["string", "null"], "format": "date-time" },
+    "sent_at": { "type": ["string", "null"], "format": "date-time" },
+    "failed_at": { "type": ["string", "null"], "format": "date-time" },
+    "error_message": { "type": ["string", "null"] },
+    "attempt_count": { "type": "integer", "default": 0, "minimum": 0 }
+  }
+}
+'::jsonb, 'Outbound email queue for quote-related emails (sender daemon consumes — Resend/SendGrid).', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('quote_line_item', 'quotes', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/quotes/quote-line-item/v1.json",
+  "title": "Quote Line Item",
+  "description": "A single line item on a quote. Money in cents, quantity in thousandths (qty_display = quantity_thousandths / 1000).",
+  "type": "object",
+  "x-eq-entity": "quote_line_item",
+  "x-eq-module": "quotes",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "quote_line_item",
+  "required": ["line_item_id", "tenant_id", "quote_id", "line_number", "description"],
+  "properties": {
+    "line_item_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "quote_id": {
+      "type": "string", "format": "uuid",
+      "description": "FK to quote.quote_id. ON DELETE CASCADE.",
+      "x-eq-foreign-key": "quote.quote_id"
+    },
+    "line_number": { "type": "integer", "minimum": 1, "description": "1-based sequence within the quote." },
+    "description": { "type": "string", "minLength": 1, "description": "What this line is for." },
+    "quantity_thousandths": {
+      "type": "integer", "minimum": 0, "default": 1000,
+      "description": "Quantity * 1000 (integer to avoid float drift). 1 unit = 1000."
+    },
+    "unit": { "type": ["string", "null"], "description": "each | m | kg | hr | day | lot", "maxLength": 16 },
+    "unit_rate_cents": { "type": "integer", "minimum": 0, "default": 0 },
+    "line_total_cents": { "type": "integer", "minimum": 0, "default": 0, "description": "= round(quantity_thousandths * unit_rate_cents / 1000)" },
+    "category": { "type": ["string", "null"], "enum": ["labour", "material", "equipment", "subcontractor", "other", null] },
+    "notes": { "type": ["string", "null"] },
+    "imported_at": { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  }
+}
+'::jsonb, 'A single line item on a quote. Money in cents, quantity in thousandths (qty_display = quantity_thousandths / 1000).', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('quote_status_history', 'quotes', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/quotes/quote-status-history/v1.json",
+  "title": "Quote Status History",
+  "description": "Status transition log for a quote. One row per status change. Per-domain workflow audit per 2026-05-20 audit-log Q4 decision.",
+  "type": "object",
+  "x-eq-entity": "quote_status_history",
+  "x-eq-module": "quotes",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "quote_status_history",
+  "required": ["history_id", "tenant_id", "quote_id", "to_status"],
+  "properties": {
+    "history_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "quote_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "quote.quote_id" },
+    "from_status": { "type": ["string", "null"], "enum": ["draft", "sent", "accepted", "rejected", "expired", "superseded", null] },
+    "to_status": { "type": "string", "enum": ["draft", "sent", "accepted", "rejected", "expired", "superseded"] },
+    "changed_by_initials": { "type": ["string", "null"], "maxLength": 8 },
+    "changed_by_user_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "shell_control.users.id" },
+    "reason": { "type": ["string", "null"] },
+    "changed_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}
+'::jsonb, 'Status transition log for a quote. One row per status change. Per-domain workflow audit per 2026-05-20 audit-log Q4 decision.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('quote', 'quotes', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/quotes/quote/v1.json",
+  "title": "Quote",
+  "description": "A customer quote (proposal). Header-level. Line items live in quote_line_item. Money in cents (bigint); quantities in thousandths.",
+  "type": "object",
+  "x-eq-entity": "quote",
+  "x-eq-module": "quotes",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "quote",
+  "required": ["quote_id", "tenant_id", "customer_id", "status"],
+  "properties": {
+    "quote_id": { "type": "string", "format": "uuid", "description": "Internal canonical ID.", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "customer_id": {
+      "type": "string", "format": "uuid",
+      "description": "FK to app_data.customer. Required.",
+      "x-eq-foreign-key": "customer.customer_id",
+      "x-eq-fk-fuzzy-match-on": ["customer.company_name", "customer.external_id"]
+    },
+    "contact_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "contact.contact_id" },
+    "site_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "site.site_id" },
+    "quote_number": { "type": ["string", "null"], "description": "External-facing number (e.g. QTE-1042 from Smartsheet).", "x-eq-source-aliases": ["number", "no", "ref", "quote_no"], "maxLength": 64 },
+    "external_id": { "type": ["string", "null"], "description": "External system ID (e.g. workbench_job_no).", "x-eq-source-aliases": ["job_no", "workbench_id", "ref"], "maxLength": 64 },
+    "project_name": { "type": ["string", "null"], "x-eq-source-aliases": ["project", "job_name", "title"], "maxLength": 200 },
+    "attn_name": { "type": ["string", "null"], "description": "ATTN person on the quote letterhead. Denormalised from contact for fast rendering.", "x-eq-source-aliases": ["attention", "addressed_to"], "maxLength": 100 },
+    "attn_first_name": { "type": ["string", "null"], "maxLength": 60 },
+    "attn_phone": { "type": ["string", "null"], "maxLength": 40 },
+    "address": { "type": ["string", "null"], "description": "Site address denormalised for letterhead." },
+    "scope_of_works": { "type": ["string", "null"], "description": "Free-text scope. Detailed line items go in quote_line_item." },
+    "estimator_name": { "type": ["string", "null"], "x-eq-source-aliases": ["estimator", "prepared_by"], "maxLength": 100 },
+    "estimator_initials": { "type": ["string", "null"], "maxLength": 8 },
+    "status": {
+      "type": "string", "default": "draft",
+      "enum": ["draft", "sent", "accepted", "rejected", "expired", "superseded"],
+      "x-eq-source-aliases": ["state", "stage"]
+    },
+    "subtotal_cents": { "type": "integer", "default": 0, "minimum": 0, "description": "Subtotal ex-GST in cents." },
+    "gst_cents": { "type": "integer", "default": 0, "minimum": 0 },
+    "total_cents": { "type": "integer", "default": 0, "minimum": 0, "description": "Total inc-GST in cents." },
+    "margin_pct": { "type": ["number", "null"], "description": "Target margin %; null = not tracked." },
+    "sent_at": { "type": ["string", "null"], "format": "date-time" },
+    "sent_by_initials": { "type": ["string", "null"], "maxLength": 8 },
+    "notes": { "type": ["string", "null"] },
+    "imported_at": { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  }
+}
+'::jsonb, 'A customer quote (proposal). Header-level. Line items live in quote_line_item. Money in cents (bigint); quantities in thousandths.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('rate_library', 'quotes', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/quotes/rate-library/v1.json",
+  "title": "Rate Library Entry",
+  "description": "Curated rate library: labour, material, equipment, subcontractor rates. Money in cents.",
+  "type": "object",
+  "x-eq-entity": "rate_library",
+  "x-eq-module": "quotes",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "rate_library",
+  "required": ["rate_id", "tenant_id", "description"],
+  "properties": {
+    "rate_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "code": { "type": ["string", "null"], "description": "Lookup code / SKU. Unique per tenant if set." },
+    "description": { "type": "string", "minLength": 1 },
+    "category": { "type": ["string", "null"], "enum": ["labour", "material", "equipment", "subcontractor", "other", null] },
+    "unit": { "type": ["string", "null"], "maxLength": 16 },
+    "unit_cost_cents": { "type": "integer", "minimum": 0, "default": 0 },
+    "unit_sell_cents": { "type": "integer", "minimum": 0, "default": 0 },
+    "margin_pct": { "type": ["number", "null"] },
+    "active": { "type": "boolean", "default": true }
+  }
+}
+'::jsonb, 'Curated rate library: labour, material, equipment, subcontractor rates. Money in cents.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
 values ('schedule', 'field', '1.0.0', '{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.eq.solutions/field/schedule/v1.json",
@@ -4234,6 +7072,34 @@ values ('schedule', 'field', '1.0.0', '{
   }
 }
 '::jsonb, 'A planned allocation of a staff member to a site for a given day. The atomic unit of EQ Field scheduling.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('scope_template', 'quotes', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/quotes/scope-template/v1.json",
+  "title": "Scope Template",
+  "description": "Reusable scope-of-work phrase. Used in the Quotes UI''s scope dropdown. Tenant-scoped library.",
+  "type": "object",
+  "x-eq-entity": "scope_template",
+  "x-eq-module": "quotes",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "scope_template",
+  "required": ["template_id", "tenant_id", "name", "body"],
+  "properties": {
+    "template_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "name": { "type": "string", "description": "Short label shown in the dropdown.", "maxLength": 100 },
+    "category": { "type": ["string", "null"], "maxLength": 60 },
+    "body": { "type": "string", "description": "The actual scope phrase, inserted into the quote." },
+    "sort_order": { "type": "integer", "default": 0 },
+    "active": { "type": "boolean", "default": true }
+  }
+}
+'::jsonb, 'Reusable scope-of-work phrase. Used in the Quotes UI''s scope dropdown. Tenant-scoped library.', true)
 on conflict (entity, version) do update set
   schema_json = excluded.schema_json,
   description = excluded.description,
