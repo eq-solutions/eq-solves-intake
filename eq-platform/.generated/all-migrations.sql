@@ -32,6 +32,35 @@ set search_path = public;
 -- Required Postgres extensions (Supabase has these enabled by default)
 create extension if not exists pgcrypto;
 
+-- ----- apprentice_profile -----
+create table if not exists apprentice_profiles (
+  apprentice_profile_id uuid primary key default gen_random_uuid(),
+  tenant_id uuid,
+  staff_id uuid not null,
+  trade text,
+  year_level bigint,
+  tafe_provider text,
+  rto_code text,
+  mentor_user_id uuid,
+  buddy_staff_id uuid,
+  start_date date,
+  expected_completion date,
+  notes text,
+  active boolean default true,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists apprentice_profiles_tenant_id_idx on apprentice_profiles(tenant_id);
+create index if not exists apprentice_profiles_staff_id_idx on apprentice_profiles(staff_id);
+create index if not exists apprentice_profiles_buddy_staff_id_idx on apprentice_profiles(buddy_staff_id);
+alter table apprentice_profiles enable row level security;
+
 -- ----- asset -----
 create table if not exists assets (
   asset_id uuid primary key default gen_random_uuid(),
@@ -72,6 +101,54 @@ create index if not exists assets_tenant_id_idx on assets(tenant_id);
 create index if not exists assets_site_id_idx on assets(site_id);
 create index if not exists assets_parent_asset_id_idx on assets(parent_asset_id);
 alter table assets enable row level security;
+
+-- ----- buddy_checkin -----
+create table if not exists buddy_checkins (
+  buddy_checkin_id uuid primary key default gen_random_uuid(),
+  tenant_id uuid,
+  apprentice_profile_id uuid not null,
+  buddy_staff_id uuid,
+  checked_in_at timestamptz,
+  notes text,
+  rating bigint,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists buddy_checkins_tenant_id_idx on buddy_checkins(tenant_id);
+create index if not exists buddy_checkins_apprentice_profile_id_idx on buddy_checkins(apprentice_profile_id);
+create index if not exists buddy_checkins_buddy_staff_id_idx on buddy_checkins(buddy_staff_id);
+alter table buddy_checkins enable row level security;
+
+-- ----- checkin -----
+create table if not exists checkins (
+  checkin_id uuid primary key default gen_random_uuid(),
+  tenant_id uuid,
+  staff_id uuid not null,
+  site_id uuid,
+  week text,
+  checked_in_at timestamptz,
+  latitude numeric,
+  longitude numeric,
+  device_id text,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists checkins_tenant_id_idx on checkins(tenant_id);
+create index if not exists checkins_staff_id_idx on checkins(staff_id);
+create index if not exists checkins_site_id_idx on checkins(site_id);
+alter table checkins enable row level security;
 
 -- ----- contact -----
 create table if not exists contacts (
@@ -159,6 +236,50 @@ create table if not exists customers (
 );
 create index if not exists customers_tenant_id_idx on customers(tenant_id);
 alter table customers enable row level security;
+
+-- ----- engagement_log -----
+create table if not exists engagement_logs (
+  engagement_log_id uuid primary key default gen_random_uuid(),
+  tenant_id uuid,
+  apprentice_profile_id uuid not null,
+  event_type text not null,
+  event_summary text,
+  occurred_at timestamptz,
+  recorded_by_user_id uuid,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists engagement_logs_tenant_id_idx on engagement_logs(tenant_id);
+create index if not exists engagement_logs_apprentice_profile_id_idx on engagement_logs(apprentice_profile_id);
+alter table engagement_logs enable row level security;
+
+-- ----- feedback_entry -----
+create table if not exists feedback_entries (
+  feedback_entry_id uuid primary key default gen_random_uuid(),
+  tenant_id uuid,
+  apprentice_profile_id uuid not null,
+  feedback_text text not null,
+  feedback_type text check (feedback_type is null or feedback_type in ('positive', 'constructive', 'incident', 'observation')),
+  from_user_id uuid,
+  occurred_at timestamptz,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists feedback_entries_tenant_id_idx on feedback_entries(tenant_id);
+create index if not exists feedback_entries_apprentice_profile_id_idx on feedback_entries(apprentice_profile_id);
+alter table feedback_entries enable row level security;
 
 -- ----- incident -----
 create table if not exists incidents (
@@ -268,6 +389,82 @@ create index if not exists jsa_records_site_id_idx on jsa_records(site_id);
 create index if not exists jsa_records_swms_id_idx on jsa_records(swms_id);
 alter table jsa_records enable row level security;
 
+-- ----- leave_approval_log -----
+create table if not exists leave_approval_logs (
+  log_id uuid,
+  tenant_id uuid,
+  leave_request_id uuid not null,
+  from_status text,
+  to_status text not null check (to_status is null or to_status in ('pending', 'approved', 'rejected', 'cancelled')),
+  decided_by_user_id uuid,
+  decision_notes text,
+  decided_at timestamptz,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists leave_approval_logs_tenant_id_idx on leave_approval_logs(tenant_id);
+create index if not exists leave_approval_logs_leave_request_id_idx on leave_approval_logs(leave_request_id);
+alter table leave_approval_logs enable row level security;
+
+-- ----- leave_balance -----
+create table if not exists leave_balances (
+  leave_balance_id uuid primary key default gen_random_uuid(),
+  tenant_id uuid,
+  staff_id uuid not null,
+  al_balance_hours numeric default 0,
+  sick_balance_hours numeric default 0,
+  long_service_balance_hours numeric default 0,
+  personal_balance_hours numeric default 0,
+  notes text,
+  updated_by_user_id uuid,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists leave_balances_tenant_id_idx on leave_balances(tenant_id);
+create index if not exists leave_balances_staff_id_idx on leave_balances(staff_id);
+alter table leave_balances enable row level security;
+
+-- ----- leave_request -----
+create table if not exists leave_requests (
+  leave_request_id uuid primary key default gen_random_uuid(),
+  tenant_id uuid,
+  staff_id uuid not null,
+  leave_type text not null check (leave_type is null or leave_type in ('annual', 'sick', 'personal', 'long_service', 'unpaid', 'tafe', 'other')),
+  from_date date not null,
+  to_date date not null,
+  hours_requested numeric default 0,
+  status text not null default 'pending' check (status is null or status in ('pending', 'approved', 'rejected', 'cancelled')),
+  reason text,
+  approver_required boolean default true,
+  approver_id uuid,
+  decided_at timestamptz,
+  decision_notes text,
+  archived boolean default false,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists leave_requests_tenant_id_idx on leave_requests(tenant_id);
+create index if not exists leave_requests_staff_id_idx on leave_requests(staff_id);
+alter table leave_requests enable row level security;
+
 -- ----- licence -----
 create table if not exists licences (
   licence_id uuid primary key default gen_random_uuid(),
@@ -330,6 +527,30 @@ create table if not exists prestart_checks (
 create index if not exists prestart_checks_tenant_id_idx on prestart_checks(tenant_id);
 create index if not exists prestart_checks_site_id_idx on prestart_checks(site_id);
 alter table prestart_checks enable row level security;
+
+-- ----- quarterly_review -----
+create table if not exists quarterly_reviews (
+  quarterly_review_id uuid primary key default gen_random_uuid(),
+  tenant_id uuid,
+  apprentice_profile_id uuid not null,
+  quarter bigint not null,
+  year bigint not null,
+  reviewer_user_id uuid,
+  content jsonb,
+  outcome text check (outcome is null or outcome in ('on_track', 'at_risk', 'needs_intervention', 'complete')),
+  decided_at timestamptz,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists quarterly_reviews_tenant_id_idx on quarterly_reviews(tenant_id);
+create index if not exists quarterly_reviews_apprentice_profile_id_idx on quarterly_reviews(apprentice_profile_id);
+alter table quarterly_reviews enable row level security;
 
 -- ----- quote_attachment -----
 create table if not exists quote_attachment (
@@ -505,6 +726,58 @@ create table if not exists rate_library (
 create index if not exists rate_library_tenant_id_idx on rate_library(tenant_id);
 alter table rate_library enable row level security;
 
+-- ----- rotation -----
+create table if not exists rotations (
+  rotation_id uuid primary key default gen_random_uuid(),
+  tenant_id uuid,
+  apprentice_profile_id uuid not null,
+  site_id uuid,
+  focus text,
+  start_date date not null,
+  end_date date,
+  outcome_notes text,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists rotations_tenant_id_idx on rotations(tenant_id);
+create index if not exists rotations_apprentice_profile_id_idx on rotations(apprentice_profile_id);
+create index if not exists rotations_site_id_idx on rotations(site_id);
+alter table rotations enable row level security;
+
+-- ----- schedule_change_log -----
+create table if not exists schedule_change_logs (
+  log_id uuid,
+  tenant_id uuid,
+  schedule_id uuid,
+  staff_id uuid,
+  site_id uuid,
+  change_type text not null check (change_type is null or change_type in ('created', 'staff_changed', 'site_changed', 'date_changed', 'hours_changed', 'status_changed', 'deleted', 'reassigned')),
+  old_value jsonb,
+  new_value jsonb,
+  changed_by_user_id uuid,
+  changed_at timestamptz,
+  reason text,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists schedule_change_logs_tenant_id_idx on schedule_change_logs(tenant_id);
+create index if not exists schedule_change_logs_schedule_id_idx on schedule_change_logs(schedule_id);
+create index if not exists schedule_change_logs_staff_id_idx on schedule_change_logs(staff_id);
+create index if not exists schedule_change_logs_site_id_idx on schedule_change_logs(site_id);
+alter table schedule_change_logs enable row level security;
+
 -- ----- schedule -----
 create table if not exists schedule_entries (
   entry_id uuid primary key default gen_random_uuid(),
@@ -556,6 +829,44 @@ create table if not exists scope_template (
 create index if not exists scope_template_tenant_id_idx on scope_template(tenant_id);
 alter table scope_template enable row level security;
 
+-- ----- site_diary -----
+create table if not exists site_diaries (
+  site_diary_id uuid primary key default gen_random_uuid(),
+  tenant_id uuid,
+  site_id uuid not null,
+  diary_date date not null,
+  shift_type text check (shift_type is null or shift_type in ('day', 'night', 'split')),
+  start_time text,
+  end_time text,
+  supervisor_name text,
+  supervisor_user_id uuid,
+  subcontractor text,
+  weather jsonb,
+  work_areas jsonb,
+  delays jsonb,
+  incidents jsonb,
+  visitors jsonb,
+  materials_received text,
+  equipment_status text,
+  notes text,
+  attendance jsonb,
+  photo_paths jsonb,
+  status text not null default 'draft' check (status is null or status in ('draft', 'submitted')),
+  submitted_at timestamptz,
+  submitted_by_user_id uuid,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists site_diaries_tenant_id_idx on site_diaries(tenant_id);
+create index if not exists site_diaries_site_id_idx on site_diaries(site_id);
+alter table site_diaries enable row level security;
+
 -- ----- site -----
 create table if not exists sites (
   site_id uuid primary key default gen_random_uuid(),
@@ -594,6 +905,29 @@ create table if not exists sites (
 create index if not exists sites_tenant_id_idx on sites(tenant_id);
 create index if not exists sites_customer_id_idx on sites(customer_id);
 alter table sites enable row level security;
+
+-- ----- skills_rating -----
+create table if not exists skills_ratings (
+  skills_rating_id uuid primary key default gen_random_uuid(),
+  tenant_id uuid,
+  apprentice_profile_id uuid not null,
+  skill_name text not null,
+  rating bigint not null,
+  rated_by_user_id uuid,
+  rated_at timestamptz,
+  notes text,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists skills_ratings_tenant_id_idx on skills_ratings(tenant_id);
+create index if not exists skills_ratings_apprentice_profile_id_idx on skills_ratings(apprentice_profile_id);
+alter table skills_ratings enable row level security;
 
 -- ----- staff -----
 create table if not exists staff (
@@ -669,6 +1003,206 @@ create index if not exists swms_tenant_id_idx on swms(tenant_id);
 create index if not exists swms_site_id_idx on swms(site_id);
 alter table swms enable row level security;
 
+-- ----- tafe_calendar -----
+create table if not exists tafe_calendars (
+  tafe_calendar_id uuid primary key default gen_random_uuid(),
+  tenant_id uuid,
+  year bigint not null,
+  trade text,
+  year_level bigint,
+  term_dates jsonb,
+  public_holidays jsonb,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists tafe_calendars_tenant_id_idx on tafe_calendars(tenant_id);
+alter table tafe_calendars enable row level security;
+
+-- ----- tenant_app_config -----
+create table if not exists tenant_app_configs (
+  config_id uuid,
+  tenant_id uuid,
+  feature_flags jsonb,
+  field_settings jsonb,
+  notes text,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists tenant_app_configs_tenant_id_idx on tenant_app_configs(tenant_id);
+alter table tenant_app_configs enable row level security;
+
+-- ----- tender_enrichment -----
+create table if not exists tender_enrichments (
+  enrichment_id uuid,
+  tenant_id uuid,
+  tender_id uuid not null,
+  source text,
+  source_url text,
+  content jsonb,
+  attachments jsonb,
+  notes text,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists tender_enrichments_tenant_id_idx on tender_enrichments(tenant_id);
+create index if not exists tender_enrichments_tender_id_idx on tender_enrichments(tender_id);
+alter table tender_enrichments enable row level security;
+
+-- ----- tender_import_run -----
+create table if not exists tender_import_runs (
+  import_run_id uuid,
+  tenant_id uuid,
+  source_filename text not null,
+  rows_processed bigint default 0,
+  rows_created bigint default 0,
+  rows_updated bigint default 0,
+  rows_skipped bigint default 0,
+  status text not null default 'completed' check (status is null or status in ('running', 'completed', 'failed')),
+  error_message text,
+  started_at timestamptz,
+  completed_at timestamptz,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists tender_import_runs_tenant_id_idx on tender_import_runs(tenant_id);
+alter table tender_import_runs enable row level security;
+
+-- ----- tender_nomination -----
+create table if not exists tender_nominations (
+  nomination_id uuid,
+  tenant_id uuid,
+  tender_id uuid not null,
+  staff_id uuid,
+  role text,
+  nominated_by_user_id uuid,
+  start_date date,
+  end_date date,
+  notes text,
+  status text not null default 'proposed' check (status is null or status in ('proposed', 'confirmed', 'withdrawn', 'clashed')),
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists tender_nominations_tenant_id_idx on tender_nominations(tenant_id);
+create index if not exists tender_nominations_tender_id_idx on tender_nominations(tender_id);
+create index if not exists tender_nominations_staff_id_idx on tender_nominations(staff_id);
+alter table tender_nominations enable row level security;
+
+-- ----- tender_review_decision -----
+create table if not exists tender_review_decisions (
+  decision_id uuid,
+  tenant_id uuid,
+  tender_id uuid not null,
+  review_date date not null,
+  decision text not null check (decision is null or decision in ('keep_watching', 'escalate', 'bid', 'pass', 'park')),
+  rationale text,
+  decided_by_user_id uuid,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists tender_review_decisions_tenant_id_idx on tender_review_decisions(tenant_id);
+create index if not exists tender_review_decisions_tender_id_idx on tender_review_decisions(tender_id);
+alter table tender_review_decisions enable row level security;
+
+-- ----- tender -----
+create table if not exists tenders (
+  tender_id uuid primary key default gen_random_uuid(),
+  tenant_id uuid,
+  tender_number text,
+  external_id text,
+  title text not null,
+  client_name text,
+  customer_id uuid,
+  stage text not null default 'watch' check (stage is null or stage in ('watch', 'confirmed', 'likely', 'won', 'lost', 'withdrawn')),
+  estimated_value_cents bigint,
+  close_date date,
+  department text,
+  estimator_user_id uuid,
+  scope_summary text,
+  notes text,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists tenders_tenant_id_idx on tenders(tenant_id);
+create index if not exists tenders_customer_id_idx on tenders(customer_id);
+alter table tenders enable row level security;
+
+-- ----- timesheet -----
+create table if not exists timesheets (
+  timesheet_id uuid primary key default gen_random_uuid(),
+  tenant_id uuid,
+  staff_id uuid not null,
+  site_id uuid,
+  schedule_id uuid,
+  date date not null,
+  start_time text,
+  end_time text,
+  hours numeric not null default 0,
+  break_minutes bigint default 0,
+  shift text check (shift is null or shift in ('day', 'night', 'split', 'arvo')),
+  task varchar(200),
+  status text not null default 'draft' check (status is null or status in ('draft', 'submitted', 'approved', 'rejected', 'paid')),
+  submitted_at timestamptz,
+  approved_at timestamptz,
+  approved_by_user_id uuid,
+  paid_at timestamptz,
+  notes text,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists timesheets_tenant_id_idx on timesheets(tenant_id);
+create index if not exists timesheets_staff_id_idx on timesheets(staff_id);
+create index if not exists timesheets_site_id_idx on timesheets(site_id);
+create index if not exists timesheets_schedule_id_idx on timesheets(schedule_id);
+alter table timesheets enable row level security;
+
 -- ----- toolbox_talk -----
 create table if not exists toolbox_talks (
   talk_id uuid primary key default gen_random_uuid(),
@@ -704,7 +1238,43 @@ create index if not exists toolbox_talks_tenant_id_idx on toolbox_talks(tenant_i
 create index if not exists toolbox_talks_site_id_idx on toolbox_talks(site_id);
 alter table toolbox_talks enable row level security;
 
+-- ----- weekly_report -----
+create table if not exists weekly_reports (
+  weekly_report_id uuid primary key default gen_random_uuid(),
+  tenant_id uuid,
+  site_id uuid not null,
+  week_ending_date date not null,
+  hseq_metrics jsonb,
+  itp_summary jsonb,
+  hold_points jsonb,
+  rfis jsonb,
+  progress_summary text,
+  next_week_focus text,
+  notes text,
+  attendance_summary jsonb,
+  status text not null default 'draft' check (status is null or status in ('draft', 'submitted')),
+  submitted_at timestamptz,
+  submitted_by_user_id uuid,
+  imported_at timestamptz,
+  imported_from text,
+  intake_id uuid,
+  schema_version text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
+);
+create index if not exists weekly_reports_tenant_id_idx on weekly_reports(tenant_id);
+create index if not exists weekly_reports_site_id_idx on weekly_reports(site_id);
+alter table weekly_reports enable row level security;
+
 -- ----- foreign keys (deferred until all tables exist) -----
+-- FKs for apprentice_profile
+alter table apprentice_profiles drop constraint if exists apprentice_profiles_staff_id_fk;
+alter table apprentice_profiles add constraint apprentice_profiles_staff_id_fk foreign key (staff_id) references staff(staff_id);
+alter table apprentice_profiles drop constraint if exists apprentice_profiles_buddy_staff_id_fk;
+alter table apprentice_profiles add constraint apprentice_profiles_buddy_staff_id_fk foreign key (buddy_staff_id) references staff(staff_id);
+
 -- FKs for asset
 alter table assets drop constraint if exists assets_site_id_fk;
 alter table assets add constraint assets_site_id_fk foreign key (site_id) references sites(site_id);
@@ -715,9 +1285,31 @@ alter table assets add constraint assets_criticality_enum_check check (criticali
 alter table assets drop constraint if exists assets_condition_enum_check;
 alter table assets add constraint assets_condition_enum_check check (condition is null or condition in ('good', 'fair', 'poor', 'needs_replacement', 'unknown'));
 
+-- FKs for buddy_checkin
+alter table buddy_checkins drop constraint if exists buddy_checkins_apprentice_profile_id_fk;
+alter table buddy_checkins add constraint buddy_checkins_apprentice_profile_id_fk foreign key (apprentice_profile_id) references apprentice_profiles(apprentice_profile_id);
+alter table buddy_checkins drop constraint if exists buddy_checkins_buddy_staff_id_fk;
+alter table buddy_checkins add constraint buddy_checkins_buddy_staff_id_fk foreign key (buddy_staff_id) references staff(staff_id);
+
+-- FKs for checkin
+alter table checkins drop constraint if exists checkins_staff_id_fk;
+alter table checkins add constraint checkins_staff_id_fk foreign key (staff_id) references staff(staff_id);
+alter table checkins drop constraint if exists checkins_site_id_fk;
+alter table checkins add constraint checkins_site_id_fk foreign key (site_id) references sites(site_id);
+
 -- FKs for contact
 alter table contacts drop constraint if exists contacts_customer_id_fk;
 alter table contacts add constraint contacts_customer_id_fk foreign key (customer_id) references customers(customer_id);
+
+-- FKs for engagement_log
+alter table engagement_logs drop constraint if exists engagement_logs_apprentice_profile_id_fk;
+alter table engagement_logs add constraint engagement_logs_apprentice_profile_id_fk foreign key (apprentice_profile_id) references apprentice_profiles(apprentice_profile_id);
+
+-- FKs for feedback_entry
+alter table feedback_entries drop constraint if exists feedback_entries_apprentice_profile_id_fk;
+alter table feedback_entries add constraint feedback_entries_apprentice_profile_id_fk foreign key (apprentice_profile_id) references apprentice_profiles(apprentice_profile_id);
+alter table feedback_entries drop constraint if exists feedback_entries_feedback_type_enum_check;
+alter table feedback_entries add constraint feedback_entries_feedback_type_enum_check check (feedback_type is null or feedback_type in ('positive', 'constructive', 'incident', 'observation'));
 
 -- FKs for incident
 alter table incidents drop constraint if exists incidents_site_id_fk;
@@ -755,6 +1347,24 @@ alter table jsa_records add constraint jsa_records_status_enum_check check (stat
 alter table jsa_records drop constraint if exists jsa_records_source_enum_check;
 alter table jsa_records add constraint jsa_records_source_enum_check check (source is null or source in ('cards_mobile', 'import_spreadsheet', 'capture_pdf', 'capture_photo', 'manual_entry'));
 
+-- FKs for leave_approval_log
+alter table leave_approval_logs drop constraint if exists leave_approval_logs_leave_request_id_fk;
+alter table leave_approval_logs add constraint leave_approval_logs_leave_request_id_fk foreign key (leave_request_id) references leave_requests(leave_request_id);
+alter table leave_approval_logs drop constraint if exists leave_approval_logs_to_status_enum_check;
+alter table leave_approval_logs add constraint leave_approval_logs_to_status_enum_check check (to_status is null or to_status in ('pending', 'approved', 'rejected', 'cancelled'));
+
+-- FKs for leave_balance
+alter table leave_balances drop constraint if exists leave_balances_staff_id_fk;
+alter table leave_balances add constraint leave_balances_staff_id_fk foreign key (staff_id) references staff(staff_id);
+
+-- FKs for leave_request
+alter table leave_requests drop constraint if exists leave_requests_staff_id_fk;
+alter table leave_requests add constraint leave_requests_staff_id_fk foreign key (staff_id) references staff(staff_id);
+alter table leave_requests drop constraint if exists leave_requests_leave_type_enum_check;
+alter table leave_requests add constraint leave_requests_leave_type_enum_check check (leave_type is null or leave_type in ('annual', 'sick', 'personal', 'long_service', 'unpaid', 'tafe', 'other'));
+alter table leave_requests drop constraint if exists leave_requests_status_enum_check;
+alter table leave_requests add constraint leave_requests_status_enum_check check (status is null or status in ('pending', 'approved', 'rejected', 'cancelled'));
+
 -- FKs for licence
 alter table licences drop constraint if exists licences_staff_id_fk;
 alter table licences add constraint licences_staff_id_fk foreign key (staff_id) references staff(staff_id);
@@ -766,6 +1376,12 @@ alter table prestart_checks drop constraint if exists prestart_checks_site_id_fk
 alter table prestart_checks add constraint prestart_checks_site_id_fk foreign key (site_id) references sites(site_id);
 alter table prestart_checks drop constraint if exists prestart_checks_source_enum_check;
 alter table prestart_checks add constraint prestart_checks_source_enum_check check (source is null or source in ('cards_mobile', 'import_spreadsheet', 'capture_pdf', 'capture_photo', 'manual_entry'));
+
+-- FKs for quarterly_review
+alter table quarterly_reviews drop constraint if exists quarterly_reviews_apprentice_profile_id_fk;
+alter table quarterly_reviews add constraint quarterly_reviews_apprentice_profile_id_fk foreign key (apprentice_profile_id) references apprentice_profiles(apprentice_profile_id);
+alter table quarterly_reviews drop constraint if exists quarterly_reviews_outcome_enum_check;
+alter table quarterly_reviews add constraint quarterly_reviews_outcome_enum_check check (outcome is null or outcome in ('on_track', 'at_risk', 'needs_intervention', 'complete'));
 
 -- FKs for quote_attachment
 alter table quote_attachment drop constraint if exists quote_attachment_quote_id_fk;
@@ -807,6 +1423,22 @@ alter table quote add constraint quote_status_enum_check check (status is null o
 alter table rate_library drop constraint if exists rate_library_category_enum_check;
 alter table rate_library add constraint rate_library_category_enum_check check (category is null or category in ('labour', 'material', 'equipment', 'subcontractor', 'other'));
 
+-- FKs for rotation
+alter table rotations drop constraint if exists rotations_apprentice_profile_id_fk;
+alter table rotations add constraint rotations_apprentice_profile_id_fk foreign key (apprentice_profile_id) references apprentice_profiles(apprentice_profile_id);
+alter table rotations drop constraint if exists rotations_site_id_fk;
+alter table rotations add constraint rotations_site_id_fk foreign key (site_id) references sites(site_id);
+
+-- FKs for schedule_change_log
+alter table schedule_change_logs drop constraint if exists schedule_change_logs_schedule_id_fk;
+alter table schedule_change_logs add constraint schedule_change_logs_schedule_id_fk foreign key (schedule_id) references schedule_entries(schedule_id);
+alter table schedule_change_logs drop constraint if exists schedule_change_logs_staff_id_fk;
+alter table schedule_change_logs add constraint schedule_change_logs_staff_id_fk foreign key (staff_id) references staff(staff_id);
+alter table schedule_change_logs drop constraint if exists schedule_change_logs_site_id_fk;
+alter table schedule_change_logs add constraint schedule_change_logs_site_id_fk foreign key (site_id) references sites(site_id);
+alter table schedule_change_logs drop constraint if exists schedule_change_logs_change_type_enum_check;
+alter table schedule_change_logs add constraint schedule_change_logs_change_type_enum_check check (change_type is null or change_type in ('created', 'staff_changed', 'site_changed', 'date_changed', 'hours_changed', 'status_changed', 'deleted', 'reassigned'));
+
 -- FKs for schedule
 alter table schedule_entries drop constraint if exists schedule_entries_staff_id_fk;
 alter table schedule_entries add constraint schedule_entries_staff_id_fk foreign key (staff_id) references staff(staff_id);
@@ -821,11 +1453,23 @@ alter table schedule_entries add constraint schedule_entries_leave_type_enum_che
 alter table schedule_entries drop constraint if exists schedule_entries_supervisor_id_fk;
 alter table schedule_entries add constraint schedule_entries_supervisor_id_fk foreign key (supervisor_id) references staff(staff_id);
 
+-- FKs for site_diary
+alter table site_diaries drop constraint if exists site_diaries_site_id_fk;
+alter table site_diaries add constraint site_diaries_site_id_fk foreign key (site_id) references sites(site_id);
+alter table site_diaries drop constraint if exists site_diaries_shift_type_enum_check;
+alter table site_diaries add constraint site_diaries_shift_type_enum_check check (shift_type is null or shift_type in ('day', 'night', 'split'));
+alter table site_diaries drop constraint if exists site_diaries_status_enum_check;
+alter table site_diaries add constraint site_diaries_status_enum_check check (status is null or status in ('draft', 'submitted'));
+
 -- FKs for site
 alter table sites drop constraint if exists sites_customer_id_fk;
 alter table sites add constraint sites_customer_id_fk foreign key (customer_id) references customers(customer_id);
 alter table sites drop constraint if exists sites_site_type_enum_check;
 alter table sites add constraint sites_site_type_enum_check check (site_type is null or site_type in ('customer', 'project', 'depot', 'office', 'other'));
+
+-- FKs for skills_rating
+alter table skills_ratings drop constraint if exists skills_ratings_apprentice_profile_id_fk;
+alter table skills_ratings add constraint skills_ratings_apprentice_profile_id_fk foreign key (apprentice_profile_id) references apprentice_profiles(apprentice_profile_id);
 
 -- FKs for staff
 alter table staff drop constraint if exists staff_employment_type_enum_check;
@@ -841,6 +1485,46 @@ alter table swms add constraint swms_status_enum_check check (status is null or 
 alter table swms drop constraint if exists swms_source_enum_check;
 alter table swms add constraint swms_source_enum_check check (source is null or source in ('cards_mobile', 'import_spreadsheet', 'capture_pdf', 'capture_photo', 'capture_email', 'manual_entry'));
 
+-- FKs for tender_enrichment
+alter table tender_enrichments drop constraint if exists tender_enrichments_tender_id_fk;
+alter table tender_enrichments add constraint tender_enrichments_tender_id_fk foreign key (tender_id) references tenders(tender_id);
+
+-- FKs for tender_import_run
+alter table tender_import_runs drop constraint if exists tender_import_runs_status_enum_check;
+alter table tender_import_runs add constraint tender_import_runs_status_enum_check check (status is null or status in ('running', 'completed', 'failed'));
+
+-- FKs for tender_nomination
+alter table tender_nominations drop constraint if exists tender_nominations_tender_id_fk;
+alter table tender_nominations add constraint tender_nominations_tender_id_fk foreign key (tender_id) references tenders(tender_id);
+alter table tender_nominations drop constraint if exists tender_nominations_staff_id_fk;
+alter table tender_nominations add constraint tender_nominations_staff_id_fk foreign key (staff_id) references staff(staff_id);
+alter table tender_nominations drop constraint if exists tender_nominations_status_enum_check;
+alter table tender_nominations add constraint tender_nominations_status_enum_check check (status is null or status in ('proposed', 'confirmed', 'withdrawn', 'clashed'));
+
+-- FKs for tender_review_decision
+alter table tender_review_decisions drop constraint if exists tender_review_decisions_tender_id_fk;
+alter table tender_review_decisions add constraint tender_review_decisions_tender_id_fk foreign key (tender_id) references tenders(tender_id);
+alter table tender_review_decisions drop constraint if exists tender_review_decisions_decision_enum_check;
+alter table tender_review_decisions add constraint tender_review_decisions_decision_enum_check check (decision is null or decision in ('keep_watching', 'escalate', 'bid', 'pass', 'park'));
+
+-- FKs for tender
+alter table tenders drop constraint if exists tenders_customer_id_fk;
+alter table tenders add constraint tenders_customer_id_fk foreign key (customer_id) references customers(customer_id);
+alter table tenders drop constraint if exists tenders_stage_enum_check;
+alter table tenders add constraint tenders_stage_enum_check check (stage is null or stage in ('watch', 'confirmed', 'likely', 'won', 'lost', 'withdrawn'));
+
+-- FKs for timesheet
+alter table timesheets drop constraint if exists timesheets_staff_id_fk;
+alter table timesheets add constraint timesheets_staff_id_fk foreign key (staff_id) references staff(staff_id);
+alter table timesheets drop constraint if exists timesheets_site_id_fk;
+alter table timesheets add constraint timesheets_site_id_fk foreign key (site_id) references sites(site_id);
+alter table timesheets drop constraint if exists timesheets_schedule_id_fk;
+alter table timesheets add constraint timesheets_schedule_id_fk foreign key (schedule_id) references schedule_entries(schedule_id);
+alter table timesheets drop constraint if exists timesheets_shift_enum_check;
+alter table timesheets add constraint timesheets_shift_enum_check check (shift is null or shift in ('day', 'night', 'split', 'arvo'));
+alter table timesheets drop constraint if exists timesheets_status_enum_check;
+alter table timesheets add constraint timesheets_status_enum_check check (status is null or status in ('draft', 'submitted', 'approved', 'rejected', 'paid'));
+
 -- FKs for toolbox_talk
 alter table toolbox_talks drop constraint if exists toolbox_talks_site_id_fk;
 alter table toolbox_talks add constraint toolbox_talks_site_id_fk foreign key (site_id) references sites(site_id);
@@ -848,6 +1532,12 @@ alter table toolbox_talks drop constraint if exists toolbox_talks_category_enum_
 alter table toolbox_talks add constraint toolbox_talks_category_enum_check check (category is null or category in ('safety', 'quality', 'environment', 'operations', 'induction', 'emergency_procedure', 'incident_review', 'tool_specific', 'other'));
 alter table toolbox_talks drop constraint if exists toolbox_talks_source_enum_check;
 alter table toolbox_talks add constraint toolbox_talks_source_enum_check check (source is null or source in ('cards_mobile', 'import_spreadsheet', 'capture_pdf', 'capture_photo', 'manual_entry'));
+
+-- FKs for weekly_report
+alter table weekly_reports drop constraint if exists weekly_reports_site_id_fk;
+alter table weekly_reports add constraint weekly_reports_site_id_fk foreign key (site_id) references sites(site_id);
+alter table weekly_reports drop constraint if exists weekly_reports_status_enum_check;
+alter table weekly_reports add constraint weekly_reports_status_enum_check check (status is null or status in ('draft', 'submitted'));
 
 
 -- ============================================================================
@@ -5171,6 +5861,40 @@ grant execute on function eq_list_module_entities(text) to authenticated;
 -- inserts a new row + the registry's trigger flips the old is_current = false.
 
 insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('apprentice_profile', 'field', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/apprentice-profile/v1.json",
+  "title": "Apprentice Profile",
+  "description": "Apprentice extension of a staff record — trade, year_level, mentor, buddy, TAFE provider. One row per staff member who is also an apprentice.",
+  "type": "object",
+  "x-eq-entity": "apprentice_profile",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "apprentice_profiles",
+  "required": ["apprentice_profile_id", "tenant_id", "staff_id"],
+  "properties": {
+    "apprentice_profile_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "staff_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "staff.staff_id" },
+    "trade": { "type": ["string", "null"], "x-eq-source-aliases": ["discipline", "trade_code"] },
+    "year_level": { "type": ["integer", "null"], "minimum": 1, "maximum": 4 },
+    "tafe_provider": { "type": ["string", "null"], "x-eq-source-aliases": ["rto", "provider"] },
+    "rto_code": { "type": ["string", "null"] },
+    "mentor_user_id": { "type": ["string", "null"], "format": "uuid" },
+    "buddy_staff_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "staff.staff_id" },
+    "start_date": { "type": ["string", "null"], "format": "date" },
+    "expected_completion": { "type": ["string", "null"], "format": "date" },
+    "notes": { "type": ["string", "null"] },
+    "active": { "type": "boolean", "default": true }
+  }
+}
+'::jsonb, 'Apprentice extension of a staff record — trade, year_level, mentor, buddy, TAFE provider. One row per staff member who is also an apprentice.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
 values ('asset', 'service', '1.0.0', '{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.eq.solutions/service/asset/v1.json",
@@ -5413,6 +6137,66 @@ values ('asset', 'service', '1.0.0', '{
   }
 }
 '::jsonb, 'A serviceable asset at a site (switchboard, UPS, generator, fire pump, AHU, etc). The atomic unit of EQ Service.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('buddy_checkin', 'field', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/buddy-checkin/v1.json",
+  "title": "Buddy Checkin",
+  "description": "Apprentice buddy check-in — buddy staff member + rating + notes.",
+  "type": "object",
+  "x-eq-entity": "buddy_checkin",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "buddy_checkins",
+  "required": ["buddy_checkin_id", "tenant_id", "apprentice_profile_id"],
+  "properties": {
+    "buddy_checkin_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "apprentice_profile_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "apprentice_profile.apprentice_profile_id" },
+    "buddy_staff_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "staff.staff_id" },
+    "checked_in_at": { "type": ["string", "null"], "format": "date-time" },
+    "notes": { "type": ["string", "null"] },
+    "rating": { "type": ["integer", "null"], "minimum": 1, "maximum": 5 }
+  }
+}
+'::jsonb, 'Apprentice buddy check-in — buddy staff member + rating + notes.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('checkin', 'field', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/checkin/v1.json",
+  "title": "Checkin",
+  "description": "Site check-in (timestamp + optional GPS). Mobile staff confirm presence on a site.",
+  "type": "object",
+  "x-eq-entity": "checkin",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "checkins",
+  "required": ["checkin_id", "tenant_id", "staff_id"],
+  "properties": {
+    "checkin_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "staff_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "staff.staff_id" },
+    "site_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "site.site_id" },
+    "week": { "type": ["string", "null"], "description": "ISO week label, e.g. 2026-W21" },
+    "checked_in_at": { "type": "string", "format": "date-time" },
+    "latitude": { "type": ["number", "null"] },
+    "longitude": { "type": ["number", "null"] },
+    "device_id": { "type": ["string", "null"] },
+    "imported_at": { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  }
+}
+'::jsonb, 'Site check-in (timestamp + optional GPS). Mobile staff confirm presence on a site.', true)
 on conflict (entity, version) do update set
   schema_json = excluded.schema_json,
   description = excluded.description,
@@ -5822,6 +6606,62 @@ values ('customer', 'core', '1.0.0', '{
   }
 }
 '::jsonb, 'A business or individual the tenant transacts with. Source for who gets quoted, invoiced, and serviced. Either company_name or first_name/last_name must be set (cross-field rule customer_has_a_name).', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('engagement_log', 'field', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/engagement-log/v1.json",
+  "title": "Engagement Log",
+  "description": "Apprentice engagement event log — meetings, calls, escalations, milestone events.",
+  "type": "object",
+  "x-eq-entity": "engagement_log",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "engagement_logs",
+  "required": ["engagement_log_id", "tenant_id", "apprentice_profile_id", "event_type"],
+  "properties": {
+    "engagement_log_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "apprentice_profile_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "apprentice_profile.apprentice_profile_id" },
+    "event_type": { "type": "string" },
+    "event_summary": { "type": ["string", "null"] },
+    "occurred_at": { "type": ["string", "null"], "format": "date-time" },
+    "recorded_by_user_id": { "type": ["string", "null"], "format": "uuid" }
+  }
+}
+'::jsonb, 'Apprentice engagement event log — meetings, calls, escalations, milestone events.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('feedback_entry', 'field', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/feedback-entry/v1.json",
+  "title": "Feedback Entry",
+  "description": "Feedback for an apprentice. Type: positive | constructive | incident | observation.",
+  "type": "object",
+  "x-eq-entity": "feedback_entry",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "feedback_entries",
+  "required": ["feedback_entry_id", "tenant_id", "apprentice_profile_id", "feedback_text"],
+  "properties": {
+    "feedback_entry_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "apprentice_profile_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "apprentice_profile.apprentice_profile_id" },
+    "feedback_text": { "type": "string", "minLength": 1 },
+    "feedback_type": { "type": ["string", "null"], "enum": ["positive", "constructive", "incident", "observation", null] },
+    "from_user_id": { "type": ["string", "null"], "format": "uuid" },
+    "occurred_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}
+'::jsonb, 'Feedback for an apprentice. Type: positive | constructive | incident | observation.', true)
 on conflict (entity, version) do update set
   schema_json = excluded.schema_json,
   description = excluded.description,
@@ -6330,6 +7170,108 @@ on conflict (entity, version) do update set
   module = excluded.module;
 
 insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('leave_approval_log', 'field', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/leave-approval-log/v1.json",
+  "title": "Leave Approval Log",
+  "description": "Workflow audit log for leave_request status transitions. Hybrid audit model per 2026-05-20 Q4.",
+  "type": "object",
+  "x-eq-entity": "leave_approval_log",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "leave_approval_logs",
+  "required": ["log_id", "tenant_id", "leave_request_id", "to_status"],
+  "properties": {
+    "log_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "leave_request_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "leave_request.leave_request_id" },
+    "from_status": { "type": ["string", "null"] },
+    "to_status": { "type": "string", "enum": ["pending", "approved", "rejected", "cancelled"] },
+    "decided_by_user_id": { "type": ["string", "null"], "format": "uuid" },
+    "decision_notes": { "type": ["string", "null"] },
+    "decided_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}
+'::jsonb, 'Workflow audit log for leave_request status transitions. Hybrid audit model per 2026-05-20 Q4.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('leave_balance', 'field', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/leave-balance/v1.json",
+  "title": "Leave Balance",
+  "description": "Per-staff balances for AL / sick / long-service / personal leave. One row per (tenant_id, staff_id).",
+  "type": "object",
+  "x-eq-entity": "leave_balance",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "leave_balances",
+  "required": ["leave_balance_id", "tenant_id", "staff_id"],
+  "properties": {
+    "leave_balance_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "staff_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "staff.staff_id" },
+    "al_balance_hours": { "type": "number", "minimum": 0, "default": 0, "x-eq-source-aliases": ["annual_leave", "al"] },
+    "sick_balance_hours": { "type": "number", "minimum": 0, "default": 0, "x-eq-source-aliases": ["sick", "personal_sick"] },
+    "long_service_balance_hours": { "type": "number", "minimum": 0, "default": 0, "x-eq-source-aliases": ["lsl", "long_service"] },
+    "personal_balance_hours": { "type": "number", "minimum": 0, "default": 0 },
+    "notes": { "type": ["string", "null"] },
+    "updated_by_user_id": { "type": ["string", "null"], "format": "uuid" },
+    "imported_at": { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  }
+}
+'::jsonb, 'Per-staff balances for AL / sick / long-service / personal leave. One row per (tenant_id, staff_id).', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('leave_request', 'field', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/leave-request/v1.json",
+  "title": "Leave Request",
+  "description": "Staff leave request. Status flow: pending → approved | rejected | cancelled. Archived when superseded.",
+  "type": "object",
+  "x-eq-entity": "leave_request",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "leave_requests",
+  "required": ["leave_request_id", "tenant_id", "staff_id", "leave_type", "from_date", "to_date", "status"],
+  "properties": {
+    "leave_request_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "staff_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "staff.staff_id" },
+    "leave_type": {
+      "type": "string",
+      "enum": ["annual", "sick", "personal", "long_service", "unpaid", "tafe", "other"],
+      "x-eq-source-aliases": ["type", "kind", "category"]
+    },
+    "from_date": { "type": "string", "format": "date", "x-eq-source-aliases": ["start", "start_date", "from"] },
+    "to_date": { "type": "string", "format": "date", "x-eq-source-aliases": ["end", "end_date", "to", "until"] },
+    "hours_requested": { "type": "number", "minimum": 0, "default": 0 },
+    "status": { "type": "string", "default": "pending", "enum": ["pending", "approved", "rejected", "cancelled"] },
+    "reason": { "type": ["string", "null"] },
+    "approver_required": { "type": "boolean", "default": true },
+    "approver_id": { "type": ["string", "null"], "format": "uuid" },
+    "decided_at": { "type": ["string", "null"], "format": "date-time" },
+    "decision_notes": { "type": ["string", "null"] },
+    "archived": { "type": "boolean", "default": false },
+    "imported_at": { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  }
+}
+'::jsonb, 'Staff leave request. Status flow: pending → approved | rejected | cancelled. Archived when superseded.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
 values ('licence', 'cards', '1.0.0', '{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.eq.solutions/cards/licence/v1.json",
@@ -6680,6 +7622,36 @@ on conflict (entity, version) do update set
   module = excluded.module;
 
 insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('quarterly_review', 'field', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/quarterly-review/v1.json",
+  "title": "Quarterly Review",
+  "description": "Apprentice quarterly review. Outcome: on_track | at_risk | needs_intervention | complete. One per (apprentice, year, quarter).",
+  "type": "object",
+  "x-eq-entity": "quarterly_review",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "quarterly_reviews",
+  "required": ["quarterly_review_id", "tenant_id", "apprentice_profile_id", "quarter", "year"],
+  "properties": {
+    "quarterly_review_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "apprentice_profile_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "apprentice_profile.apprentice_profile_id" },
+    "quarter": { "type": "integer", "minimum": 1, "maximum": 4 },
+    "year": { "type": "integer", "minimum": 2020, "maximum": 2099 },
+    "reviewer_user_id": { "type": ["string", "null"], "format": "uuid" },
+    "content": { "type": "object", "default": {} },
+    "outcome": { "type": ["string", "null"], "enum": ["on_track", "at_risk", "needs_intervention", "complete", null] },
+    "decided_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}
+'::jsonb, 'Apprentice quarterly review. Outcome: on_track | at_risk | needs_intervention | complete. One per (apprentice, year, quarter).', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
 values ('quote_attachment', 'quotes', '1.0.0', '{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.eq.solutions/quotes/quote-attachment/v1.json",
@@ -6909,6 +7881,70 @@ on conflict (entity, version) do update set
   module = excluded.module;
 
 insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('rotation', 'field', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/rotation/v1.json",
+  "title": "Rotation",
+  "description": "Apprentice site rotation — focus, dates, outcome. Many per apprentice.",
+  "type": "object",
+  "x-eq-entity": "rotation",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "rotations",
+  "required": ["rotation_id", "tenant_id", "apprentice_profile_id", "start_date"],
+  "properties": {
+    "rotation_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "apprentice_profile_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "apprentice_profile.apprentice_profile_id" },
+    "site_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "site.site_id" },
+    "focus": { "type": ["string", "null"] },
+    "start_date": { "type": "string", "format": "date" },
+    "end_date": { "type": ["string", "null"], "format": "date" },
+    "outcome_notes": { "type": ["string", "null"] }
+  }
+}
+'::jsonb, 'Apprentice site rotation — focus, dates, outcome. Many per apprentice.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('schedule_change_log', 'field', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/schedule-change-log/v1.json",
+  "title": "Schedule Change Log",
+  "description": "Workflow audit log for schedule changes. Hybrid audit model per 2026-05-20 Q4: app-specific events live in per-domain tables; the universal eq_intake_row_audit captures intake commits.",
+  "type": "object",
+  "x-eq-entity": "schedule_change_log",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "schedule_change_logs",
+  "required": ["log_id", "tenant_id", "change_type"],
+  "properties": {
+    "log_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "schedule_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "schedule.schedule_id" },
+    "staff_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "staff.staff_id" },
+    "site_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "site.site_id" },
+    "change_type": {
+      "type": "string",
+      "enum": ["created", "staff_changed", "site_changed", "date_changed", "hours_changed", "status_changed", "deleted", "reassigned"]
+    },
+    "old_value": { "type": ["object", "null"] },
+    "new_value": { "type": ["object", "null"] },
+    "changed_by_user_id": { "type": ["string", "null"], "format": "uuid" },
+    "changed_at": { "type": ["string", "null"], "format": "date-time" },
+    "reason": { "type": ["string", "null"] }
+  }
+}
+'::jsonb, 'Workflow audit log for schedule changes. Hybrid audit model per 2026-05-20 Q4: app-specific events live in per-domain tables; the universal eq_intake_row_audit captures intake commits.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
 values ('schedule', 'field', '1.0.0', '{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.eq.solutions/field/schedule/v1.json",
@@ -7100,6 +8136,50 @@ values ('scope_template', 'quotes', '1.0.0', '{
   }
 }
 '::jsonb, 'Reusable scope-of-work phrase. Used in the Quotes UI''s scope dropdown. Tenant-scoped library.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('site_diary', 'field', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/site-diary/v1.json",
+  "title": "Site Diary",
+  "description": "Daily site diary — weather, work areas, delays, incidents, visitors, attendance, photos. Status: draft → submitted.",
+  "type": "object",
+  "x-eq-entity": "site_diary",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "site_diaries",
+  "required": ["site_diary_id", "tenant_id", "site_id", "diary_date", "status"],
+  "properties": {
+    "site_diary_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "site_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "site.site_id" },
+    "diary_date": { "type": "string", "format": "date" },
+    "shift_type": { "type": ["string", "null"], "enum": ["day", "night", "split", null] },
+    "start_time": { "type": ["string", "null"], "format": "time" },
+    "end_time": { "type": ["string", "null"], "format": "time" },
+    "supervisor_name": { "type": ["string", "null"] },
+    "supervisor_user_id": { "type": ["string", "null"], "format": "uuid" },
+    "subcontractor": { "type": ["string", "null"] },
+    "weather": { "type": "object", "default": {}, "description": "{ temp_min, temp_max, conditions, wind, rain_mm, humidity }" },
+    "work_areas": { "type": "array", "default": [], "items": { "type": "object" } },
+    "delays": { "type": "array", "default": [], "items": { "type": "object" } },
+    "incidents": { "type": "array", "default": [], "items": { "type": "object" } },
+    "visitors": { "type": "array", "default": [], "items": { "type": "object" } },
+    "materials_received": { "type": ["string", "null"] },
+    "equipment_status": { "type": ["string", "null"] },
+    "notes": { "type": ["string", "null"] },
+    "attendance": { "type": "array", "default": [], "items": { "type": "object" } },
+    "photo_paths": { "type": "array", "default": [], "items": { "type": "string" }, "description": "Paths in tenant-{tenant_id} bucket under field/diary/{diary_id}/" },
+    "status": { "type": "string", "default": "draft", "enum": ["draft", "submitted"] },
+    "submitted_at": { "type": ["string", "null"], "format": "date-time" },
+    "submitted_by_user_id": { "type": ["string", "null"], "format": "uuid" }
+  }
+}
+'::jsonb, 'Daily site diary — weather, work areas, delays, incidents, visitors, attendance, photos. Status: draft → submitted.', true)
 on conflict (entity, version) do update set
   schema_json = excluded.schema_json,
   description = excluded.description,
@@ -7324,6 +8404,35 @@ values ('site', 'core', '1.0.0', '{
   }
 }
 '::jsonb, 'A physical location where work is performed. May be a customer site, a depot, or a project location.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('skills_rating', 'field', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/skills-rating/v1.json",
+  "title": "Skills Rating",
+  "description": "Skills rating for an apprentice (1-5 scale). Many per apprentice over time.",
+  "type": "object",
+  "x-eq-entity": "skills_rating",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "skills_ratings",
+  "required": ["skills_rating_id", "tenant_id", "apprentice_profile_id", "skill_name", "rating"],
+  "properties": {
+    "skills_rating_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "apprentice_profile_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "apprentice_profile.apprentice_profile_id" },
+    "skill_name": { "type": "string", "minLength": 1 },
+    "rating": { "type": "integer", "minimum": 1, "maximum": 5 },
+    "rated_by_user_id": { "type": ["string", "null"], "format": "uuid" },
+    "rated_at": { "type": ["string", "null"], "format": "date-time" },
+    "notes": { "type": ["string", "null"] }
+  }
+}
+'::jsonb, 'Skills rating for an apprentice (1-5 scale). Many per apprentice over time.', true)
 on conflict (entity, version) do update set
   schema_json = excluded.schema_json,
   description = excluded.description,
@@ -7786,6 +8895,262 @@ on conflict (entity, version) do update set
   module = excluded.module;
 
 insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('tafe_calendar', 'field', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/tafe-calendar/v1.json",
+  "title": "TAFE Calendar",
+  "description": "TAFE term dates + public holidays per trade/year. Drives apprentice rostering avoidance.",
+  "type": "object",
+  "x-eq-entity": "tafe_calendar",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "tafe_calendars",
+  "required": ["tafe_calendar_id", "tenant_id", "year"],
+  "properties": {
+    "tafe_calendar_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "year": { "type": "integer", "minimum": 2020, "maximum": 2099 },
+    "trade": { "type": ["string", "null"] },
+    "year_level": { "type": ["integer", "null"], "minimum": 1, "maximum": 4 },
+    "term_dates": { "type": "array", "default": [], "items": { "type": "object" } },
+    "public_holidays": { "type": "array", "default": [], "items": { "type": "object" } }
+  }
+}
+'::jsonb, 'TAFE term dates + public holidays per trade/year. Drives apprentice rostering avoidance.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('tenant_app_config', 'field', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/tenant-app-config/v1.json",
+  "title": "Tenant App Config",
+  "description": "Field-specific tenant feature flags + UI settings. One row per tenant.",
+  "type": "object",
+  "x-eq-entity": "tenant_app_config",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "tenant_app_configs",
+  "required": ["config_id", "tenant_id"],
+  "properties": {
+    "config_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "feature_flags": { "type": "object", "default": {}, "additionalProperties": true },
+    "field_settings": { "type": "object", "default": {}, "additionalProperties": true },
+    "notes": { "type": ["string", "null"] }
+  }
+}
+'::jsonb, 'Field-specific tenant feature flags + UI settings. One row per tenant.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('tender_enrichment', 'field', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/tender-enrichment/v1.json",
+  "title": "Tender Enrichment",
+  "description": "Supplementary tender data — URLs, attachments, free-form context. Many per tender.",
+  "type": "object",
+  "x-eq-entity": "tender_enrichment",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "tender_enrichments",
+  "required": ["enrichment_id", "tenant_id", "tender_id"],
+  "properties": {
+    "enrichment_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "tender_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "tender.tender_id" },
+    "source": { "type": ["string", "null"] },
+    "source_url": { "type": ["string", "null"], "format": "uri" },
+    "content": { "type": ["object", "null"] },
+    "attachments": { "type": ["array", "null"], "items": { "type": "object" } },
+    "notes": { "type": ["string", "null"] }
+  }
+}
+'::jsonb, 'Supplementary tender data — URLs, attachments, free-form context. Many per tender.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('tender_import_run', 'field', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/tender-import-run/v1.json",
+  "title": "Tender Import Run",
+  "description": "Audit row per CSV/XLSX tender import. Counts rows processed/created/updated/skipped + completion status.",
+  "type": "object",
+  "x-eq-entity": "tender_import_run",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "tender_import_runs",
+  "required": ["import_run_id", "tenant_id", "source_filename", "status"],
+  "properties": {
+    "import_run_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "source_filename": { "type": "string" },
+    "rows_processed": { "type": "integer", "minimum": 0, "default": 0 },
+    "rows_created": { "type": "integer", "minimum": 0, "default": 0 },
+    "rows_updated": { "type": "integer", "minimum": 0, "default": 0 },
+    "rows_skipped": { "type": "integer", "minimum": 0, "default": 0 },
+    "status": { "type": "string", "default": "completed", "enum": ["running", "completed", "failed"] },
+    "error_message": { "type": ["string", "null"] },
+    "started_at": { "type": ["string", "null"], "format": "date-time" },
+    "completed_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}
+'::jsonb, 'Audit row per CSV/XLSX tender import. Counts rows processed/created/updated/skipped + completion status.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('tender_nomination', 'field', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/tender-nomination/v1.json",
+  "title": "Tender Nomination",
+  "description": "Staff member nominated to a tender — supervisor, estimator, project lead. Status flow: proposed → confirmed | withdrawn | clashed.",
+  "type": "object",
+  "x-eq-entity": "tender_nomination",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "tender_nominations",
+  "required": ["nomination_id", "tenant_id", "tender_id", "status"],
+  "properties": {
+    "nomination_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "tender_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "tender.tender_id" },
+    "staff_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "staff.staff_id" },
+    "role": { "type": ["string", "null"], "description": "Role on the tender (e.g. estimator, project lead, supervisor)." },
+    "nominated_by_user_id": { "type": ["string", "null"], "format": "uuid" },
+    "start_date": { "type": ["string", "null"], "format": "date" },
+    "end_date": { "type": ["string", "null"], "format": "date" },
+    "notes": { "type": ["string", "null"] },
+    "status": { "type": "string", "default": "proposed", "enum": ["proposed", "confirmed", "withdrawn", "clashed"] }
+  }
+}
+'::jsonb, 'Staff member nominated to a tender — supervisor, estimator, project lead. Status flow: proposed → confirmed | withdrawn | clashed.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('tender_review_decision', 'field', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/tender-review-decision/v1.json",
+  "title": "Tender Review Decision",
+  "description": "Fortnightly tender review decision. Decisions: keep_watching | escalate | bid | pass | park.",
+  "type": "object",
+  "x-eq-entity": "tender_review_decision",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "tender_review_decisions",
+  "required": ["decision_id", "tenant_id", "tender_id", "review_date", "decision"],
+  "properties": {
+    "decision_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "tender_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "tender.tender_id" },
+    "review_date": { "type": "string", "format": "date" },
+    "decision": { "type": "string", "enum": ["keep_watching", "escalate", "bid", "pass", "park"] },
+    "rationale": { "type": ["string", "null"] },
+    "decided_by_user_id": { "type": ["string", "null"], "format": "uuid" }
+  }
+}
+'::jsonb, 'Fortnightly tender review decision. Decisions: keep_watching | escalate | bid | pass | park.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('tender', 'field', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/tender/v1.json",
+  "title": "Tender",
+  "description": "Tender pipeline opportunity. Stage flow: watch → confirmed → likely → won | lost | withdrawn. Money in cents.",
+  "type": "object",
+  "x-eq-entity": "tender",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "tenders",
+  "required": ["tender_id", "tenant_id", "title", "stage"],
+  "properties": {
+    "tender_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "tender_number": { "type": ["string", "null"], "x-eq-source-aliases": ["number", "ref"] },
+    "external_id": { "type": ["string", "null"] },
+    "title": { "type": "string", "minLength": 1, "x-eq-source-aliases": ["name", "project"] },
+    "client_name": { "type": ["string", "null"], "x-eq-source-aliases": ["client", "customer"] },
+    "customer_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "customer.customer_id" },
+    "stage": {
+      "type": "string", "default": "watch",
+      "enum": ["watch", "confirmed", "likely", "won", "lost", "withdrawn"],
+      "x-eq-source-aliases": ["status", "state"]
+    },
+    "estimated_value_cents": { "type": ["integer", "null"], "minimum": 0 },
+    "close_date": { "type": ["string", "null"], "format": "date", "x-eq-source-aliases": ["due", "due_date"] },
+    "department": { "type": ["string", "null"] },
+    "estimator_user_id": { "type": ["string", "null"], "format": "uuid" },
+    "scope_summary": { "type": ["string", "null"] },
+    "notes": { "type": ["string", "null"] },
+    "imported_at": { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  }
+}
+'::jsonb, 'Tender pipeline opportunity. Stage flow: watch → confirmed → likely → won | lost | withdrawn. Money in cents.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('timesheet', 'field', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/timesheet/v1.json",
+  "title": "Timesheet",
+  "description": "Worked hours per staff member per day. Status flow: draft → submitted → approved → paid (or rejected).",
+  "type": "object",
+  "x-eq-entity": "timesheet",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "timesheets",
+  "required": ["timesheet_id", "tenant_id", "staff_id", "date", "hours", "status"],
+  "properties": {
+    "timesheet_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "staff_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "staff.staff_id" },
+    "site_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "site.site_id" },
+    "schedule_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "schedule.schedule_id" },
+    "date": { "type": "string", "format": "date", "x-eq-source-aliases": ["work_date", "day"] },
+    "start_time": { "type": ["string", "null"], "format": "time", "x-eq-source-aliases": ["start", "in"] },
+    "end_time": { "type": ["string", "null"], "format": "time", "x-eq-source-aliases": ["end", "out"] },
+    "hours": { "type": "number", "minimum": 0, "default": 0, "x-eq-source-aliases": ["worked", "duration_hours"] },
+    "break_minutes": { "type": "integer", "minimum": 0, "default": 0 },
+    "shift": { "type": ["string", "null"], "enum": ["day", "night", "split", "arvo", null] },
+    "task": { "type": ["string", "null"], "maxLength": 200 },
+    "status": { "type": "string", "default": "draft", "enum": ["draft", "submitted", "approved", "rejected", "paid"] },
+    "submitted_at": { "type": ["string", "null"], "format": "date-time" },
+    "approved_at": { "type": ["string", "null"], "format": "date-time" },
+    "approved_by_user_id": { "type": ["string", "null"], "format": "uuid" },
+    "paid_at": { "type": ["string", "null"], "format": "date-time" },
+    "notes": { "type": ["string", "null"] },
+    "imported_at": { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  }
+}
+'::jsonb, 'Worked hours per staff member per day. Status flow: draft → submitted → approved → paid (or rejected).', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
 values ('toolbox_talk', 'cards', '1.0.0', '{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.eq.solutions/cards/toolbox-talk/v1.json",
@@ -7920,6 +9285,42 @@ values ('toolbox_talk', 'cards', '1.0.0', '{
   ]
 }
 '::jsonb, 'A toolbox talk: a short safety/operational briefing delivered to a crew, with attendance recorded. Captured by EQ Cards or imported from registers.', true)
+on conflict (entity, version) do update set
+  schema_json = excluded.schema_json,
+  description = excluded.description,
+  module = excluded.module;
+
+insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)
+values ('weekly_report', 'field', '1.0.0', '{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/weekly-report/v1.json",
+  "title": "Weekly Report",
+  "description": "Weekly site report — HSEQ metrics, ITP summary, hold points, RFIs. Placeholder schema; v1 ahead of UI per 2026-05-20 plan-review.",
+  "type": "object",
+  "x-eq-entity": "weekly_report",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "weekly_reports",
+  "required": ["weekly_report_id", "tenant_id", "site_id", "week_ending_date", "status"],
+  "properties": {
+    "weekly_report_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "site_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "site.site_id" },
+    "week_ending_date": { "type": "string", "format": "date" },
+    "hseq_metrics": { "type": "object", "default": {} },
+    "itp_summary": { "type": "array", "default": [], "items": { "type": "object" } },
+    "hold_points": { "type": "array", "default": [], "items": { "type": "object" } },
+    "rfis": { "type": "array", "default": [], "items": { "type": "object" } },
+    "progress_summary": { "type": ["string", "null"] },
+    "next_week_focus": { "type": ["string", "null"] },
+    "notes": { "type": ["string", "null"] },
+    "attendance_summary": { "type": "object", "default": {} },
+    "status": { "type": "string", "default": "draft", "enum": ["draft", "submitted"] },
+    "submitted_at": { "type": ["string", "null"], "format": "date-time" },
+    "submitted_by_user_id": { "type": ["string", "null"], "format": "uuid" }
+  }
+}
+'::jsonb, 'Weekly site report — HSEQ metrics, ITP summary, hold points, RFIs. Placeholder schema; v1 ahead of UI per 2026-05-20 plan-review.', true)
 on conflict (entity, version) do update set
   schema_json = excluded.schema_json,
   description = excluded.description,
