@@ -32,6 +32,7 @@ import { requireUser } from '@/lib/actions/auth'
 import { canWrite } from '@/lib/utils/roles'
 import { logAuditEvent } from '@/lib/actions/audit'
 import { withIdempotency, type ActionResult } from '@/lib/actions/idempotency'
+import { trackServer } from '@/lib/analytics-server'
 import type { Database } from '@/lib/supabase/database.types'
 
 type CheckAssetInsert = Database['public']['Tables']['check_assets']['Insert']
@@ -168,7 +169,7 @@ export async function commitMaximoPdfBundlesAction(
   return withIdempotency<
     MaximoCommitSummary & { failures: MaximoCommitFailure[] }
   >(mutationId, async () => {
-    const { supabase, tenantId, role } = await requireUser()
+    const { supabase, tenantId, role, user } = await requireUser()
     if (!canWrite(role)) {
       return { success: false, error: 'Insufficient permissions.' }
     }
@@ -449,6 +450,15 @@ export async function commitMaximoPdfBundlesAction(
       revalidatePath('/maintenance/import')
       revalidatePath('/calendar')
     }
+
+    await trackServer(user.id, 'maximo_pdf_committed', {
+      tenant_id: tenantId,
+      checks_created: summary.checks_created,
+      check_assets_created: summary.check_assets_created,
+      check_items_created: summary.check_items_created,
+      bundles_attempted: bundles.length,
+      failure_count: failures.length,
+    })
 
     return {
       success: true,

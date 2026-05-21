@@ -15,10 +15,12 @@
  *   pile up close to that we'll move this to a background pattern.
  */
 import { NextRequest, NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 import { AnthropicProvider } from '@eq/ai'
 import { parseMaximoPdfWo, type MaximoPdfWoResult } from '@eq/intake'
 import { requireUser } from '@/lib/actions/auth'
 import { canWrite } from '@/lib/utils/roles'
+import { trackServer, trackServerError } from '@/lib/analytics-server'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -95,11 +97,46 @@ export async function POST(request: NextRequest): Promise<NextResponse<MaximoPdf
 
   const ai = new AnthropicProvider({ apiKey })
 
+  const startedAt = Date.now()
   try {
     const result = await parseMaximoPdfWo({ files: skillFiles, ai })
+    const elapsedMs = Date.now() - startedAt
+
+    const totalAssets = result.bundles.reduce((sum, b) => sum + b.check_assets.length, 0)
+    const visionPdfCount = result.sources.filter((s) => s.extracted_via === 'vision').length
+
+    // Fire-and-forget telemetry. flushed by trackServer before return.
+    await trackServer(auth.user.id, 'maximo_pdf_parsed', {
+      tenant_id: auth.tenantId,
+      pdf_count: skillFiles.length,
+      vision_pdf_count: visionPdfCount,
+      bundle_count: result.bundles.length,
+      wo_count: totalAssets,
+      warning_count: result.warnings.length,
+      elapsed_ms: elapsedMs,
+    })
+
     return NextResponse.json(result)
   } catch (e: unknown) {
-    const message = (e as Error).message || 'Unknown error during PDF parse.'
+    const elapsedMs = Date.now() - startedAt
+    const err = e as Error
+    const message = err.message || 'Unknown error during PDF parse.'
+
+    Sentry.captureException(err, {
+      tags: { source: 'parse-maximo-pdf', route: 'api' },
+      extra: {
+        tenant_id: auth.tenantId,
+        pdf_count: skillFiles.length,
+        file_names: skillFiles.map((f) => f.fileName),
+        elapsed_ms: elapsedMs,
+      },
+    })
+    await trackServerError(auth.user.id, 'parse-maximo-pdf', message, {
+      tenant_id: auth.tenantId,
+      pdf_count: skillFiles.length,
+      elapsed_ms: elapsedMs,
+    })
+
     return jsonError(500, {
       error: 'Failed to parse one or more PDFs',
       detail: message,
