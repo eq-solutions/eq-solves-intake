@@ -3,7 +3,7 @@
 > **For anyone (or any AI session) joining this project cold.** Read this
 > first. The deeper docs are linked at the end.
 >
-> Last updated 2026-05-18.
+> Last updated 2026-05-24.
 
 ---
 
@@ -106,11 +106,10 @@ C:\Projects\eq-intake\           ← THIS REPO (intake + shell)
 ├── HOW-WE-WORK-WITH-AI.md       — working principles
 ├── EQ-INTAKE-ARCHITECTURE.md    — technical shape of the intake stack
 ├── EQ-TENANCY-MODEL.md          — per-tenant + shell pattern
-├── EQ-FORMAT.md                 — bidirectional sheet wrangler
+├── EQ-FORMAT.md                 — reshape-out profiles (3 built) + aspirational cleanup-in
 ├── EQ-CARDS-INTAKE-BRIDGE.md    — Cards migration plan
 ├── EQ-BRIEFING.md               — this file
-├── SESSION-LOG.md               — chronological work log
-├── sql/                         — base migrations 001/002/003
+├── sql/                         — base migrations 001-012 (paste-ready, not yet applied)
 ├── demos/                       — standalone Node scripts
 │   └── simpro-customer-rollup/  — the SimPRO→SharePoint CSV joiner
 └── eq-platform/                 — pnpm workspace
@@ -122,6 +121,7 @@ C:\Projects\eq-intake\           ← THIS REPO (intake + shell)
     │   ├── eq-validation/       — coercers + validator orchestrator
     │   ├── eq-ai/               — vendor-agnostic AI provider
     │   ├── eq-intake/           — parsers (CSV/XLSX/PDF/photo)
+    │   ├── eq-format-ui/        — SimPRO-quote reshape-out profiles
     │   ├── eq-confirm-ui/       — single-file confirm flow components
     │   └── eq-intake-demo/      — Intake module + standalone playground
     └── scripts/
@@ -137,7 +137,7 @@ C:\Projects\eq-cards\             ← separate repo (EQ Cards)
 A snapshot decays in days. Specific claims like "12 schemas" or "293 tests passing" stop being true the moment the next commit lands. So this section captures the *shape*, not the *count* — `git log` and the package source are authoritative for what's running today.
 
 **Shape of what's running:**
-- A growing set of canonical JSON Schemas in `schemas/` (and a copy in `eq-platform/packages/eq-schemas/src/schemas/` that's mid-sync — see memory `project_eq_platform_schema_drift_pending`). 30+ entities across staff / site / asset / customer / contact / service / safety / tests as of the 21 May S2.A bundle.
+- A growing set of canonical JSON Schemas in `schemas/` (and a copy in `eq-platform/packages/eq-schemas/src/schemas/` that's mid-sync — see memory `project_eq_platform_schema_drift_pending`). 42 entities across staff / site / asset / customer / contact / service / safety / tests as of the S3 seed (2026-05-24).
 - SQL codegen + a migration sequencer producing a single SQL file paste-ready for any Supabase project.
 - `@eq/shell` with Supabase Auth + lazy module routing + SKS palette.
 - `@eq/intake-demo` (the Intake module) — running and exercised against real SimPRO exports. Mounts in shell at `/intake`. Supports SimPRO bundle drop → five destination templates (SharePoint rollup / Quotes-by-site / Xero ContactsImport / MYOB Card File / Outlook contacts).
@@ -148,9 +148,9 @@ A snapshot decays in days. Specific claims like "12 schemas" or "293 tests passi
 
 These are *starting points, not finished things*. Real running will reveal flaws. No "production-ready" claims for any of it.
 
-**Open: canonical Supabase still unprovisioned.** Per `EQ-TENANCY-MODEL.md`, every customer gets their own Supabase project. None exist yet. The decision to provision (Option C — `eq-demo-canonical` + `sks-canonical-eq`, both Sydney) was made 2026-05-18 and hasn't been actioned. Provisioning triggers when the first surface needs to commit canonical *and* Royce has explicit billing approval for the projects.
+**Open: canonical Supabase unprovisioned.** `sks-canonical-eq` (Sydney) is the first tenant to provision — Week 1 in the current plan. Billing approval from Royce unlocks it. Field LIVE + Cards stay on their existing Supabases until planned cutovers in later phases.
 
-**Where to look for what's next:** `PLAN-2026-05-22.md` carries the live 90-day plan. The short version: get Cards onto outside-SKS sparkies, fix the silent-drops the audit identified, run Equinix→SimPRO as Royce's parallel workstream. Phase-2/3/4 framing from this doc's earlier versions has been replaced by the named-pain-anchored sequence in PLAN-2026-05-22.
+**Where to look for what's next:** `PLAN-2026-05-24.md` carries the live 90-day plan. The short version: fix C1-C2-C3 silent drops, provision `sks-canonical-eq`, build the Equinix → SimPRO reshape profile, wire Cards onto canonical. See the full 12-week sequence there.
 
 ---
 
@@ -187,7 +187,7 @@ Per `HOW-WE-WORK-WITH-AI.md` + his global `~/.claude/CLAUDE.md`:
 
 ## When stuck
 
-- Read `SESSION-LOG.md` for the most recent context
+- Read `git log` for recent work — SESSION-LOG.md is archived (`_archive/`)
 - Read `EQ-AS-CONDUIT.md` if framing feels off
 - Check `~/.claude/projects/C--Projects-eq-intake/memory/` for
   auto-memory entries Royce has accumulated

@@ -220,10 +220,8 @@ The full deferred list is in `PHASE-2-3-BACKLOG.md`.
 ## How this compares to the rest of the docs
 
 - **`EQ-AS-CONDUIT.md`** — the why. Read first.
-- **`SPRINT-1-SETUP.md`** — locked technical decisions for the first build session.
-- **`COWORK-BRIEF-PHASE-1.md`** — the 7-sprint build plan.
-- **`PHASE-2-3-BACKLOG.md`** — everything deferred.
-- **`CONFIRM-UI-SPEC.md`** — what users see.
-- **`VALIDATION-ENGINE-SPEC.md`** — the validation package internals.
+- **`EQ-FORMAT.md`** — the reshape-out package. 3 profiles built; cleanup-in is aspirational.
+- **`PHASE-2-3-BACKLOG.md`** — everything deferred. Treat as graveyard, not queue.
+- **`PLAN-2026-05-22.md`** — current 90-day plan. What's running and what's cold.
 
 If anything in those docs drifts from the framing in `EQ-AS-CONDUIT.md`, the framing wins. Update the doc.
