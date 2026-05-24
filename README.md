@@ -40,7 +40,7 @@ Reference docs, read on demand:
 
 Live planning docs (replace each other quarterly):
 
-- **[`PLAN-2026-05-22.md`](PLAN-2026-05-22.md)** — Current 90-day plan.
+- **[`PLAN-2026-05-24.md`](PLAN-2026-05-24.md)** — Current 90-day plan.
 - **[`CONDUIT-AUDIT-2026-05-22.md`](CONDUIT-AUDIT-2026-05-22.md)** —
   Findings the plan was built on. Critical silent-drops to fix, drift,
   latent risks.
@@ -105,8 +105,9 @@ if it tried to describe them.
 
 ## Changelog
 
+- **v4 (2026-05-24):** Mission revision. EQ is built for Royce's SKS NSW
+  operations, not for external beta testers. PLAN-2026-05-22 superseded by
+  PLAN-2026-05-24. Updated live planning pointer.
 - **v3 (2026-05-22):** Slimmed against the audit + cull. Dropped stale
-  "What's built" + Phase 1 ship criteria + NFR table — they were 29-Apr
-  snapshots that decayed. New read-order matches the surviving docs.
-  Live planning docs section added.
+  "What's built" + Phase 1 ship criteria + NFR table.
 - v1–v2.2 — see `_archive/` for the original Phase 1 build bundle README.

@@ -52,11 +52,13 @@ That's it. That's the whole product. The thing in the middle that means the appr
 
 I'm a tradie who became an operations manager. I've lived this. I've watched bookkeepers cry over spreadsheets at 8pm. I've watched apprentices do the same induction four times in a week. I've watched job managers retype timesheets that had already been written down twice.
 
-This isn't a business opportunity I spotted. It's a daily annoyance I want to remove.
+This isn't a business opportunity I spotted. It's a daily annoyance I want to remove — from my own operations first, and from similar operations as it scales.
 
-EQ is being built because the gap is real, the pain is real, and nobody else is going to fix it because their financial interests are aligned with keeping the gap open. We don't have that conflict because we don't sit in any single system's walled garden — we sit between all of them.
+EQ is being built because **I need it and it must be done right**. The starting point is my work at SKS (NSW). The architecture is the product — built correctly once, not incrementally justified by customer count. When it's working right for SKS, it works for the next similar operation without a rebuild.
 
-If it makes money eventually, good. That's how it sustains itself. But the goal is to remove a specific, identifiable, daily pain from the lives of trade subbies. Everything else is downstream of that.
+Nobody else is building this because their financial interests are aligned with keeping the gap open. We don't have that conflict — we sit between all the systems, not inside any of them.
+
+If it generates revenue eventually, good. That's how it sustains itself. But the reason it gets built is to remove a specific, identifiable, daily pain from real operations I run.
 
 ---
 
@@ -64,11 +66,11 @@ If it makes money eventually, good. That's how it sustains itself. But the goal 
 
 **Every product decision answers to the pain, not to the spreadsheet.** When we're deciding whether a feature ships, the question is "does this remove a real moment of someone retyping something?" If yes, build it. If we can't describe the moment, don't build it.
 
-**SKS is the proving ground because I work there.** Not because it's a customer. The 50+ field staff and the data centre / healthcare projects are where I see the pain daily and where every fix gets battle-tested before going anywhere else. The standing rules about generic placeholders and never touching SKS live data unless explicitly told to are about treating that proving ground with respect.
+**SKS (NSW) is where this lives.** Not a proving ground — the primary home. The 50+ field staff, the data centre and healthcare projects, the Equinix audits, the SimPRO exports, the bookkeeper at 8pm Friday — that's the operation EQ is being built for. When it works right here, it works for the next similar operation. The standing rules about generic placeholders and never touching SKS live data unless explicitly told to are about treating production operations with respect.
 
 **We don't compete with anyone.** SimPRO is good at being SimPRO. Xero is good at being Xero. The principal contractor's portal is what it is. EQ doesn't try to do their jobs — it just connects them so the tradies in the middle don't have to be the connection themselves.
 
-**Free where it matters.** EQ Cards for inductions should be free. Site inductions are a daily indignity that costs every subbie hours a week. There's no excuse to gate that behind a paywall. If EQ Cards is the thing that gets us in front of every tradie working data centre and healthcare in NSW, fine — but the reason it's free is because charging for it would be tone-deaf to the actual problem.
+**Free where it matters.** EQ Cards for inductions should be free. Site inductions are a daily indignity that costs the boys hours a week. There's no excuse to gate that behind a paywall. It's free because charging for it would be tone-deaf to the actual problem — not as a marketing play.
 
 **Integration depth is the only thing that matters.** A single import is interesting. A subbie whose paper SWMS becomes a structured record that lands in their SimPRO, gets exported in the principal contractor's format, gets attached to their insurance renewal pack, and gets matched to the right invoice line in Xero — that's the product. That depth takes time. We build it integration by integration, real customer by real customer, real pain by real pain.
 
@@ -84,7 +86,7 @@ If it makes money eventually, good. That's how it sustains itself. But the goal 
 - Not asking anyone to switch off anything they currently use.
 - Not gating compliance and safety features (inductions, SWMS, prestarts) behind paywalls. People die when this stuff goes wrong; we are not going to be the reason a corner gets cut.
 - Not pretending this is a unique innovation. The need is obvious to anyone who's done this work. We're just the ones building it.
-- Not building for hypothetical customers. Every feature traces to a specific moment in a specific real person's day. If we can't name the person and the moment, the feature waits.
+- Not building for hypothetical customers. Every feature traces to a specific moment in real operations at SKS NSW. If we can't name the moment it removes from real work, the feature waits.
 - Not extracting maximum value from each customer. The pricing should match the value delivered, not what the market will bear. Subbies operate on thin margins; software costs already eat into them. EQ shouldn't make that worse.
 
 ---
