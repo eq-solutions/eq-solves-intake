@@ -334,10 +334,22 @@ function resolveCustomerFk(
     const externalCustomerId = String(
       row["external_customer_id"] ?? row["simPRO Customer ID"] ?? "",
     ).trim();
-    if (!externalCustomerId) { resolved.push(out); return; }
+    if (!externalCustomerId) {
+      // No external customer ID on this row — cannot resolve the FK.
+      // Treat as a missed FK so the caller emits an explicit rejection
+      // rather than letting the row through with a null customer_id.
+      missedIndices.push(idx);
+      return;
+    }
     // Multi-customer cell: "31, 32, 208" → take the first.
     const firstId = externalCustomerId.split(",")[0]?.trim();
-    if (!firstId) { resolved.push(out); return; }
+    if (!firstId) {
+      // Malformed ID cell — treat as unresolvable FK, same as above.
+      // eslint-disable-next-line no-console
+      console.error(`resolveCustomerFk: row ${idx} has malformed customer ID cell "${externalCustomerId}" — rejecting.`);
+      missedIndices.push(idx);
+      return;
+    }
     const customerId = customerIdMap.get(firstId);
     if (customerId) {
       out["customer_id"] = customerId;
@@ -409,9 +421,12 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
       const row = preValidatedRows[idx]!;
       const rawId = String(row["external_customer_id"] ?? row["simPRO Customer ID"] ?? "").trim();
       const firstId = rawId.split(",")[0]?.trim() ?? rawId;
+      const reason = firstId
+        ? `fk_no_match on customer_id: no customer found for ID "${firstId}"`
+        : `fk_no_match on customer_id: row has no customer ID — cannot resolve FK`;
       fkMissedRejections.push({
         source_row_index: idx,
-        reasons: [`fk_no_match on customer_id: no customer found for ID "${firstId}"`],
+        reasons: [reason],
       });
     }
     let cursor = 0;
