@@ -618,9 +618,11 @@ export async function commitBundleToCanonical(opts: CommitOptions): Promise<Comm
           result.intakeId,
         );
       } catch (e) {
-        // Non-fatal — sites/contacts will just have missing FK rejections.
+        // FK map failed — mark bundle as failed so the caller knows downstream
+        // entities (sites, contacts) will have missing FK rejections.
+        bundleSuccess = false;
         // eslint-disable-next-line no-console
-        console.warn(
+        console.error(
           `Failed to build customer FK map: ${e instanceof Error ? e.message : String(e)}`,
         );
         customerIdMap = new Map();

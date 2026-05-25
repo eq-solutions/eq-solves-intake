@@ -444,8 +444,14 @@ function buildRow(
   for (const col of template.columns) {
     try {
       row[col.name] = col.value(ctx);
-    } catch {
-      row[col.name] = "";
+    } catch (e) {
+      // Surface the error — silent "" would produce a blank cell with no trace.
+      // eslint-disable-next-line no-console
+      console.error(
+        `buildRow: column "${col.name}" threw — check template definition.`,
+        e,
+      );
+      row[col.name] = `#ERROR:${col.name}`;
     }
   }
   return row;
