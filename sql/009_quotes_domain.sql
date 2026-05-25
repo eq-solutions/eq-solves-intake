@@ -378,3 +378,17 @@ begin
   get diagnostics v_n = row_count; v_total := v_total + v_n;
   return v_total;
 end $$;
+
+-- ----------------------------------------------------------------------------
+-- 5. Register quote-domain entities in eq_schema_registry
+-- ----------------------------------------------------------------------------
+
+insert into shell_control.eq_schema_registry (entity, module, version, schema_json, description, is_current) values
+  ('quote',               'quotes', '1.0.0', '{"x-eq-entity":"quote","x-eq-module":"quotes","x-eq-version":"1.0.0","type":"object","description":"Quote header."}'::jsonb,               'Quote header.',               true),
+  ('quote_line_item',     'quotes', '1.0.0', '{"x-eq-entity":"quote_line_item","x-eq-module":"quotes","x-eq-version":"1.0.0","type":"object","description":"Quote line item."}'::jsonb,     'Quote line item.',            true),
+  ('quote_status_history','quotes', '1.0.0', '{"x-eq-entity":"quote_status_history","x-eq-module":"quotes","x-eq-version":"1.0.0","type":"object","description":"Quote status history."}'::jsonb, 'Quote status history.',   true),
+  ('quote_attachment',    'quotes', '1.0.0', '{"x-eq-entity":"quote_attachment","x-eq-module":"quotes","x-eq-version":"1.0.0","type":"object","description":"Quote attachment."}'::jsonb,    'Quote attachment.',           true),
+  ('scope_template',      'quotes', '1.0.0', '{"x-eq-entity":"scope_template","x-eq-module":"quotes","x-eq-version":"1.0.0","type":"object","description":"Reusable scope phrase template."}'::jsonb, 'Reusable scope template.', true),
+  ('rate_library',        'quotes', '1.0.0', '{"x-eq-entity":"rate_library","x-eq-module":"quotes","x-eq-version":"1.0.0","type":"object","description":"Curated unit rate library."}'::jsonb,  'Unit rate library.',         true),
+  ('quote_email_outbox',  'quotes', '1.0.0', '{"x-eq-entity":"quote_email_outbox","x-eq-module":"quotes","x-eq-version":"1.0.0","type":"object","description":"Quote email outbox."}'::jsonb,  'Quote email outbox.',         true)
+on conflict (entity, version) do update set module = excluded.module, description = excluded.description, is_current = excluded.is_current;
