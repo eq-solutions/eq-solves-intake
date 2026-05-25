@@ -347,6 +347,37 @@ if (orphanSiteRows.length > 0) {
   });
 }
 
+// Surface orphan contacts the same way — contacts whose customer ID has no
+// matching customer row are visible to the operator, not silently lost.
+const orphanContactRows = contactsFile.rows.filter(
+  (cc) => !customerIdSetForOrphans.has(cc["simPRO Customer ID"])
+);
+if (orphanContactRows.length > 0) {
+  outputRows.push({
+    "simPRO Customer ID": "(orphan)",
+    "Company Name":       `(Unassigned — ${orphanContactRows.length} contacts reference missing customer IDs)`,
+    "Customer Type":      "",
+    "ABN":                "",
+    "Street Address":     "",
+    "Suburb":             "",
+    "State":              "",
+    "Postcode":           "",
+    "Primary Phone":      "",
+    "Mobile Phone":       "",
+    "Email":              "",
+    "Website":            "",
+    "Customer Group":     "",
+    "Account Manager":    "",
+    "Default Quote Method": "",
+    "Notes":              "Contacts listed below reference customer IDs not present in the customers export — check if the customers file is filtered (e.g. active-only) and re-export.",
+    "Create Date":        "",
+    "Site Count":         0,
+    "Sites":              "",
+    "Contact Count":      orphanContactRows.length,
+    "Contacts":           orphanContactRows.map((cc) => `[ref customer ID ${cc["simPRO Customer ID"] || "(blank)"}] ${formatContact(cc)}`).join(SEP),
+  });
+}
+
 // ============================================================================
 // EMIT
 // ============================================================================

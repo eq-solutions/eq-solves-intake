@@ -228,11 +228,10 @@ export function renderTemplate(
     }
   }
 
-  // Optional orphan handling — append pseudo-customer rows for sites/contacts
-  // whose Customer ID isn't in the customers file. Site cells are parsed for
-  // multi-customer lists; a site is only an orphan if NONE of its listed IDs
-  // resolve to a customer.
-  if (opts.orphanStrategy === "include-as-pseudo-customer") {
+  // Orphan handling — append pseudo-customer rows for sites/contacts whose
+  // Customer ID isn't in the customers file. Defaults to include so orphans
+  // are always visible to the operator rather than silently dropped.
+  if ((opts.orphanStrategy ?? "include-as-pseudo-customer") === "include-as-pseudo-customer") {
     const orphanCustomerIds = new Set<string>();
     for (const s of sites) {
       const ids = parseCustomerIds(s["simPRO Customer ID"]);

@@ -316,34 +316,37 @@ async function buildCustomerIdMap(
 }
 
 /**
- * Apply a customerId map to a list of pre-validation rows. Each row's
- * external_customer_id (from SimPRO) gets translated into customer_id
- * (canonical UUID). Rows whose external_customer_id isn't in the map are
- * left alone — validate() will surface them as missing-FK rejections.
- *
- * SimPRO multi-customer cells like "31, 32, 208" use the first ID as
- * primary (matches today's generate-quotes-csv.mjs fix). Linked IDs are
- * not surfaced to canonical today; they live on the export rollup.
+ * Apply a customerId map to a list of pre-validation rows. Rows whose
+ * external_customer_id resolves to a known UUID are returned in `resolved`
+ * with `customer_id` stamped. Rows with no match are tracked in `missedIndices`
+ * so the caller can emit them as explicit fk_no_match rejections — never
+ * silently passed through to validate() where system-managed field skipping
+ * would let them land as valid rows with a null FK.
  */
 function resolveCustomerFk(
   rows: Record<string, unknown>[],
   customerIdMap: Map<string, string>,
-): Record<string, unknown>[] {
-  return rows.map((row) => {
+): { resolved: Record<string, unknown>[]; missedIndices: number[] } {
+  const resolved: Record<string, unknown>[] = [];
+  const missedIndices: number[] = [];
+  rows.forEach((row, idx) => {
     const out = { ...row };
     const externalCustomerId = String(
       row["external_customer_id"] ?? row["simPRO Customer ID"] ?? "",
     ).trim();
-    if (!externalCustomerId) return out;
+    if (!externalCustomerId) { resolved.push(out); return; }
     // Multi-customer cell: "31, 32, 208" → take the first.
     const firstId = externalCustomerId.split(",")[0]?.trim();
-    if (!firstId) return out;
+    if (!firstId) { resolved.push(out); return; }
     const customerId = customerIdMap.get(firstId);
     if (customerId) {
       out["customer_id"] = customerId;
+      resolved.push(out);
+    } else {
+      missedIndices.push(idx);
     }
-    return out;
   });
+  return { resolved, missedIndices };
 }
 
 // ---------------------------------------------------------------------------
@@ -390,12 +393,37 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
     };
   }
 
-  // Resolve customer FKs for site/contact before validation, so the
-  // resulting `customer_id` column lands in the canonical rows.
+  // Resolve customer FKs for site/contact before validation. Rows that
+  // can't be resolved are separated out and emitted as explicit fk_no_match
+  // rejections — they must never reach validate() where x-eq-system-managed
+  // on customer_id would let them pass as valid rows with a null FK.
   let preValidatedRows = args.sheet.rows as Record<string, unknown>[];
+  const fkMissedRejections: Array<{ source_row_index: number; reasons: string[] }> = [];
+  // Maps validate()-array index → original sheet row index (needed after filtering).
+  const resolvedToOriginalIndex: number[] = [];
+
   if ((args.entity === "site" || args.entity === "contact") && args.customerIdMap) {
-    preValidatedRows = resolveCustomerFk(preValidatedRows, args.customerIdMap);
+    const { resolved, missedIndices } = resolveCustomerFk(preValidatedRows, args.customerIdMap);
+    const missedSet = new Set(missedIndices);
+    for (const idx of missedIndices) {
+      const row = preValidatedRows[idx]!;
+      const rawId = String(row["external_customer_id"] ?? row["simPRO Customer ID"] ?? "").trim();
+      const firstId = rawId.split(",")[0]?.trim() ?? rawId;
+      fkMissedRejections.push({
+        source_row_index: idx,
+        reasons: [`fk_no_match on customer_id: no customer found for ID "${firstId}"`],
+      });
+    }
+    let cursor = 0;
+    for (let i = 0; i < preValidatedRows.length; i++) {
+      if (!missedSet.has(i)) resolvedToOriginalIndex[cursor++] = i;
+    }
+    preValidatedRows = resolved;
   }
+
+  // Remap validate() source_row_index back to original sheet index.
+  const remapIdx = (i: number): number =>
+    resolvedToOriginalIndex.length > 0 ? (resolvedToOriginalIndex[i] ?? i) : i;
 
   // Header → canonical field mapping via x-eq-source-aliases.
   // Add `customer_id` as an identity mapping if we just stamped it during
@@ -448,14 +476,13 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
   ];
 
   if (toCommit.length === 0) {
-    // Nothing to commit — close the audit row as completed with zero rows.
     await finishIntakeEvent({
       supabase: args.supabase,
       intakeId,
       status: "completed",
       rowsCommitted: 0,
       rowsFlagged: validationResult.summary.flagged,
-      rowsRejected: validationResult.summary.rejected,
+      rowsRejected: validationResult.summary.rejected + fkMissedRejections.length,
     });
     return {
       entity: args.entity,
@@ -463,11 +490,14 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
       intakeId,
       committedCount: 0,
       flaggedCount: validationResult.summary.flagged,
-      rejectedCount: validationResult.summary.rejected,
-      rejectedRows: validationResult.rejected_rows.map((r) => ({
-        source_row_index: r.source_row_index,
-        reasons: r.errors.map(formatValidationError),
-      })),
+      rejectedCount: validationResult.summary.rejected + fkMissedRejections.length,
+      rejectedRows: [
+        ...fkMissedRejections,
+        ...validationResult.rejected_rows.map((r) => ({
+          source_row_index: remapIdx(r.source_row_index),
+          reasons: r.errors.map(formatValidationError),
+        })),
+      ],
     };
   }
 
@@ -486,7 +516,7 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
       status: "failed",
       rowsCommitted: 0,
       rowsFlagged: validationResult.summary.flagged,
-      rowsRejected: validationResult.summary.rejected,
+      rowsRejected: validationResult.summary.rejected + toCommit.length + fkMissedRejections.length,
       errorMessage: error.message,
     });
     return {
@@ -495,17 +525,18 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
       intakeId,
       committedCount: 0,
       flaggedCount: validationResult.summary.flagged,
-      rejectedCount: validationResult.summary.rejected + toCommit.length,
-      rejectedRows: validationResult.rejected_rows.map((r) => ({
-        source_row_index: r.source_row_index,
-        reasons: r.errors.map(formatValidationError),
-      })),
+      rejectedCount: validationResult.summary.rejected + toCommit.length + fkMissedRejections.length,
+      rejectedRows: [
+        ...fkMissedRejections,
+        ...validationResult.rejected_rows.map((r) => ({
+          source_row_index: remapIdx(r.source_row_index),
+          reasons: r.errors.map(formatValidationError),
+        })),
+      ],
       fatalError: error.message,
     };
   }
 
-  // The RPC returns `[{ committed_count, committed_ids }]`. supabase-js returns
-  // the rows array as `data`; pick the first row.
   const rpcRow = Array.isArray(data) ? (data[0] as { committed_count?: number } | undefined) : undefined;
   const committedCount = rpcRow?.committed_count ?? 0;
 
@@ -515,7 +546,7 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
     status: "completed",
     rowsCommitted: committedCount,
     rowsFlagged: validationResult.summary.flagged,
-    rowsRejected: validationResult.summary.rejected,
+    rowsRejected: validationResult.summary.rejected + fkMissedRejections.length,
   });
 
   return {
@@ -524,11 +555,14 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
     intakeId,
     committedCount,
     flaggedCount: validationResult.summary.flagged,
-    rejectedCount: validationResult.summary.rejected,
-    rejectedRows: validationResult.rejected_rows.map((r) => ({
-      source_row_index: r.source_row_index,
-      reasons: r.errors.map(formatValidationError),
-    })),
+    rejectedCount: validationResult.summary.rejected + fkMissedRejections.length,
+    rejectedRows: [
+      ...fkMissedRejections,
+      ...validationResult.rejected_rows.map((r) => ({
+        source_row_index: remapIdx(r.source_row_index),
+        reasons: r.errors.map(formatValidationError),
+      })),
+    ],
   };
 }
 

@@ -117,7 +117,8 @@ export type ValidationError =
   | { kind: 'cross_field_error'; rule_id: string; message: string }
   | { kind: 'fk_no_match'; field: string; value: unknown }
   | { kind: 'date_ambiguous_strict'; field: string }
-  | { kind: 'coerce_failed'; field: string; reason: string };
+  | { kind: 'coerce_failed'; field: string; reason: string }
+  | { kind: 'cap_exceeded'; field: string; reason: string };
 
 export interface ValidationSummary {
   total: number;
@@ -314,6 +315,16 @@ export async function validate(opts: ValidateOpts): Promise<ValidationResult> {
     } else {
       valid_rows.push({ source_row_index: rowIdx, canonical });
     }
+  }
+
+  // Rows beyond the cap get explicit rejected entries — never silently dropped.
+  for (let rowIdx = limit; rowIdx < rows.length; rowIdx++) {
+    rejected_rows.push({
+      source_row_index: rowIdx,
+      raw: rows[rowIdx]!,
+      errors: [{ kind: 'cap_exceeded', field: '_input', reason: `Batch exceeds the ${maxRowsToReturn.toLocaleString()}-row cap. Split into smaller batches and re-import.` }],
+    });
+    countErr(by_field_errors, '_cap_exceeded');
   }
 
   return {
