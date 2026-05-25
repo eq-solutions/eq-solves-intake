@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EQ Intake — What It Is & How It Works</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --sky:   #3DA8D8;
+    --deep:  #2986B4;
+    --ice:   #EAF5FB;
+    --ink:   #1A1A2E;
+    --mid:   #5B6B7A;
+    --border:#D0E8F5;
+    --white: #FFFFFF;
+    --green: #22C55E;
+    --amber: #F59E0B;
+    --red:   #EF4444;
+    --purple:#7C3AED;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background: #F4F7FA;
+    color: var(--ink);
+    padding: 40px 20px 80px;
+  }
+
+  .page { max-width: 1100px; margin: 0 auto; }
+
+  /* ── HERO ── */
+  .hero {
+    background: var(--ink);
+    border-radius: 20px;
+    padding: 48px 48px 44px;
+    margin-bottom: 40px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -60px; right: -60px;
+    width: 300px; height: 300px;
+    background: radial-gradient(circle, #3DA8D820 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero-tag {
+    display: inline-block;
+    background: var(--sky);
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    padding: 4px 12px;
+    border-radius: 20px;
+    margin-bottom: 20px;
+  }
+  .hero h1 {
+    font-size: 42px;
+    font-weight: 800;
+    color: white;
+    line-height: 1.1;
+    margin-bottom: 16px;
+  }
+  .hero h1 span { color: var(--sky); }
+  .hero p {
+    font-size: 17px;
+    color: #94A3B8;
+    max-width: 640px;
+    line-height: 1.7;
+  }
+
+  /* ── SECTION HEADERS ── */
+  .section-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--sky);
+    margin-bottom: 10px;
+  }
+  .section-title {
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--ink);
+    margin-bottom: 8px;
+  }
+  .section-sub {
+    font-size: 15px;
+    color: var(--mid);
+    margin-bottom: 32px;
+    line-height: 1.6;
+  }
+
+  /* ── PROBLEM STRIP ── */
+  .problem-strip {
+    background: #FEF3C7;
+    border: 1px solid #FCD34D;
+    border-radius: 16px;
+    padding: 28px 32px;
+    margin-bottom: 40px;
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  .problem-strip .icon { font-size: 32px; flex-shrink: 0; margin-top: 2px; }
+  .problem-strip h2 { font-size: 18px; font-weight: 700; color: #92400E; margin-bottom: 8px; }
+  .problem-strip p { font-size: 14px; color: #78350F; line-height: 1.7; }
+
+  /* ── THE BIG FLOW DIAGRAM ── */
+  .flow-section { margin-bottom: 48px; }
+
+  .flow-grid {
+    display: grid;
+    grid-template-columns: 1fr 56px 1fr 56px 1fr;
+    gap: 0;
+    align-items: stretch;
+  }
+
+  /* Column: IN */
+  .col-in, .col-out {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .col-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--mid);
+    text-align: center;
+    padding: 8px 0 16px;
+  }
+
+  .in-card {
+    background: white;
+    border: 2px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 16px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .in-card.active { border-color: var(--sky); }
+  .in-card.cold   { border-color: #E2E8F0; opacity: 0.65; }
+  .in-card .card-icon { font-size: 28px; flex-shrink: 0; }
+  .in-card .card-name { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 3px; }
+  .in-card .card-desc { font-size: 12px; color: var(--mid); line-height: 1.5; }
+  .in-card .status-tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    margin-top: 6px;
+  }
+  .tag-building { background: #DBEAFE; color: #1D4ED8; }
+  .tag-cold     { background: #F1F5F9; color: #64748B; }
+  .tag-live     { background: #DCFCE7; color: #15803D; }
+
+  /* Arrow column */
+  .arrow-col {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: 44px;
+  }
+  .arrow-col svg { color: var(--sky); }
+
+  /* Canonical column */
+  .canonical-col {
+    background: var(--ink);
+    border-radius: 18px;
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .canonical-header {
+    background: var(--sky);
+    padding: 18px 20px 16px;
+    text-align: center;
+  }
+  .canonical-header .ch-icon { font-size: 32px; margin-bottom: 4px; }
+  .canonical-header .ch-title {
+    font-size: 16px;
+    font-weight: 800;
+    color: white;
+    margin-bottom: 2px;
+  }
+  .canonical-header .ch-sub {
+    font-size: 11px;
+    color: rgba(255,255,255,0.75);
+  }
+  .canonical-body { padding: 16px; flex: 1; }
+
+  .schema-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .schema-pill {
+    background: rgba(61,168,216,0.12);
+    border: 1px solid rgba(61,168,216,0.2);
+    border-radius: 8px;
+    padding: 6px 8px;
+    font-size: 11px;
+    color: var(--sky);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .schema-pill .dot {
+    width: 5px; height: 5px;
+    background: var(--sky);
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .canonical-features {
+    border-top: 1px solid rgba(255,255,255,0.08);
+    padding-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .cf-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  .cf-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+  .cf-text { font-size: 11px; color: #94A3B8; line-height: 1.5; }
+  .cf-text strong { color: #CBD5E1; font-weight: 600; }
+
+  /* Out column */
+  .out-card {
+    background: white;
+    border: 2px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 16px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .out-card .card-icon { font-size: 28px; flex-shrink: 0; }
+  .out-card .card-name { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 3px; }
+  .out-card .card-desc { font-size: 12px; color: var(--mid); line-height: 1.5; }
+
+  /* ── MOMENT CARDS ── */
+  .moments-section { margin-bottom: 48px; }
+  .moments-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+  }
+  .moment-card {
+    background: white;
+    border: 1.5px solid var(--border);
+    border-radius: 16px;
+    padding: 24px 20px;
+  }
+  .moment-time {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--sky);
+    margin-bottom: 10px;
+  }
+  .moment-emoji { font-size: 30px; margin-bottom: 12px; }
+  .moment-title { font-size: 15px; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
+  .moment-before {
+    font-size: 12px;
+    color: var(--red);
+    background: #FEF2F2;
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    line-height: 1.5;
+  }
+  .moment-after {
+    font-size: 12px;
+    color: #15803D;
+    background: #F0FDF4;
+    border-radius: 8px;
+    padding: 8px 10px;
+    line-height: 1.5;
+  }
+  .moment-before::before { content: '😩 Before: '; font-weight: 700; }
+  .moment-after::before  { content: '✅ After: ';  font-weight: 700; }
+
+  /* ── SCHEMA TABLE ── */
+  .schemas-section { margin-bottom: 48px; }
+  .schemas-table-wrap {
+    background: white;
+    border: 1.5px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .schemas-table-head {
+    display: grid;
+    grid-template-columns: 180px 80px 1fr 140px;
+    background: var(--ice);
+    padding: 10px 20px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--mid);
+    border-bottom: 1px solid var(--border);
+  }
+  .schema-row {
+    display: grid;
+    grid-template-columns: 180px 80px 1fr 140px;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+    font-size: 13px;
+  }
+  .schema-row:last-child { border-bottom: none; }
+  .schema-row:hover { background: var(--ice); }
+  .schema-name { font-weight: 600; color: var(--ink); font-family: monospace; font-size: 12px; }
+  .schema-module {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+  .mod-field   { background: #EDE9FE; color: #6D28D9; }
+  .mod-cards   { background: #DCFCE7; color: #15803D; }
+  .mod-service { background: #DBEAFE; color: #1D4ED8; }
+  .mod-crm     { background: #FEF3C7; color: #92400E; }
+  .schema-desc { color: var(--mid); font-size: 12px; }
+  .schema-doors { display: flex; gap: 4px; flex-wrap: wrap; }
+  .door-tag {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 8px;
+    background: var(--ice);
+    color: var(--deep);
+    border: 1px solid var(--border);
+  }
+
+  /* ── TECH STRIP ── */
+  .tech-section { margin-bottom: 48px; }
+  .tech-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 14px;
+  }
+  .tech-card {
+    background: white;
+    border: 1.5px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 18px;
+  }
+  .tech-icon { font-size: 26px; margin-bottom: 10px; }
+  .tech-name { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 5px; }
+  .tech-desc { font-size: 12px; color: var(--mid); line-height: 1.5; }
+
+  /* ── SPRINT ── */
+  .sprint-section { margin-bottom: 48px; }
+  .sprint-grid { display: flex; flex-direction: column; gap: 12px; }
+  .sprint-card {
+    background: white;
+    border: 1.5px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 24px;
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  .sprint-num {
+    background: var(--ice);
+    border-radius: 10px;
+    padding: 10px;
+    text-align: center;
+  }
+  .sprint-num .wk { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--mid); }
+  .sprint-num .range { font-size: 13px; font-weight: 800; color: var(--ink); margin-top: 2px; }
+  .sprint-objective { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
+  .sprint-tasks { list-style: none; display: flex; flex-direction: column; gap: 5px; }
+  .sprint-tasks li {
+    font-size: 12px;
+    color: var(--mid);
+    padding-left: 16px;
+    position: relative;
+    line-height: 1.5;
+  }
+  .sprint-tasks li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: var(--sky);
+    font-weight: 700;
+  }
+  .sprint-gate {
+    margin-top: 10px;
+    background: var(--ice);
+    border-left: 3px solid var(--sky);
+    padding: 8px 12px;
+    border-radius: 0 8px 8px 0;
+    font-size: 12px;
+    color: var(--deep);
+    font-weight: 600;
+  }
+  .sprint-card.active-sprint {
+    border-color: var(--sky);
+    background: linear-gradient(135deg, white 0%, #F0F9FF 100%);
+  }
+  .sprint-card.active-sprint .sprint-num {
+    background: var(--sky);
+  }
+  .sprint-card.active-sprint .sprint-num .wk { color: rgba(255,255,255,0.7); }
+  .sprint-card.active-sprint .sprint-num .range { color: white; }
+
+  /* ── WHAT WE DON'T BUILD ── */
+  .not-building {
+    background: #F8FAFC;
+    border: 1.5px solid var(--border);
+    border-radius: 16px;
+    padding: 28px 32px;
+    margin-bottom: 40px;
+  }
+  .not-building h3 { font-size: 16px; font-weight: 700; color: var(--ink); margin-bottom: 16px; }
+  .not-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .not-item {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    font-size: 13px;
+    color: var(--mid);
+  }
+  .not-item::before { content: '✗'; color: var(--red); font-weight: 800; flex-shrink: 0; margin-top: 1px; }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .flow-grid { grid-template-columns: 1fr; }
+    .arrow-col { transform: rotate(90deg); padding-top: 0; }
+    .schemas-table-head, .schema-row { grid-template-columns: 1fr 1fr; }
+    .not-grid { grid-template-columns: 1fr; }
+    .hero h1 { font-size: 30px; }
+    .hero { padding: 32px 24px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-tag">EQ Intake — Architecture Overview</div>
+    <h1>The layer that stops<br><span>people retyping the same thing twice</span></h1>
+    <p>Trade subbies spend hours every week moving data between systems that don't talk to each other. EQ Intake is the plumbing in the middle — data goes in once, comes out in whatever format every other system needs.</p>
+  </div>
+
+  <!-- THE PROBLEM -->
+  <div class="problem-strip">
+    <div class="icon">😤</div>
+    <div>
+      <h2>The real problem EQ solves</h2>
+      <p>An apprentice writes their details on paper at 6:30am. The office types it into SimPRO. Someone else copies it into the Equinix portal. The bookkeeper puts hours into Xero. The insurance renewal needs all of it again. <strong>That's the same data, typed 4–5 times, by 4–5 people, into 4–5 systems.</strong> Every retype is a chance to get it wrong. EQ removes every retype except the first one.</p>
+    </div>
+  </div>
+
+  <!-- THE BIG FLOW -->
+  <div class="flow-section">
+    <div class="section-label">The Architecture</div>
+    <div class="section-title">Three ways data gets in. One layer in the middle. Every door out.</div>
+    <div class="section-sub">Think of it like a translator. No matter which language data arrives in, EQ understands it and can speak every language on the way out.</div>
+
+    <div class="flow-grid">
+
+      <!-- IN COLUMN -->
+      <div>
+        <div class="col-label">Ways Data Gets In</div>
+        <div class="col-in">
+
+          <div class="in-card active">
+            <div class="card-icon">📱</div>
+            <div>
+              <div class="card-name">EQ Cards</div>
+              <div class="card-desc">The boys on site use their phone. Tap, photo their licence, sign the form, done. Works offline — syncs when back on Wi-Fi.</div>
+              <span class="status-tag tag-building">In Build</span>
+            </div>
+          </div>
+
+          <div class="in-card active">
+            <div class="card-icon">📊</div>
+            <div>
+              <div class="card-name">EQ Format</div>
+              <div class="card-desc">Drag in any spreadsheet — a messy SimPRO export, a client asset list, a dog-eared tagging register. EQ maps the columns and cleans it up.</div>
+              <span class="status-tag tag-building">In Build</span>
+            </div>
+          </div>
+
+          <div class="in-card cold">
+            <div class="card-icon">📄</div>
+            <div>
+              <div class="card-name">EQ Capture</div>
+              <div class="card-desc">Photos of paper forms, PDFs, forwarded emails. AI reads them and pulls out the structured data. Built and parked — cost/speed not worth it yet.</div>
+              <span class="status-tag tag-cold">Parked</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ARROW IN -->
+      <div class="arrow-col">
+        <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path d="M5 12h14M13 6l6 6-6 6"/>
+        </svg>
+      </div>
+
+      <!-- CANONICAL CENTRE -->
+      <div class="canonical-col">
+        <div class="canonical-header">
+          <div class="ch-icon">🧠</div>
+          <div class="ch-title">Canonical Layer</div>
+          <div class="ch-sub">30 schemas · One source of truth · Multi-tenant</div>
+        </div>
+        <div class="canonical-body">
+          <div class="schema-grid">
+            <div class="schema-pill"><span class="dot"></span>staff</div>
+            <div class="schema-pill"><span class="dot"></span>site</div>
+            <div class="schema-pill"><span class="dot"></span>asset</div>
+            <div class="schema-pill"><span class="dot"></span>schedule</div>
+            <div class="schema-pill"><span class="dot"></span>prestart</div>
+            <div class="schema-pill"><span class="dot"></span>swms</div>
+            <div class="schema-pill"><span class="dot"></span>jsa</div>
+            <div class="schema-pill"><span class="dot"></span>toolbox-talk</div>
+            <div class="schema-pill"><span class="dot"></span>incident</div>
+            <div class="schema-pill"><span class="dot"></span>itp</div>
+            <div class="schema-pill"><span class="dot"></span>customer</div>
+            <div class="schema-pill"><span class="dot"></span>service_contract</div>
+            <div class="schema-pill"><span class="dot"></span>contact</div>
+            <div class="schema-pill"><span class="dot"></span>defect</div>
+            <div class="schema-pill"><span class="dot"></span>maintenance_check</div>
+            <div class="schema-pill"><span class="dot"></span>check_asset</div>
+            <div class="schema-pill"><span class="dot"></span>check_item</div>
+            <div class="schema-pill"><span class="dot"></span>maintenance_plan</div>
+            <div class="schema-pill"><span class="dot"></span>pm_calendar</div>
+            <div class="schema-pill"><span class="dot"></span>acb_test</div>
+            <div class="schema-pill"><span class="dot"></span>nsx_test</div>
+            <div class="schema-pill"><span class="dot"></span>rcd_test</div>
+            <div class="schema-pill"><span class="dot"></span>attachment</div>
+            <div class="schema-pill"><span class="dot"></span>contract_scope</div>
+          </div>
+          <div class="canonical-features">
+            <div class="cf-row">
+              <div class="cf-icon">🔒</div>
+              <div class="cf-text"><strong>Tenant isolation</strong> — SKS data never leaks to any other company. Hard-enforced in the database itself.</div>
+            </div>
+            <div class="cf-row">
+              <div class="cf-icon">✅</div>
+              <div class="cf-text"><strong>Validation engine</strong> — every row gets checked before it lands. Dates, phone numbers, licence formats, required fields. Bad rows get flagged, not silently lost.</div>
+            </div>
+            <div class="cf-row">
+              <div class="cf-icon">↩️</div>
+              <div class="cf-text"><strong>Rollback</strong> — if an import goes wrong, one command undoes the whole batch. No manual cleanup.</div>
+            </div>
+            <div class="cf-row">
+              <div class="cf-icon">🤖</div>
+              <div class="cf-text"><strong>AI column mapping</strong> — drop in a spreadsheet with weird column names, AI figures out what they mean. Saves the mapping for next time — free after the first run.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ARROW OUT -->
+      <div class="arrow-col">
+        <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path d="M5 12h14M13 6l6 6-6 6"/>
+        </svg>
+      </div>
+
+      <!-- OUT COLUMN -->
+      <div>
+        <div class="col-label">Where Data Goes Out</div>
+        <div class="col-out">
+
+          <div class="out-card">
+            <div class="card-icon">🔧</div>
+            <div>
+              <div class="card-name">Job Management</div>
+              <div class="card-desc">SimPRO, AroFlo, Workbench, ServiceM8. Right format, right field names, right API. EQ feeds them — doesn't replace them.</div>
+            </div>
+          </div>
+
+          <div class="out-card">
+            <div class="card-icon">📒</div>
+            <div>
+              <div class="card-name">Accounting</div>
+              <div class="card-desc">Xero, MYOB, QuickBooks. Timesheets and expenses flow automatically into whatever the bookkeeper uses.</div>
+            </div>
+          </div>
+
+          <div class="out-card">
+            <div class="card-icon">🏢</div>
+            <div>
+              <div class="card-name">Client Portals</div>
+              <div class="card-desc">Equinix's format. NEXTDC's format. The hospital network's format. Each one set up once, then automatic.</div>
+            </div>
+          </div>
+
+          <div class="out-card">
+            <div class="card-icon">📋</div>
+            <div>
+              <div class="card-name">Compliance Bundles</div>
+              <div class="card-desc">Audit packs, insurance evidence, principal contractor documentation. Generated in 30 seconds from real data.</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- REAL MOMENTS -->
+  <div class="moments-section">
+    <div class="section-label">Why It Matters</div>
+    <div class="section-title">Four moments EQ changes forever</div>
+    <div class="section-sub">These are the actual pain points. Everything in the architecture exists to fix one of these.</div>
+    <div class="moments-grid">
+
+      <div class="moment-card">
+        <div class="moment-time">6:30am Tuesday</div>
+        <div class="moment-emoji">👷</div>
+        <div class="moment-title">Site induction</div>
+        <div class="moment-before">Apprentice types their details into the data centre portal. Same details they typed yesterday. Takes 8 minutes with shaking hands.</div>
+        <div class="moment-after">EQ Cards already has their licence, inductions, SWMS. Tap "share with this site." Done in 30 seconds.</div>
+      </div>
+
+      <div class="moment-card">
+        <div class="moment-time">7pm Friday</div>
+        <div class="moment-emoji">📊</div>
+        <div class="moment-title">Bookkeeper closes the week</div>
+        <div class="moment-before">Timesheets come in on paper or WhatsApp. Manually typed into payroll. Cross-referenced against SimPRO job costing. 2+ hours every week.</div>
+        <div class="moment-after">Timesheets already structured in EQ. Drag supplier invoices in. Xero updated automatically with job costing attached.</div>
+      </div>
+
+      <div class="moment-card">
+        <div class="moment-time">Renewal time</div>
+        <div class="moment-emoji">🛡️</div>
+        <div class="moment-title">Insurance renewal</div>
+        <div class="moment-before">Broker asks for evidence. Someone manually searches through folders, emails, spreadsheets for SWMS, toolbox talks, incidents. Takes days.</div>
+        <div class="moment-after">EQ generates the full compliance pack — every SWMS, toolbox talk, incident from the year, structured and dated — in 30 seconds.</div>
+      </div>
+
+      <div class="moment-card">
+        <div class="moment-time">Quarterly</div>
+        <div class="moment-emoji">🏛️</div>
+        <div class="moment-title">Equinix client review</div>
+        <div class="moment-before">Equinix wants compliance evidence in their format. Someone manually extracts data from SimPRO and reformats it. Half a day's work.</div>
+        <div class="moment-after">EQ exports directly in Equinix's format from the canonical data. No Excel manipulation. No retype.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ALL SCHEMAS -->
+  <div class="schemas-section">
+    <div class="section-label">The Canonical Schemas</div>
+    <div class="section-title">30 defined shapes — one for every type of data</div>
+    <div class="section-sub">A schema is a rulebook for a type of data. It says: here are the required fields, here are the allowed values, here is how dates must be formatted. Every row coming into EQ gets measured against the right schema before it lands.</div>
+    <div class="schemas-table-wrap">
+      <div class="schemas-table-head">
+        <div>Schema</div>
+        <div>Module</div>
+        <div>What it is</div>
+        <div>Used by</div>
+      </div>
+
+      <div class="schema-row">
+        <div class="schema-name">staff</div>
+        <div><span class="schema-module mod-field">Field</span></div>
+        <div class="schema-desc">Employees, subbies, labour-hire, casuals, apprentices</div>
+        <div class="schema-doors"><span class="door-tag">Cards</span><span class="door-tag">SimPRO</span></div>
+      </div>
+      <div class="schema-row">
+        <div class="schema-name">site</div>
+        <div><span class="schema-module mod-field">Field</span></div>
+        <div class="schema-desc">Every location where work happens</div>
+        <div class="schema-doors"><span class="door-tag">Cards</span><span class="door-tag">SimPRO</span></div>
+      </div>
+      <div class="schema-row">
+        <div class="schema-name">asset</div>
+        <div><span class="schema-module mod-field">Field</span></div>
+        <div class="schema-desc">Anything serviceable — switchboards, UPS, generators, fire pumps</div>
+        <div class="schema-doors"><span class="door-tag">SimPRO</span><span class="door-tag">Xero</span></div>
+      </div>
+      <div class="schema-row">
+        <div class="schema-name">schedule</div>
+        <div><span class="schema-module mod-field">Field</span></div>
+        <div class="schema-desc">Staff × site × date × hours — who's working where and when</div>
+        <div class="schema-doors"><span class="door-tag">SimPRO</span><span class="door-tag">Xero</span></div>
+      </div>
+      <div class="schema-row">
+        <div class="schema-name">prestart</div>
+        <div><span class="schema-module mod-cards">Cards</span></div>
+        <div class="schema-desc">Daily safety check before work starts on site</div>
+        <div class="schema-doors"><span class="door-tag">Cards</span><span class="door-tag">Equinix</span></div>
+      </div>
+      <div class="schema-row">
+        <div class="schema-name">swms</div>
+        <div><span class="schema-module mod-cards">Cards</span></div>
+        <div class="schema-desc">Safe Work Method Statement — how a hazardous task will be done safely</div>
+        <div class="schema-doors"><span class="door-tag">Cards</span><span class="door-tag">Insurance</span></div>
+      </div>
+      <div class="schema-row">
+        <div class="schema-name">jsa</div>
+        <div><span class="schema-module mod-cards">Cards</span></div>
+        <div class="schema-desc">Job Safety Analysis — risk assessment before a specific task</div>
+        <div class="schema-doors"><span class="door-tag">Cards</span><span class="door-tag">Insurance</span></div>
+      </div>
+      <div class="schema-row">
+        <div class="schema-name">toolbox-talk</div>
+        <div><span class="schema-module mod-cards">Cards</span></div>
+        <div class="schema-desc">Recorded site safety briefing with attendee list and sign-offs</div>
+        <div class="schema-doors"><span class="door-tag">Cards</span><span class="door-tag">Insurance</span></div>
+      </div>
+      <div class="schema-row">
+        <div class="schema-name">incident</div>
+        <div><span class="schema-module mod-cards">Cards</span></div>
+        <div class="schema-desc">Injury, near-miss, hazard, environmental, property damage reports</div>
+        <div class="schema-doors"><span class="door-tag">Cards</span><span class="door-tag">Insurance</span></div>
+      </div>
+      <div class="schema-row">
+        <div class="schema-name">itp</div>
+        <div><span class="schema-module mod-cards">Cards</span></div>
+        <div class="schema-desc">Inspection & Test Plan — quality checkpoints for a job</div>
+        <div class="schema-doors"><span class="door-tag">Cards</span><span class="door-tag">Equinix</span></div>
+      </div>
+      <div class="schema-row">
+        <div class="schema-name">customer</div>
+        <div><span class="schema-module mod-crm">CRM</span></div>
+        <div class="schema-desc">The client company — from lead through to active customer</div>
+        <div class="schema-doors"><span class="door-tag">Xero</span><span class="door-tag">SimPRO</span></div>
+      </div>
+      <div class="schema-row">
+        <div class="schema-name">service_contract</div>
+        <div><span class="schema-module mod-crm">CRM</span></div>
+        <div class="schema-desc">The deal — rates, SLA, terms, CPI. Separate from the customer record.</div>
+        <div class="schema-doors"><span class="door-tag">Xero</span><span class="door-tag">SimPRO</span></div>
+      </div>
+      <div class="schema-row">
+        <div class="schema-name">contact</div>
+        <div><span class="schema-module mod-crm">CRM</span></div>
+        <div class="schema-desc">The person at the customer — site manager, compliance officer</div>
+        <div class="schema-doors"><span class="door-tag">SimPRO</span></div>
+      </div>
+      <div class="schema-row">
+        <div class="schema-name">maintenance_check</div>
+        <div><span class="schema-module mod-service">Service</span></div>
+        <div class="schema-desc">A PPM visit — when, which site, which assets, which plan</div>
+        <div class="schema-doors"><span class="door-tag">SimPRO</span><span class="door-tag">Equinix</span></div>
+      </div>
+      <div class="schema-row">
+        <div class="schema-name">check_asset</div>
+        <div><span class="schema-module mod-service">Service</span></div>
+        <div class="schema-desc">One asset inspected during a PPM — with full Maximo payload fields</div>
+        <div class="schema-doors"><span class="door-tag">SimPRO</span></div>
+      </div>
+      <div class="schema-row">
+        <div class="schema-name">defect</div>
+        <div><span class="schema-module mod-service">Service</span></div>
+        <div class="schema-desc">Fault found during inspection — with priority and remediation status</div>
+        <div class="schema-doors"><span class="door-tag">SimPRO</span><span class="door-tag">Equinix</span></div>
+      </div>
+      <div class="schema-row">
+        <div class="schema-name">acb_test / nsx_test / rcd_test</div>
+        <div><span class="schema-module mod-service">Service</span></div>
+        <div class="schema-desc">Electrical test results — ACB, NSX, and RCD with full reading schemas</div>
+        <div class="schema-doors"><span class="door-tag">SimPRO</span><span class="door-tag">Equinix</span></div>
+      </div>
+      <div class="schema-row">
+        <div class="schema-name">maintenance_plan / pm_calendar</div>
+        <div><span class="schema-module mod-service">Service</span></div>
+        <div class="schema-desc">What gets checked, how often, by whom. The recurring schedule driver.</div>
+        <div class="schema-doors"><span class="door-tag">SimPRO</span></div>
+      </div>
+      <div class="schema-row">
+        <div class="schema-name">attachment</div>
+        <div><span class="schema-module mod-field">Field</span></div>
+        <div class="schema-desc">Files linked to any canonical entity — photos, signed forms, PDFs</div>
+        <div class="schema-doors"><span class="door-tag">All</span></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- TECH UNDERPINNINGS -->
+  <div class="tech-section">
+    <div class="section-label">Under the Hood</div>
+    <div class="section-title">What makes it reliable</div>
+    <div class="section-sub">You don't need to know this to use EQ. But here's why the architecture is built this way.</div>
+    <div class="tech-grid">
+
+      <div class="tech-card">
+        <div class="tech-icon">🔒</div>
+        <div class="tech-name">Row-level security</div>
+        <div class="tech-desc">Each row in the database carries a tenant_id. The database itself refuses cross-tenant reads — not just the app code. SKS data is physically isolated.</div>
+      </div>
+
+      <div class="tech-card">
+        <div class="tech-icon">↩️</div>
+        <div class="tech-name">Atomic rollback</div>
+        <div class="tech-desc">Every import is tagged with an intake_id. One RPC call undoes the entire batch cleanly — no partial states, no manual SQL cleanup tickets.</div>
+      </div>
+
+      <div class="tech-card">
+        <div class="tech-icon">🏷️</div>
+        <div class="tech-name">Schema versioning</div>
+        <div class="tech-desc">Every row is tagged with the schema version that produced it. Breaking changes get a major version bump and a migration window — old data is never corrupted silently.</div>
+      </div>
+
+      <div class="tech-card">
+        <div class="tech-icon">💸</div>
+        <div class="tech-name">AI cost caching</div>
+        <div class="tech-desc">Before calling AI to map columns, EQ hashes the spreadsheet shape. Same shape as last time? Skip the AI call entirely. Routine imports cost nothing after the first run.</div>
+      </div>
+
+      <div class="tech-card">
+        <div class="tech-icon">⚡</div>
+        <div class="tech-name">Fast validation</div>
+        <div class="tech-desc">10,000 rows × 50 fields validate in under 2 seconds. Same engine runs inside Cards on the phone, inside Format on the desktop, inside every intake path.</div>
+      </div>
+
+      <div class="tech-card">
+        <div class="tech-icon">🚩</div>
+        <div class="tech-name">No silent drops</div>
+        <div class="tech-desc">Every input row gets an output — either committed, flagged, or rejected with a reason. EQ cannot silently lose your data. Every drop is visible to the operator.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- SPRINT PLAN -->
+  <div class="sprint-section">
+    <div class="section-label">Getting to Live</div>
+    <div class="section-title">What needs to happen and in what order</div>
+    <div class="section-sub">The schemas are done. The architecture is designed. What's missing is fuel — a live Supabase with real data flowing through it.</div>
+
+    <div class="sprint-grid">
+
+      <div class="sprint-card active-sprint">
+        <div class="sprint-num">
+          <div class="wk">Now</div>
+          <div class="range">Week 1–2</div>
+        </div>
+        <div>
+          <div class="sprint-objective">🏗️ Provision canonical Supabase + fix the 3 silent-drop bugs</div>
+          <ul class="sprint-tasks">
+            <li>Create <code>sks-canonical-eq</code> Supabase project (MICRO tier, $10/mo)</li>
+            <li>Run SQL migrations 001 → 012 against it in order</li>
+            <li>Fix <code>validate.ts:185</code> — 100k row cap must emit <code>(rejected, reason: cap_exceeded)</code> not silently truncate</li>
+            <li>Fix <code>commit-canonical.ts:337</code> — FK miss must always emit <code>(rejected, reason: fk_no_match)</code></li>
+            <li>Fix <code>rollup.mjs:364</code> — orphan contacts get <code>[orphan]</code> marker in output, not dropped</li>
+            <li>Mirror orphan-contact fix in browser-side <code>template.ts</code></li>
+          </ul>
+          <div class="sprint-gate">✓ Gate: One real data row from SKS lands in the canonical Supabase via the validation engine</div>
+        </div>
+      </div>
+
+      <div class="sprint-card">
+        <div class="sprint-num">
+          <div class="wk">Next</div>
+          <div class="range">Week 3–4</div>
+        </div>
+        <div>
+          <div class="sprint-objective">📱 Wire Cards to the canonical Supabase</div>
+          <ul class="sprint-tasks">
+            <li>Run Cards migration: copy <code>profiles</code> → canonical <code>staff</code>, <code>licences</code> → canonical <code>licences</code></li>
+            <li>Copy Cards Storage bucket (licence photos) to canonical Storage, repoint signed URLs</li>
+            <li>Repoint Cards Supabase client to <code>sks-canonical-eq</code></li>
+            <li>End-to-end test: Cards → capture licence → lands in canonical <code>staff</code> row</li>
+            <li>Tear down old Cards Supabase once verified stable for 7 days</li>
+          </ul>
+          <div class="sprint-gate">✓ Gate: Cards induction flow works end-to-end against canonical Supabase</div>
+        </div>
+      </div>
+
+      <div class="sprint-card">
+        <div class="sprint-num">
+          <div class="wk">Then</div>
+          <div class="range">Week 5–6</div>
+        </div>
+        <div>
+          <div class="sprint-objective">📊 Build EQ Format — the sheet wrangler</div>
+          <ul class="sprint-tasks">
+            <li>Drop any spreadsheet in, AI maps columns to canonical schema</li>
+            <li>Review screen — show what mapped, what flagged, what rejected</li>
+            <li>Confirm → batch committed to canonical with full audit trail</li>
+            <li>Hash-cache the mapping — same shape = zero AI cost on repeat</li>
+            <li>First real import: SimPRO staff/site export → canonical</li>
+          </ul>
+          <div class="sprint-gate">✓ Gate: A SimPRO export CSV lands in canonical without manual mapping</div>
+        </div>
+      </div>
+
+      <div class="sprint-card">
+        <div class="sprint-num">
+          <div class="wk">After</div>
+          <div class="range">Week 7–8</div>
+        </div>
+        <div>
+          <div class="sprint-objective">🔁 First export profile — Equinix → SimPRO</div>
+          <ul class="sprint-tasks">
+            <li>Build Equinix audit export profile (canonical → Equinix format)</li>
+            <li>Run first real Equinix audit export, compare against what Royce would have submitted manually</li>
+            <li>Build SimPRO push — staff + sites + prestarts → SimPRO via API</li>
+            <li>Test with a real SKS weekly run</li>
+          </ul>
+          <div class="sprint-gate">✓ Gate: One real Equinix audit exported from EQ that Royce trusts enough to submit</div>
+        </div>
+      </div>
+
+      <div class="sprint-card">
+        <div class="sprint-num">
+          <div class="wk">Live</div>
+          <div class="range">Week 9–10</div>
+        </div>
+        <div>
+          <div class="sprint-objective">🚀 Production — SKS on canonical EQ end-to-end</div>
+          <ul class="sprint-tasks">
+            <li>Shell/auth layer — EQ Shell wired to canonical Supabase for cross-app auth</li>
+            <li>First full week where Cards + Format + Export all run against canonical</li>
+            <li>Sentry error monitoring live on all three surfaces</li>
+            <li>PostHog event tracking: import counts, row counts, AI cache hit rate</li>
+            <li>Equinix compliance pack generated from real canonical data</li>
+          </ul>
+          <div class="sprint-gate">✓ Gate: SKS NSW weekly operations running through EQ with no manual intervention</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- SCHEMA QUIZ -->
+  <div class="quiz-section" style="margin-bottom:48px;">
+    <div class="section-label">Schema Q&amp;A</div>
+    <div class="section-title">Match each schema to its module</div>
+    <div class="section-sub">Click the correct module for each schema. Green = right, red = wrong. Use this to cement the canonical layer in your head.</div>
+
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:20px;flex-wrap:wrap;">
+      <div style="display:flex;gap:8px;">
+        <span class="schema-module mod-crm" style="padding:4px 12px;font-size:12px;">Shell</span>
+        <span class="schema-module mod-field" style="padding:4px 12px;font-size:12px;">Field</span>
+        <span class="schema-module mod-service" style="padding:4px 12px;font-size:12px;">Service</span>
+        <span class="schema-module mod-cards" style="padding:4px 12px;font-size:12px;">Future</span>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:10px;align-items:center;">
+        <span id="quiz-score" style="font-size:13px;font-weight:700;color:var(--ink);">0 / 0 correct</span>
+        <button onclick="resetQuiz()" style="font-size:12px;font-weight:700;padding:6px 14px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--mid);cursor:pointer;">Reset</button>
+      </div>
+    </div>
+
+    <div style="background:white;border:1.5px solid var(--border);border-radius:16px;overflow:hidden;">
+      <div style="display:grid;grid-template-columns:180px 1fr 220px;background:var(--ice);padding:10px 20px;font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:var(--mid);border-bottom:1px solid var(--border);">
+        <div>Schema</div>
+        <div>What it holds</div>
+        <div>Pick the module</div>
+      </div>
+
+      <div id="quiz-rows"></div>
+    </div>
+  </div>
+
+  <script>
+  const SCHEMAS = [
+    // Shell — master data, lives centrally, every app reads it
+    { name:'staff',              desc:'Employees, subbies, casuals, apprentices — master record incl. licences & certs', module:'Shell'   },
+    { name:'site',               desc:'Every location where work happens',                                               module:'Shell'   },
+    { name:'asset',              desc:'Anything serviceable — switchboards, UPS, generators',                            module:'Shell'   },
+    { name:'schedule',           desc:'Who is working where and when — staff × site × date × hours',                    module:'Shell'   },
+    { name:'attachment',         desc:'Pointer to any file (SharePoint, Storage) linked to a canonical entity',         module:'Shell'   },
+    { name:'customer',           desc:'The client company — lifecycle from lead through to active customer',             module:'Shell'   },
+    { name:'service_contract',   desc:'The deal — rates, SLA, CPI, terms. Separate from the customer record.',          module:'Shell'   },
+    { name:'contact',            desc:'The person at the customer — site manager, compliance officer',                  module:'Shell'   },
+    { name:'contract_scope',     desc:'Which asset types and tasks are covered under a service contract',                module:'Shell'   },
+    // Field — site safety and workforce records surfaced in EQ Field
+    { name:'prestart',           desc:'Daily safety check completed before work starts on site',                        module:'Field'   },
+    { name:'toolbox-talk',       desc:'Recorded site safety briefing with attendee list and sign-offs',                 module:'Field'   },
+    { name:'incident',           desc:'Injury, near-miss, hazard, environmental, property damage reports',              module:'Field'   },
+    // Service — maintenance, inspection, and test data in EQ Service
+    { name:'maintenance_check',  desc:'A PPM visit — when, which site, which assets, which plan',                       module:'Service' },
+    { name:'check_asset',        desc:'One asset inspected during a PPM — with full Maximo payload fields',             module:'Service' },
+    { name:'check_item',         desc:'Individual line item within a check_asset inspection',                           module:'Service' },
+    { name:'defect',             desc:'Fault found during inspection — with priority and remediation status',           module:'Service' },
+    { name:'maintenance_plan',   desc:'What gets checked, how often, by whom — the recurring schedule driver',         module:'Service' },
+    { name:'pm_calendar',        desc:'The recurring schedule entries generated from a maintenance plan',               module:'Service' },
+    { name:'acb_test',           desc:'ACB electrical test results with full reading schema',                           module:'Service' },
+    { name:'nsx_test',           desc:'NSX electrical test results with full reading schema',                           module:'Service' },
+    { name:'rcd_test',           desc:'RCD electrical test results with full reading schema',                           module:'Service' },
+    // Future — not yet assigned to a live app
+    { name:'swms',               desc:'Safe Work Method Statement — how a hazardous task will be done safely',         module:'Future'  },
+    { name:'jsa',                desc:'Job Safety Analysis — risk assessment before a specific task',                  module:'Future'  },
+    { name:'itp',                desc:'Inspection & Test Plan — quality checkpoints for a job',                        module:'Future'  },
+  ];
+
+  const MODULE_STYLE = {
+    Shell:   'mod-crm',
+    Field:   'mod-field',
+    Service: 'mod-service',
+    Future:  'mod-cards',
+  };
+  const MODULES = ['Shell','Field','Service','Future'];
+
+  let state = {}; // name -> { answered: bool, correct: bool }
+
+  function shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length-1; i > 0; i--) {
+      const j = Math.floor(Math.random()*(i+1));
+      [a[i],a[j]] = [a[j],a[i]];
+    }
+    return a;
+  }
+
+  function renderRows() {
+    const container = document.getElementById('quiz-rows');
+    container.innerHTML = '';
+    SCHEMAS.forEach((s, idx) => {
+      const st = state[s.name] || {};
+      const row = document.createElement('div');
+      row.id = 'row-' + s.name;
+      row.style.cssText = 'display:grid;grid-template-columns:180px 1fr 220px;padding:10px 20px;border-bottom:1px solid var(--border);align-items:center;font-size:13px;transition:background 0.15s;';
+      if (idx === SCHEMAS.length-1) row.style.borderBottom = 'none';
+
+      if (st.answered) {
+        row.style.background = st.correct ? '#F0FDF4' : '#FEF2F2';
+      }
+
+      // Schema name
+      const nameEl = document.createElement('div');
+      nameEl.style.cssText = 'font-weight:600;color:var(--ink);font-family:monospace;font-size:12px;';
+      nameEl.textContent = s.name;
+
+      // Description
+      const descEl = document.createElement('div');
+      descEl.style.cssText = 'color:var(--mid);font-size:12px;line-height:1.5;padding-right:16px;';
+      descEl.textContent = s.desc;
+
+      // Buttons
+      const btnsEl = document.createElement('div');
+      btnsEl.style.cssText = 'display:flex;gap:5px;flex-wrap:wrap;';
+
+      if (st.answered) {
+        // Show result badge
+        const badge = document.createElement('div');
+        badge.style.cssText = 'display:flex;align-items:center;gap:6px;';
+        const icon = st.correct ? '✓' : '✗';
+        const iconColor = st.correct ? '#15803D' : '#DC2626';
+        badge.innerHTML = `<span style="font-size:16px;font-weight:800;color:${iconColor}">${icon}</span>
+          <span class="schema-module ${MODULE_STYLE[s.module]}" style="padding:3px 10px;font-size:11px;">${s.module}</span>`;
+        if (!st.correct) {
+          badge.innerHTML += `<span style="font-size:11px;color:#DC2626;font-weight:600;">(was ${st.picked})</span>`;
+        }
+        btnsEl.appendChild(badge);
+      } else {
+        // Shuffled option buttons
+        shuffle(MODULES).forEach(mod => {
+          const btn = document.createElement('button');
+          btn.textContent = mod;
+          btn.style.cssText = `font-size:11px;font-weight:700;padding:4px 10px;border-radius:8px;cursor:pointer;border:1.5px solid var(--border);background:white;color:var(--mid);transition:all 0.1s;`;
+          btn.onmouseover = () => { if (!state[s.name]?.answered) { btn.style.borderColor='var(--sky)'; btn.style.color='var(--deep)'; } };
+          btn.onmouseout  = () => { if (!state[s.name]?.answered) { btn.style.borderColor='var(--border)'; btn.style.color='var(--mid)'; } };
+          btn.onclick = () => answer(s.name, mod);
+          btnsEl.appendChild(btn);
+        });
+      }
+
+      row.appendChild(nameEl);
+      row.appendChild(descEl);
+      row.appendChild(btnsEl);
+      container.appendChild(row);
+    });
+    updateScore();
+  }
+
+  function answer(schemaName, picked) {
+    const schema = SCHEMAS.find(s => s.name === schemaName);
+    state[schemaName] = { answered: true, correct: picked === schema.module, picked };
+    renderRows();
+  }
+
+  function updateScore() {
+    const answered = Object.values(state).filter(s => s.answered);
+    const correct  = answered.filter(s => s.correct);
+    document.getElementById('quiz-score').textContent = `${correct.length} / ${answered.length} correct`;
+    document.getElementById('quiz-score').style.color = answered.length === 0 ? 'var(--ink)'
+      : correct.length === answered.length ? '#15803D' : 'var(--ink)';
+  }
+
+  function resetQuiz() {
+    state = {};
+    renderRows();
+  }
+
+  renderRows();
+  </script>
+
+  <!-- WHAT WE DON'T BUILD -->
+  <div class="not-building">
+    <h3>What we explicitly don't build (and why)</h3>
+    <div class="not-grid">
+      <div class="not-item">Another job-management system — SimPRO does that. We feed it, we don't replace it.</div>
+      <div class="not-item">Another accounting platform — Xero and MYOB do that fine.</div>
+      <div class="not-item">A new compliance management system — too broad, too far from the pain.</div>
+      <div class="not-item">Anything that asks users to switch off what they're already using.</div>
+      <div class="not-item">Features that nobody has a named moment of pain for. No moment, no build.</div>
+      <div class="not-item">Paywalls on safety features — inductions, SWMS, prestarts. People die when this goes wrong.</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
