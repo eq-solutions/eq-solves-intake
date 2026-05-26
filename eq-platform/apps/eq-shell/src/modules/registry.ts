@@ -45,6 +45,16 @@ export const MODULE_REGISTRY: ModuleDefinition[] = [
     ),
   },
   {
+    id: "sites",
+    label: "Sites",
+    path: "/sites",
+    // Canonical sites management — search, archive, delete against
+    // app_data.sites in sks-canonical via SECURITY DEFINER RPCs (migration 021).
+    component: lazy(() =>
+      import("./SitesModuleHost.js").then((m) => ({ default: m.SitesModuleHost })),
+    ),
+  },
+  {
     id: "quotes",
     label: "Quotes",
     path: "/quotes",
