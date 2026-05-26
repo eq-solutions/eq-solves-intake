@@ -11,6 +11,11 @@
  * - RPC error stops the bundle before FK-dependent entities
  * - Auth error throws before any intake_event is created
  * - inferMapping resolves SimPRO headers via x-eq-source-aliases
+ *
+ * NOTE: All shell_control and app_data access goes through SECURITY DEFINER
+ * RPCs (eq_create_intake_event, eq_finish_intake_event,
+ * eq_read_customers_by_intake) because those schemas are not REST-exposed.
+ * Tests verify the RPC call shapes rather than from() call shapes.
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -25,59 +30,53 @@ import {
 // ---------------------------------------------------------------------------
 
 interface MockState {
-  insertedEvents: Array<Record<string, unknown>>;
-  updatedEvents: Array<{ id: string; patch: Record<string, unknown> }>;
   rpcCalls: Array<{ name: string; params: unknown }>;
-  /** Override responses for specific RPC calls keyed by p_table. */
-  rpcResponse?: (params: { p_table: string }) => {
+  /** Override responses for eq_intake_commit_batch calls keyed by p_table. */
+  commitBatchResponse?: (params: { p_table: string }) => {
     data: unknown;
     error: { message: string } | null;
   };
-  /** Customers to return when buildCustomerIdMap queries by intake_id. */
+  /** Customers to return from eq_read_customers_by_intake. */
   customerLookupRows?: Array<{ customer_id: string; external_id: string }>;
   authUser?: { id: string } | null;
 }
 
 function makeMockSupabase(state: MockState): SupabaseLikeClient {
   return {
-    from: (table: string) => ({
-      insert: async (row: unknown) => {
-        if (table === "eq_intake_events") {
-          state.insertedEvents.push(row as Record<string, unknown>);
-        }
-        return { data: null, error: null };
-      },
-      update: (patch: unknown) => ({
-        eq: async (col: string, val: unknown) => {
-          if (table === "eq_intake_events" && col === "intake_id") {
-            state.updatedEvents.push({
-              id: String(val),
-              patch: patch as Record<string, unknown>,
-            });
-          }
-          return { data: null, error: null };
-        },
+    from: (_table: string) => ({
+      // from() is no longer called for eq_intake_events or customers —
+      // all event lifecycle and FK reads go through RPCs (migrations 016, 019).
+      // Keep the shape so structural typing still compiles.
+      insert: async () => ({ data: null, error: null }),
+      update: () => ({
+        eq: async () => ({ data: null, error: null }),
       }),
-      // Used by buildCustomerIdMap — chained .select(...).eq(...)
       select: (_cols: string) => ({
-        eq: async (_col: string, _val: unknown) => ({
-          data: state.customerLookupRows ?? [],
-          error: null,
-        }),
+        eq: async () => ({ data: [], error: null }),
       }),
     }) as unknown as ReturnType<SupabaseLikeClient["from"]>,
+
     rpc: async (name: string, params: unknown) => {
       state.rpcCalls.push({ name, params });
-      if (state.rpcResponse) {
-        return state.rpcResponse(params as { p_table: string });
+
+      // Lifecycle RPCs — always succeed unless explicitly overridden.
+      if (name === "eq_create_intake_event") return { data: null, error: null };
+      if (name === "eq_finish_intake_event") return { data: null, error: null };
+      if (name === "eq_read_customers_by_intake") {
+        return { data: state.customerLookupRows ?? [], error: null };
       }
-      // Default: pretend everything committed cleanly.
-      const rows = (params as { p_rows: unknown[] }).p_rows ?? [];
+
+      // eq_intake_commit_batch — delegate to override or default success.
+      if (state.commitBatchResponse) {
+        return state.commitBatchResponse(params as { p_table: string });
+      }
+      const rows = (params as { p_rows?: unknown[] }).p_rows ?? [];
       return {
         data: [{ committed_count: rows.length, committed_ids: rows.map((_, i) => `uuid-${i}`) }],
         error: null,
       };
     },
+
     auth: {
       getUser: async () =>
         state.authUser === null
@@ -189,8 +188,6 @@ describe("inferMapping", () => {
 describe("commitBundleToCanonical — auth", () => {
   it("throws when no authenticated user", async () => {
     const state: MockState = {
-      insertedEvents: [],
-      updatedEvents: [],
       rpcCalls: [],
       authUser: null,
     };
@@ -202,17 +199,13 @@ describe("commitBundleToCanonical — auth", () => {
         tenantId: TENANT,
       }),
     ).rejects.toThrow(/Cannot commit canonical without an authenticated user/);
-    expect(state.insertedEvents).toHaveLength(0);
+    expect(state.rpcCalls).toHaveLength(0);
   });
 });
 
 describe("commitBundleToCanonical — empty bundle", () => {
   it("returns success with empty perEntity array", async () => {
-    const state: MockState = {
-      insertedEvents: [],
-      updatedEvents: [],
-      rpcCalls: [],
-    };
+    const state: MockState = { rpcCalls: [] };
     const supabase = makeMockSupabase(state);
     const result = await commitBundleToCanonical({
       supabase,
@@ -227,11 +220,7 @@ describe("commitBundleToCanonical — empty bundle", () => {
 
 describe("commitBundleToCanonical — customer-only happy path", () => {
   it("creates intake event, calls RPC, finalises event", async () => {
-    const state: MockState = {
-      insertedEvents: [],
-      updatedEvents: [],
-      rpcCalls: [],
-    };
+    const state: MockState = { rpcCalls: [] };
     const supabase = makeMockSupabase(state);
     const result = await commitBundleToCanonical({
       supabase,
@@ -243,30 +232,32 @@ describe("commitBundleToCanonical — customer-only happy path", () => {
     expect(result.bundleSuccess).toBe(true);
     expect(result.perEntity).toHaveLength(1);
 
-    const ev = state.insertedEvents[0];
-    expect(ev?.tenant_id).toBe(TENANT);
-    expect(ev?.entity).toBe("customer");
-    expect(ev?.source_filename).toBe("customer_export.csv");
-    expect(ev?.status).toBe("committing");
+    // Verify the intake event was created via RPC (not direct table insert).
+    const createCall = state.rpcCalls.find((c) => c.name === "eq_create_intake_event");
+    expect(createCall).toBeDefined();
+    const createParams = createCall?.params as Record<string, unknown>;
+    expect(createParams.p_tenant_id).toBe(TENANT);
+    expect(createParams.p_entity).toBe("customer");
+    expect(createParams.p_source_filename).toBe("customer_export.csv");
+    expect(createParams.p_status).toBe("committing");
 
-    expect(state.rpcCalls).toHaveLength(1);
-    expect(state.rpcCalls[0]?.name).toBe("eq_intake_commit_batch");
-    expect((state.rpcCalls[0]?.params as { p_table: string }).p_table).toBe(
-      "customers",
-    );
+    // Verify commit batch was called.
+    const commitCalls = state.rpcCalls.filter((c) => c.name === "eq_intake_commit_batch");
+    expect(commitCalls).toHaveLength(1);
+    expect((commitCalls[0]?.params as { p_table: string }).p_table).toBe("customers");
 
-    expect(state.updatedEvents).toHaveLength(1);
-    expect(state.updatedEvents[0]?.patch.status).toBe("completed");
+    // Verify the intake event was finalised via RPC (not direct table update).
+    const finishCall = state.rpcCalls.find((c) => c.name === "eq_finish_intake_event");
+    expect(finishCall).toBeDefined();
+    expect((finishCall?.params as Record<string, unknown>).p_status).toBe("completed");
   });
 });
 
 describe("commitBundleToCanonical — RPC failure stops bundle early", () => {
   it("does not commit later entities when an earlier RPC fails", async () => {
     const state: MockState = {
-      insertedEvents: [],
-      updatedEvents: [],
       rpcCalls: [],
-      rpcResponse: (p) => {
+      commitBatchResponse: (p) => {
         if (p.p_table === "customers") {
           return { data: null, error: { message: "tenant_id mismatch" } };
         }
@@ -286,20 +277,22 @@ describe("commitBundleToCanonical — RPC failure stops bundle early", () => {
     });
 
     expect(result.bundleSuccess).toBe(false);
-    // Only the customer RPC was called — the failure short-circuited.
-    expect(state.rpcCalls).toHaveLength(1);
+    // Only one commit_batch call — the failure short-circuited before site/contact.
+    const commitCalls = state.rpcCalls.filter((c) => c.name === "eq_intake_commit_batch");
+    expect(commitCalls).toHaveLength(1);
     expect(result.perEntity).toHaveLength(1);
     expect(result.perEntity[0]?.fatalError).toContain("tenant_id mismatch");
-    // The intake event for the failed entity is closed as 'failed'.
-    expect(state.updatedEvents[0]?.patch.status).toBe("failed");
+
+    // The intake event for the failed entity is closed as 'failed' via RPC.
+    const finishCall = state.rpcCalls.find((c) => c.name === "eq_finish_intake_event");
+    expect(finishCall).toBeDefined();
+    expect((finishCall?.params as Record<string, unknown>).p_status).toBe("failed");
   });
 });
 
 describe("commitBundleToCanonical — FK resolution between customer and contact", () => {
   it("uses the customer external_id → customer_id map to resolve contact.customer_id", async () => {
     const state: MockState = {
-      insertedEvents: [],
-      updatedEvents: [],
       rpcCalls: [],
       customerLookupRows: [{ customer_id: "11111111-2222-4333-8444-555566667777", external_id: "31" }],
     };
@@ -338,15 +331,21 @@ describe("commitBundleToCanonical — FK resolution between customer and contact
     });
 
     expect(result.bundleSuccess).toBe(true);
-    // Two RPC calls — one per entity.
-    expect(state.rpcCalls).toHaveLength(2);
 
-    // Contact RPC's p_rows should contain customer_id = "11111111-2222-4333-8444-555566667777" (resolved).
-    const contactCall = state.rpcCalls[1];
-    expect((contactCall?.params as { p_table: string }).p_table).toBe("contacts");
-    const contactRows = (contactCall?.params as { p_rows: Array<Record<string, unknown>> })
-      .p_rows;
-    // At least one row should have the resolved customer_id.
+    // Two commit_batch calls — one per entity.
+    const commitCalls = state.rpcCalls.filter((c) => c.name === "eq_intake_commit_batch");
+    expect(commitCalls).toHaveLength(2);
+
+    // FK read-back was done via RPC, not from("customers").
+    const fkReadCall = state.rpcCalls.find((c) => c.name === "eq_read_customers_by_intake");
+    expect(fkReadCall).toBeDefined();
+
+    // Contact RPC's p_rows should contain customer_id resolved via FK map.
+    const contactCommit = commitCalls.find(
+      (c) => (c.params as { p_table: string }).p_table === "contacts",
+    );
+    expect(contactCommit).toBeDefined();
+    const contactRows = (contactCommit?.params as { p_rows: Array<Record<string, unknown>> }).p_rows;
     const resolved = contactRows.find((r) => r.customer_id === "11111111-2222-4333-8444-555566667777");
     expect(resolved).toBeDefined();
   });

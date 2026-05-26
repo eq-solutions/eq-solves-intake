@@ -218,16 +218,19 @@ async function createIntakeEvent(args: CreateIntakeEventArgs): Promise<string> {
   // Generate UUID client-side so we can pass it to commit_batch.
   // crypto.randomUUID() is available in modern browsers + Node 19+.
   const intakeId = crypto.randomUUID();
-  const { error } = await args.supabase.from("eq_intake_events").insert({
-    intake_id: intakeId,
-    tenant_id: args.tenantId,
-    entity: args.entity,
-    source_kind: args.sourceKind ?? "import_spreadsheet",
-    source_filename: args.sourceFilename ?? null,
-    schema_version: args.schemaVersion,
-    status: "committing",
-    created_by: args.createdBy,
-    import_mode: "append",
+  // shell_control is not in the Supabase exposed-schemas list — direct
+  // from("eq_intake_events").insert() fails with "Invalid schema: shell_control".
+  // Use the public-schema SECURITY DEFINER wrapper added in migration 016.
+  const { error } = await args.supabase.rpc("eq_create_intake_event", {
+    p_intake_id: intakeId,
+    p_tenant_id: args.tenantId,
+    p_entity: args.entity,
+    p_source_kind: args.sourceKind ?? "import_spreadsheet",
+    p_source_filename: args.sourceFilename ?? null,
+    p_schema_version: args.schemaVersion,
+    p_status: "committing",
+    p_import_mode: "append",
+    p_created_by: args.createdBy,
   });
   if (error) {
     throw new Error(`Failed to create intake event for ${args.entity}: ${error.message}`);
@@ -246,18 +249,17 @@ interface FinishIntakeEventArgs {
 }
 
 async function finishIntakeEvent(args: FinishIntakeEventArgs): Promise<void> {
-  const patch: Record<string, unknown> = {
-    status: args.status,
-    rows_committed: args.rowsCommitted,
-    rows_flagged: args.rowsFlagged,
-    rows_rejected: args.rowsRejected,
-    completed_at: new Date().toISOString(),
-  };
-  if (args.errorMessage) patch.error_message = args.errorMessage;
-  const { error } = await args.supabase
-    .from("eq_intake_events")
-    .update(patch)
-    .eq("intake_id", args.intakeId);
+  // shell_control is not in the Supabase exposed-schemas list — direct
+  // from("eq_intake_events").update() fails. Use the SECURITY DEFINER wrapper
+  // added in migration 019.
+  const { error } = await args.supabase.rpc("eq_finish_intake_event", {
+    p_intake_id: args.intakeId,
+    p_status: args.status,
+    p_rows_committed: args.rowsCommitted,
+    p_rows_flagged: args.rowsFlagged,
+    p_rows_rejected: args.rowsRejected,
+    p_error_message: args.errorMessage ?? null,
+  });
   if (error) {
     // Don't throw — the data is already committed; logging this is best-effort.
     // eslint-disable-next-line no-console
@@ -284,27 +286,18 @@ async function buildCustomerIdMap(
   intakeId: string,
 ): Promise<Map<string, string>> {
   // We need (external_id, customer_id) pairs for rows just committed.
-  // The commit_batch RPC tags rows with intake_id, so we can fetch by it.
-  // Use the structural client's from()/select chain — TS-typed loosely.
+  // Cannot use supabase.from("customers") directly — the default Supabase
+  // client schema is "public" and customers live in "app_data". The
+  // SupabaseLikeClient interface doesn't expose .schema() chaining.
+  // Use the SECURITY DEFINER wrapper added in migration 019 instead.
   const map = new Map<string, string>();
-  const client = supabase as unknown as {
-    from: (t: string) => {
-      select: (cols: string) => {
-        eq: (
-          c: string,
-          v: unknown,
-        ) => Promise<{ data: Array<Record<string, string>> | null; error: { message: string } | null }>;
-      };
-    };
-  };
-  const { data, error } = await client
-    .from("customers")
-    .select("customer_id, external_id")
-    .eq("intake_id", intakeId);
+  const { data, error } = await supabase.rpc("eq_read_customers_by_intake", {
+    p_intake_id: intakeId,
+  });
   if (error) {
-    throw new Error(`Failed to read back customers for FK resolution: ${error.message}`);
+    throw new Error(`Failed to read back customers for FK resolution: ${(error as { message: string }).message}`);
   }
-  for (const row of data ?? []) {
+  for (const row of (data as Array<{ customer_id: string; external_id: string }> | null) ?? []) {
     if (row.external_id) {
       map.set(row.external_id, row.customer_id);
     }
