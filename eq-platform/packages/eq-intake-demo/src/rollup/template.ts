@@ -229,8 +229,8 @@ export function renderTemplate(
   }
 
   // Orphan handling — append pseudo-customer rows for sites/contacts whose
-  // Customer ID isn't in the customers file. Defaults to include so orphans
-  // are always visible to the operator rather than silently dropped.
+  // Customer ID isn't in the customers file. Default is 'drop'; callers must
+  // opt in to 'include-as-pseudo-customer' if they want orphans surfaced.
   if ((opts.orphanStrategy ?? "drop") === "include-as-pseudo-customer") {
     const orphanCustomerIds = new Set<string>();
     for (const s of sites) {
