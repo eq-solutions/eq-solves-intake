@@ -734,7 +734,7 @@ begin
   update shell_control.eq_intake_events
   set status = 'rolled_back',
       rolled_back_at = now(),
-      rolled_back_reason = p_reason
+      rollback_reason = p_reason
   where intake_id = p_intake_id;
 
   return query select v_total;
