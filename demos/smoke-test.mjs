@@ -63,8 +63,13 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY || !TEST_TENANT_ID) {
   process.exit(1);
 }
 
+// Default schema: public (always exposed by Supabase PostgREST).
+// shell_control is NOT in the exposed-schemas list — access it only via
+// SECURITY DEFINER RPCs (eq_create_intake_event, eq_get_intake_event_status,
+// eq_mark_intake_rolled_back) added in migrations 016–017.
+// app_data reads use .schema('app_data') on the fly.
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-  db: { schema: 'shell_control' },
+  db: { schema: 'public' },
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
@@ -94,7 +99,9 @@ function verbose(label, value) {
 }
 
 function fail(step, err) {
-  const msg = err instanceof Error ? err.message : String(err);
+  const msg = err instanceof Error
+    ? err.message
+    : (err?.message ? `${err.message}${err.details ? ' — ' + err.details : ''}${err.hint ? ' (hint: ' + err.hint + ')' : ''}` : JSON.stringify(err));
   log(step, 'FAIL', msg);
   console.error('\nSmoke test FAILED. Exiting.');
   process.exit(1);
@@ -115,33 +122,35 @@ const customerId = crypto.randomUUID();
 const externalId = `smoke-test-${Date.now()}`;
 
 // ---------------------------------------------------------------------------
-// Step 1: Create intake event in shell_control.eq_intake_events
+// Step 1: Create intake event via eq_create_intake_event RPC
+//
+// NOTE: shell_control is not in the Supabase exposed-schemas list so a
+// direct .schema('shell_control').from(...).insert() call is rejected by
+// PostgREST. Migration 016 adds a public-schema SECURITY DEFINER wrapper
+// (eq_create_intake_event) that writes into shell_control on our behalf.
 // ---------------------------------------------------------------------------
 {
   const t = Date.now();
   console.log('Step 1: create intake event');
 
-  const payload = {
-    intake_id: intakeId,
-    tenant_id: TEST_TENANT_ID,
-    entity: 'customer',
-    source_kind: 'smoke_test',
-    source_subkind: 'script',
-    source_filename: 'smoke-test.mjs',
-    schema_version: '1.0.0',
-    status: 'committing',
-    import_mode: 'append',
-    created_by: '00000000-0000-0000-0000-000000000000',
+  const rpcParams = {
+    p_intake_id: intakeId,
+    p_tenant_id: TEST_TENANT_ID,
+    p_entity: 'customer',
+    p_source_kind: 'smoke_test',
+    p_source_subkind: 'script',
+    p_source_filename: 'smoke-test.mjs',
+    p_schema_version: '1.0.0',
+    p_status: 'committing',
+    p_import_mode: 'append',
+    p_created_by: '00000000-0000-0000-0000-000000000000',
   };
 
-  verbose('insert payload', payload);
+  verbose('rpc params', rpcParams);
 
   let error;
   try {
-    ({ error } = await supabase
-      .schema('shell_control')
-      .from('eq_intake_events')
-      .insert(payload));
+    ({ error } = await supabase.rpc('eq_create_intake_event', rpcParams));
   } catch (e) {
     fail('Step 1', e);
   }
@@ -277,14 +286,13 @@ let committedIds = [];
       fail('Step 4 (fallback DELETE)', delErr);
     }
 
-    // Mark event rolled_back manually
-    await supabase
-      .schema('shell_control')
-      .from('eq_intake_events')
-      .update({ status: 'rolled_back', rolled_back_at: new Date().toISOString(), rollback_reason: 'smoke-test cleanup (direct fallback)' })
-      .eq('intake_id', intakeId);
+    // Mark event rolled_back via helper RPC (shell_control not REST-exposed)
+    await supabase.rpc('eq_mark_intake_rolled_back', {
+      p_intake_id: intakeId,
+      p_reason: 'smoke-test cleanup (direct fallback)',
+    });
 
-    log('Step 4', 'PASS', 'fallback cleanup completed (RPC had column bug — flag for fix)', t);
+    log('Step 4', 'PASS', 'fallback cleanup completed', t);
   } else {
     verbose('rollback response', data);
     const row = Array.isArray(data) ? data[0] : data;
@@ -325,6 +333,7 @@ let committedIds = [];
 
 // ---------------------------------------------------------------------------
 // Step 6: Verify intake event status = rolled_back
+// Uses eq_get_intake_event_status RPC (shell_control not REST-exposed).
 // ---------------------------------------------------------------------------
 {
   const t = Date.now();
@@ -332,11 +341,9 @@ let committedIds = [];
 
   let data, error;
   try {
-    ({ data, error } = await supabase
-      .schema('shell_control')
-      .from('eq_intake_events')
-      .select('status, rolled_back_at')
-      .eq('intake_id', intakeId));
+    ({ data, error } = await supabase.rpc('eq_get_intake_event_status', {
+      p_intake_id: intakeId,
+    }));
   } catch (e) {
     fail('Step 6', e);
   }
@@ -345,7 +352,7 @@ let committedIds = [];
 
   verbose('event status', data);
 
-  const row = data?.[0];
+  const row = Array.isArray(data) ? data[0] : data;
   if (!row) fail('Step 6', 'intake event row not found');
   if (row.status !== 'rolled_back') {
     fail('Step 6', `expected status='rolled_back', got '${row.status}'`);
