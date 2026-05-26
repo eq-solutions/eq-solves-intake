@@ -176,13 +176,15 @@ let committedIds = [];
     company_name: 'Smoke Test Pty Ltd',
     type: 'customer',
     active: true,
+    created_at: new Date().toISOString(),  // NOT NULL, no default — must come from source data
+    updated_at: new Date().toISOString(),  // NOT NULL, no default — trigger only fires on UPDATE
   };
 
   const rpcParams = {
     p_intake_id: intakeId,
     p_tenant_id: TEST_TENANT_ID,
     p_table: 'customers',
-    p_rows: JSON.stringify([customerRow]),
+    p_rows: [customerRow],  // jsonb param — pass array directly, not pre-stringified
     p_confirm_replace: false,
     p_intake_mode: 'strict',
   };
