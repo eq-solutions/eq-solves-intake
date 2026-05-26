@@ -45,3 +45,6 @@ demos/simpro-customer-rollup/eq-quotes-by-site.csv
 OVERNIGHT-REVIEW-*.md
 **/fuzz-overnight*.mjs
 
+# Claude session tooling
+.claude/scheduled_tasks.lock
+
