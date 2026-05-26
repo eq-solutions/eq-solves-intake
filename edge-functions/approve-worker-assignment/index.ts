@@ -65,10 +65,13 @@ Deno.serve(async (req: Request) => {
   const inductions  = inductionsRes.data ?? []
 
   // ── Step 3: upsert into employer canonical ───────────────────────────────
+  // app_data is in the exposed-schemas list — use .schema('app_data') to
+  // switch PostgREST away from the default public schema.
   const employerAdmin = createClient(EMPLOYER_URL, EMPLOYER_SERVICE_ROLE)
+  const appData = employerAdmin.schema('app_data')
   const now = new Date().toISOString()
 
-  const { data: staff, error: staffError } = await employerAdmin
+  const { data: staff, error: staffError } = await appData
     .from('staff')
     .upsert(
       {
@@ -112,7 +115,7 @@ Deno.serve(async (req: Request) => {
       confirmed_at:        null,
     }))
 
-    const { error: licenceError } = await employerAdmin
+    const { error: licenceError } = await appData
       .from('licences')
       .upsert(licenceRows, { onConflict: 'cards_credential_id' })
 
