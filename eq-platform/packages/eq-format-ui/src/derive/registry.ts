@@ -9,6 +9,7 @@ import type { DeriveProfile } from './types';
 import { bomProfile } from './profiles/bom';
 import { deviceRegisterProfile } from './profiles/device-register';
 import { labourSummaryProfile } from './profiles/labour-summary';
+import { equinixAssetRegisterProfile } from './profiles/equinix-asset-register';
 
 const profiles: Map<string, DeriveProfile> = new Map();
 
@@ -22,6 +23,7 @@ function register(p: DeriveProfile): void {
 register(bomProfile);
 register(deviceRegisterProfile);
 register(labourSummaryProfile);
+register(equinixAssetRegisterProfile);
 // Future: register(ppmSowProfile);           // item 7
 
 export function getProfile(id: string): DeriveProfile | undefined {
