@@ -31,6 +31,8 @@ import type { ParsedSheet } from "@eq/intake";
 import customerJsonSchema from "@eq/schemas/schemas/customer.schema.json";
 import contactJsonSchema from "@eq/schemas/schemas/contact.schema.json";
 import siteJsonSchema from "@eq/schemas/schemas/site.schema.json";
+import staffJsonSchema from "@eq/schemas/schemas/staff.schema.json";
+import licenceJsonSchema from "@eq/schemas/schemas/licence.schema.json";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -58,12 +60,14 @@ export interface SupabaseLikeClient {
   };
 }
 
-export type CanonicalEntity = "customer" | "site" | "contact";
+export type CanonicalEntity = "customer" | "site" | "contact" | "staff" | "licence";
 
 export interface BundleSheets {
   customer?: ParsedSheet;
   site?: ParsedSheet;
   contact?: ParsedSheet;
+  staff?: ParsedSheet;
+  licence?: ParsedSheet;
 }
 
 export interface EntityCommitResult {
@@ -128,17 +132,25 @@ const CANONICAL_SCHEMAS: Record<CanonicalEntity, JsonSchema> = {
   customer: customerJsonSchema as unknown as JsonSchema,
   site: siteJsonSchema as unknown as JsonSchema,
   contact: contactJsonSchema as unknown as JsonSchema,
+  staff: staffJsonSchema as unknown as JsonSchema,
+  licence: licenceJsonSchema as unknown as JsonSchema,
 };
 
 const ENTITY_TABLE: Record<CanonicalEntity, string> = {
   customer: "customers",
   site: "sites",
   contact: "contacts",
+  staff: "staff",
+  licence: "licences",
 };
 
-// FK resolution order — sites and contacts both reference customer.customer_id,
-// so customers commit first and we cache their (external_id → customer_id) map.
-const COMMIT_ORDER: CanonicalEntity[] = ["customer", "site", "contact"];
+// FK resolution order:
+//   1. customers — no upstream FK
+//   2. sites     — FK to customer
+//   3. contacts  — FK to customer
+//   4. staff     — no FK to customer (field entity, independent)
+//   5. licences  — FK to staff
+const COMMIT_ORDER: CanonicalEntity[] = ["customer", "site", "contact", "staff", "licence"];
 
 // ---------------------------------------------------------------------------
 // Mapping inference
@@ -270,7 +282,7 @@ async function createIntakeEvent(args: CreateIntakeEventArgs): Promise<string> {
     p_source_filename: args.sourceFilename ?? null,
     p_schema_version: args.schemaVersion,
     p_status: "committing",
-    p_import_mode: "append",
+    p_import_mode: "upsert",
     p_created_by: args.createdBy,
   });
   if (error) {
@@ -350,6 +362,71 @@ async function buildCustomerIdMap(
 }
 
 /**
+ * Build an external_id → staff UUID map from a freshly-committed staff batch.
+ * Licences use this to resolve their staff_id FK before validate() runs.
+ * Requires eq_read_staff_by_intake RPC (migration 027).
+ */
+async function buildStaffIdMap(
+  supabase: SupabaseLikeClient,
+  intakeId: string,
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const { data, error } = await supabase.rpc("eq_read_staff_by_intake", {
+    p_intake_id: intakeId,
+  });
+  if (error) {
+    throw new Error(`Failed to read back staff for FK resolution: ${(error as { message: string }).message}`);
+  }
+  for (const row of (data as Array<{ staff_id: string; external_id: string }> | null) ?? []) {
+    if (row.external_id) {
+      map.set(row.external_id, row.staff_id);
+    }
+  }
+  return map;
+}
+
+/**
+ * Resolve the staff_id FK for licence rows. The source spreadsheet carries
+ * an external staff identifier (payroll number, HR ID, etc.) under
+ * `external_staff_id` or `staff_id`. Rows that resolve become `resolved`
+ * with `staff_id` stamped as a UUID; unresolvable rows go to `missedIndices`.
+ */
+function resolveStaffFk(
+  rows: Record<string, unknown>[],
+  staffIdMap: Map<string, string>,
+): { resolved: Record<string, unknown>[]; missedIndices: number[] } {
+  const resolved: Record<string, unknown>[] = [];
+  const missedIndices: number[] = [];
+  rows.forEach((row, idx) => {
+    const out = { ...row };
+    // Source column might map to `external_staff_id` or arrive as `staff_id`
+    // (a non-UUID string before FK resolution). Try both.
+    const externalStaffId = String(
+      row["external_staff_id"] ?? row["staff_id"] ?? row["payroll_no"] ?? "",
+    ).trim();
+    if (!externalStaffId) {
+      missedIndices.push(idx);
+      return;
+    }
+    // Skip if it's already a UUID (e.g. importing from another EQ extract).
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (UUID_RE.test(externalStaffId)) {
+      out["staff_id"] = externalStaffId;
+      resolved.push(out);
+      return;
+    }
+    const staffId = staffIdMap.get(externalStaffId);
+    if (staffId) {
+      out["staff_id"] = staffId;
+      resolved.push(out);
+    } else {
+      missedIndices.push(idx);
+    }
+  });
+  return { resolved, missedIndices };
+}
+
+/**
  * Apply a customerId map to a list of pre-validation rows. Rows whose
  * external_customer_id resolves to a known UUID are returned in `resolved`
  * with `customer_id` stamped. Rows with no match are tracked in `missedIndices`
@@ -408,6 +485,7 @@ interface CommitOneEntityArgs {
   createdBy: string;
   sourceFilename?: string;
   customerIdMap?: Map<string, string>;
+  staffIdMap?: Map<string, string>;
 }
 
 async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitResult> {
@@ -465,6 +543,29 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
       });
     }
     let cursor = 0;
+    for (let i = 0; i < preValidatedRows.length; i++) {
+      if (!missedSet.has(i)) resolvedToOriginalIndex[cursor++] = i;
+    }
+    preValidatedRows = resolved;
+  }
+
+  if (args.entity === "licence" && args.staffIdMap) {
+    const { resolved, missedIndices } = resolveStaffFk(preValidatedRows, args.staffIdMap);
+    const missedSet = new Set(missedIndices);
+    for (const idx of missedIndices) {
+      const row = preValidatedRows[idx]!;
+      const rawId = String(
+        row["external_staff_id"] ?? row["staff_id"] ?? row["payroll_no"] ?? "",
+      ).trim();
+      const reason = rawId
+        ? `fk_no_match on staff_id: no staff found for ID "${rawId}"`
+        : `fk_no_match on staff_id: row has no staff identifier — cannot resolve FK`;
+      fkMissedRejections.push({
+        source_row_index: idx,
+        reasons: [reason],
+      });
+    }
+    let cursor = resolvedToOriginalIndex.length;
     for (let i = 0; i < preValidatedRows.length; i++) {
       if (!missedSet.has(i)) resolvedToOriginalIndex[cursor++] = i;
     }
@@ -651,6 +752,7 @@ export async function commitBundleToCanonical(opts: CommitOptions): Promise<Comm
 
   const perEntity: EntityCommitResult[] = [];
   let customerIdMap: Map<string, string> | undefined;
+  let staffIdMap: Map<string, string> | undefined;
   let bundleSuccess = true;
 
   const progress = opts.onProgress ?? (() => undefined);
@@ -658,6 +760,8 @@ export async function commitBundleToCanonical(opts: CommitOptions): Promise<Comm
     customer: "customers",
     site: "sites",
     contact: "contacts",
+    staff: "staff",
+    licence: "licences",
   };
 
   for (const entity of COMMIT_ORDER) {
@@ -678,6 +782,7 @@ export async function commitBundleToCanonical(opts: CommitOptions): Promise<Comm
       createdBy,
       sourceFilename: opts.sourceFilename,
       customerIdMap,
+      staffIdMap,
     });
     perEntity.push(result);
 
@@ -711,6 +816,21 @@ export async function commitBundleToCanonical(opts: CommitOptions): Promise<Comm
           `Failed to build customer FK map: ${e instanceof Error ? e.message : String(e)}`,
         );
         customerIdMap = new Map();
+      }
+    }
+
+    // If we just committed staff, build the FK lookup for licences.
+    if (entity === "staff" && result.committedCount > 0 && result.intakeId) {
+      progress("Building staff links for licences…");
+      try {
+        staffIdMap = await buildStaffIdMap(opts.supabase, result.intakeId);
+      } catch (e) {
+        bundleSuccess = false;
+        // eslint-disable-next-line no-console
+        console.error(
+          `Failed to build staff FK map: ${e instanceof Error ? e.message : String(e)}`,
+        );
+        staffIdMap = new Map();
       }
     }
   }

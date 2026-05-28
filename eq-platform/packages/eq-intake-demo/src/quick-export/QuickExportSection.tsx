@@ -15,6 +15,7 @@ import {
   CUSTOMER_SCHEMA,
   CONTACT_SCHEMA,
   SITE_SCHEMA,
+  STAFF_SCHEMA,
 } from "../simpro-schemas.js";
 import type { RoleName } from "../rollup/roles.js";
 import { QUICK_DESTINATIONS, encodeCsv } from "./destinations.js";
@@ -23,6 +24,7 @@ const ROLE_REGISTRY: Record<RoleName, Record<string, unknown>> = {
   customer: CUSTOMER_SCHEMA,
   contact: CONTACT_SCHEMA,
   site: SITE_SCHEMA,
+  staff: STAFF_SCHEMA,
 };
 
 interface FileSlot {
@@ -37,6 +39,7 @@ function roleLabel(role: RoleName | "unknown"): string {
   if (role === "customer") return "customers";
   if (role === "site") return "sites";
   if (role === "contact") return "contacts";
+  if (role === "staff") return "staff";
   return "unknown";
 }
 
@@ -97,7 +100,8 @@ export function QuickExportSection(): JSX.Element {
             const role =
               classification.entity === "customer" ||
               classification.entity === "contact" ||
-              classification.entity === "site"
+              classification.entity === "site" ||
+              classification.entity === "staff"
                 ? (classification.entity as RoleName)
                 : "unknown";
             next.push({ file, role, sheet, confidence: classification.confidence });

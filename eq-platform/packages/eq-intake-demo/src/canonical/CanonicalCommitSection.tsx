@@ -20,6 +20,7 @@ import {
   CUSTOMER_SCHEMA,
   CONTACT_SCHEMA,
   SITE_SCHEMA,
+  STAFF_SCHEMA,
 } from "../simpro-schemas.js";
 import type { RoleName } from "../rollup/roles.js";
 import {
@@ -33,6 +34,7 @@ const ROLE_REGISTRY: Record<RoleName, Record<string, unknown>> = {
   customer: CUSTOMER_SCHEMA,
   contact: CONTACT_SCHEMA,
   site: SITE_SCHEMA,
+  staff: STAFF_SCHEMA,
 };
 
 export interface CanonicalCommitSectionProps {
@@ -96,7 +98,8 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
             const role =
               classification.entity === "customer" ||
               classification.entity === "contact" ||
-              classification.entity === "site"
+              classification.entity === "site" ||
+              classification.entity === "staff"
                 ? (classification.entity as RoleName)
                 : "unknown";
             next.push({ file, role, sheet, confidence: classification.confidence });
@@ -126,20 +129,21 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
     if (!props.supabase) return;
     setError(null);
     setResult(null);
-    const bundle: { customer?: ParsedSheet; site?: ParsedSheet; contact?: ParsedSheet } = {};
+    const bundle: { customer?: ParsedSheet; site?: ParsedSheet; contact?: ParsedSheet; staff?: ParsedSheet; licence?: ParsedSheet } = {};
     for (const slot of slots) {
       if (slot.role === "unknown" || !slot.sheet) continue;
-      if (bundle[slot.role]) {
+      const key = slot.role as keyof typeof bundle;
+      if (bundle[key]) {
         setError(
           `Two files look like ${slot.role}s. Remove one before saving.`,
         );
         return;
       }
-      bundle[slot.role] = slot.sheet;
+      bundle[key] = slot.sheet;
     }
-    if (!bundle.customer && !bundle.site && !bundle.contact) {
+    if (!bundle.customer && !bundle.site && !bundle.contact && !bundle.staff && !bundle.licence) {
       setError(
-        "Drop at least one file first — a customer, site or contact list from SimPRO.",
+        "Drop at least one file first — a customer, site, contact, or staff list.",
       );
       return;
     }
@@ -396,6 +400,8 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
         </button>
       </div>
 
+      {result && <ImportSummaryBadge result={result} />}
+
       {result && (
         <div style={{ marginTop: 24 }}>
           <h3
@@ -455,7 +461,76 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
 }
 
 function entityLabel(entity: EntityCommitResult["entity"]): string {
-  return entity === "customer" ? "Customers" : entity === "site" ? "Sites" : "Contacts";
+  if (entity === "customer") return "Customers";
+  if (entity === "site") return "Sites";
+  if (entity === "contact") return "Contacts";
+  if (entity === "staff") return "Staff";
+  if (entity === "licence") return "Licences";
+  return entity;
+}
+
+/** H3 — Prominent summary badge shown immediately after a successful save. */
+function ImportSummaryBadge({ result }: { result: CommitResult }): JSX.Element {
+  const totalSaved = result.perEntity.reduce((n, r) => n + r.committedCount, 0);
+  const totalFlagged = result.perEntity.reduce((n, r) => n + r.flaggedCount, 0);
+  const totalRejected = result.perEntity.reduce((n, r) => n + r.rejectedCount, 0);
+  const hasFatal = result.perEntity.some((r) => r.fatalError);
+
+  const bg   = hasFatal ? "#FBEAEA" : totalRejected > 0 ? "#FFF8EC" : "#EAF5FB";
+  const border = hasFatal ? "#B33A3A" : totalRejected > 0 ? "#d97706" : "#2986B4";
+  const icon = hasFatal ? "✗" : totalRejected > 0 ? "⚠" : "✓";
+  const iconColor = hasFatal ? "#B33A3A" : totalRejected > 0 ? "#d97706" : "#2986B4";
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      style={{
+        marginTop: 16,
+        padding: "12px 16px",
+        background: bg,
+        border: `1px solid ${border}`,
+        borderRadius: 4,
+        display: "flex",
+        alignItems: "center",
+        gap: 16,
+        fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+      }}
+    >
+      <span style={{ fontSize: 20, color: iconColor, flexShrink: 0 }}>{icon}</span>
+      <div style={{ flex: 1 }}>
+        <span style={{ fontWeight: 600, fontSize: 14, color: "#1A1A2E" }}>
+          {totalSaved.toLocaleString()} record{totalSaved === 1 ? "" : "s"} saved
+        </span>
+        {totalFlagged > 0 && (
+          <span style={{ marginLeft: 12, fontSize: 13, color: "#d97706" }}>
+            {totalFlagged.toLocaleString()} need{totalFlagged === 1 ? "s" : ""} checking
+          </span>
+        )}
+        {totalRejected > 0 && (
+          <span style={{ marginLeft: 12, fontSize: 13, color: "#B33A3A" }}>
+            {totalRejected.toLocaleString()} couldn't save
+          </span>
+        )}
+      </div>
+      {result.perEntity.filter((r) => r.committedCount > 0).map((r) => (
+        <span
+          key={r.entity}
+          style={{
+            padding: "2px 8px",
+            borderRadius: 100,
+            background: "#2986B4",
+            color: "white",
+            fontSize: 12,
+            fontWeight: 500,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {r.committedCount} {entityLabel(r.entity).toLowerCase()}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 interface RowsDisclosureProps {
