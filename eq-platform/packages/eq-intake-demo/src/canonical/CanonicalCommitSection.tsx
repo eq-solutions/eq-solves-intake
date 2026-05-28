@@ -25,6 +25,7 @@ import {
 import type { RoleName } from "../rollup/roles.js";
 import {
   commitBundleToCanonical,
+  inferMapping,
   type SupabaseLikeClient,
   type CommitResult,
   type EntityCommitResult,
@@ -323,6 +324,10 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
         </ul>
       )}
 
+      {slots.some((s) => s.role !== "unknown" && s.sheet) && (
+        <MappingPreviewPanel slots={slots} registry={ROLE_REGISTRY} />
+      )}
+
       {progressMsg && (
         <div
           style={{
@@ -448,6 +453,8 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
             <RowsDisclosure
               label="Show rows that couldn't save — and why"
               accentColor="#1A1A2E"
+              showDownload
+              downloadFilename="eq-rejected-rows.csv"
               perEntity={result.perEntity.map((r) => ({
                 entity: r.entity,
                 rows: r.rejectedRows,
@@ -538,13 +545,36 @@ interface RowsDisclosureProps {
   hint?: string;
   accentColor: string;
   hintColor?: string;
+  /** Show a "Download as CSV" button to export the rejected rows. */
+  showDownload?: boolean;
+  /** Filename for the downloaded CSV. Default: "eq-rows.csv". */
+  downloadFilename?: string;
   perEntity: Array<{
     entity: EntityCommitResult["entity"];
     rows: Array<{ source_row_index: number; reasons: string[] }>;
   }>;
 }
 
-function RowsDisclosure({ label, hint, accentColor, hintColor, perEntity }: RowsDisclosureProps): JSX.Element {
+/** Trigger a browser CSV download from an array of flat string objects. */
+function downloadCsv(filename: string, columns: string[], rows: Array<Record<string, string>>): void {
+  const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
+  const lines = [
+    columns.map(escape).join(","),
+    ...rows.map((r) => columns.map((c) => escape(r[c] ?? "")).join(",")),
+  ];
+  const blob = new Blob([lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function RowsDisclosure({ label, hint, accentColor, hintColor, perEntity, showDownload, downloadFilename }: RowsDisclosureProps): JSX.Element {
   const [filter, setFilter] = useState("");
   const [sortAsc, setSortAsc] = useState(true);
 
@@ -587,6 +617,38 @@ function RowsDisclosure({ label, hint, accentColor, hintColor, perEntity }: Rows
         <p style={{ fontSize: 12, color: hintColor ?? accentColor, margin: "6px 0 8px" }}>
           {hint}
         </p>
+      )}
+      {showDownload && allRows.length > 0 && (
+        <button
+          type="button"
+          onClick={() =>
+            downloadCsv(
+              downloadFilename ?? "eq-rows.csv",
+              ["Row", "Type", "Reason"],
+              allRows.map((r) => ({
+                Row: String(r.rowNum),
+                Type: r.entity,
+                Reason: r.reason,
+              })),
+            )
+          }
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "5px 12px",
+            fontSize: 12,
+            background: "white",
+            color: "#1A1A2E",
+            border: "1px solid #EAF5FB",
+            borderRadius: 4,
+            cursor: "pointer",
+            marginBottom: 8,
+            fontFamily: "inherit",
+          }}
+        >
+          ↓ Download as CSV ({allRows.length} rows)
+        </button>
       )}
       <div style={{ marginTop: 8 }}>
         <input
@@ -643,6 +705,129 @@ function RowsDisclosure({ label, hint, accentColor, hintColor, perEntity }: Rows
             Showing {filtered.length} of {allRows.length} rows
           </div>
         )}
+      </div>
+    </details>
+  );
+}
+
+/**
+ * Pre-commit mapping preview — shows which source columns will land in which
+ * canonical fields, and which columns we couldn't match. Renders as a
+ * collapsible panel so it doesn't crowd the drop zone.
+ *
+ * Unmapped columns (null) are highlighted amber so the user can spot gaps
+ * before hitting Save.
+ */
+interface MappingPreviewPanelProps {
+  slots: FileSlot[];
+  registry: Record<string, Record<string, unknown>>;
+}
+
+function MappingPreviewPanel({ slots, registry }: MappingPreviewPanelProps): JSX.Element | null {
+  const knowns = slots.filter((s) => s.role !== "unknown" && s.sheet);
+  if (knowns.length === 0) return null;
+
+  return (
+    <details style={{ marginBottom: 12 }}>
+      <summary
+        style={{
+          cursor: "pointer",
+          fontSize: 13,
+          fontWeight: 500,
+          color: "#2986B4",
+          userSelect: "none",
+        }}
+      >
+        Preview column mapping
+        <span style={{ fontWeight: 400, opacity: 0.7, marginLeft: 4 }}>
+          — see how your columns match EQ fields before saving
+        </span>
+      </summary>
+      <div style={{ marginTop: 10 }}>
+        {knowns.map((slot, idx) => {
+          const schema = registry[slot.role as string] as Record<string, unknown> | undefined;
+          if (!schema || !slot.sheet) return null;
+
+          const mapping = inferMapping(slot.sheet.headerRow, schema as Parameters<typeof inferMapping>[1]);
+          const mapped = Object.values(mapping).filter(Boolean).length;
+          const total = slot.sheet.headerRow.length;
+          const unmappedCount = total - mapped;
+
+          return (
+            <div
+              key={idx}
+              style={{
+                marginBottom: 12,
+                border: "1px solid #EAF5FB",
+                borderRadius: 4,
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  padding: "6px 10px",
+                  background: "#EAF5FB",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <span>
+                  {slot.file.name}
+                  {slot.sheet.name && slot.sheet.name !== "Sheet1" && (
+                    <span style={{ color: "#2986B4", marginLeft: 6 }}>[{slot.sheet.name}]</span>
+                  )}
+                  {" — "}
+                  {entityLabel(slot.role as EntityCommitResult["entity"])}
+                </span>
+                <span style={{ fontWeight: 400, color: unmappedCount > 0 ? "#d97706" : "#2986B4" }}>
+                  {mapped}/{total} columns matched
+                  {unmappedCount > 0 ? ` · ${unmappedCount} unmatched` : ""}
+                </span>
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ background: "#F8FCFE" }}>
+                      <th style={{ padding: "4px 8px", textAlign: "left", fontWeight: 500, borderBottom: "1px solid #EAF5FB" }}>
+                        Your column
+                      </th>
+                      <th style={{ padding: "4px 8px", textAlign: "left", fontWeight: 500, borderBottom: "1px solid #EAF5FB" }}>
+                        EQ field
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {slot.sheet.headerRow.map((col, ci) => {
+                      const canonicalField = mapping[col];
+                      return (
+                        <tr key={ci} style={{ borderBottom: "1px solid #F4F4F8" }}>
+                          <td style={{ padding: "3px 8px", fontFamily: "monospace", fontSize: 11 }}>
+                            {col}
+                          </td>
+                          <td
+                            style={{
+                              padding: "3px 8px",
+                              color: canonicalField ? "#2986B4" : "#d97706",
+                              fontFamily: canonicalField ? "monospace" : "inherit",
+                              fontSize: canonicalField ? 11 : 12,
+                            }}
+                          >
+                            {canonicalField ?? (
+                              <span style={{ opacity: 0.7 }}>not matched — will be skipped</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </details>
   );
