@@ -159,6 +159,10 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
     }
   };
 
+  const removeSlot = (idx: number) => {
+    setSlots((prev) => prev.filter((_, i) => i !== idx));
+  };
+
   const reset = () => {
     setSlots([]);
     setResult(null);
@@ -223,11 +227,14 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
           marginBottom: 12,
         }}
       >
-        {busy
-          ? "Working..."
-          : slots.length === 0
-            ? "Drop files here, or click to pick them"
-            : `${slots.length} file${slots.length === 1 ? "" : "s"} ready`}
+        {busy && slots.length === 0 ? (
+          <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            <span className="eq-spinner__dot" />
+            Reading file…
+          </span>
+        ) : slots.length === 0
+          ? "Drop files here, or click to pick them"
+          : `${slots.length} file${slots.length === 1 ? "" : "s"} ready — drop more or click Save`}
         <input
           ref={inputRef}
           type="file"
@@ -253,9 +260,11 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
                 fontSize: 13,
                 display: "flex",
                 justifyContent: "space-between",
+                alignItems: "flex-start",
+                gap: 8,
               }}
             >
-              <span>
+              <span style={{ flex: 1 }}>
                 <strong>{slot.file.name}</strong>{" "}
                 <span style={{ color: "#1A1A2E", opacity: 0.6 }}>
                   {slot.role === "unknown"
@@ -265,10 +274,33 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
                     ? ` (${Math.round(slot.confidence * 100)}% sure)`
                     : ""}
                 </span>
+                {slot.confidence != null && slot.confidence < 0.7 && slot.role !== "unknown" && (
+                  <span style={{ display: "block", color: "#d97706", fontSize: 11, marginTop: 2, fontWeight: 500 }}>
+                    Low confidence — is this really {slot.role}s? Use the role selector if not.
+                  </span>
+                )}
+                {slot.error && (
+                  <span style={{ display: "block", color: "#B33A3A", fontSize: 12, marginTop: 2 }}>{slot.error}</span>
+                )}
               </span>
-              {slot.error && (
-                <span style={{ color: "#B33A3A", fontSize: 12 }}>{slot.error}</span>
-              )}
+              <button
+                type="button"
+                onClick={() => removeSlot(i)}
+                disabled={busy}
+                aria-label={`Remove ${slot.file.name}`}
+                style={{
+                  padding: "2px 8px",
+                  fontSize: 12,
+                  flexShrink: 0,
+                  background: "white",
+                  color: "#1A1A2E",
+                  border: "1px solid #EAF5FB",
+                  borderRadius: 4,
+                  cursor: busy ? "not-allowed" : "pointer",
+                }}
+              >
+                Remove
+              </button>
             </li>
           ))}
         </ul>
@@ -307,7 +339,12 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
             fontSize: 14,
           }}
         >
-          {busy ? "Saving..." : "Save into EQ"}
+          {busy ? (
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span className="eq-spinner__dot" style={{ width: 10, height: 10 }} />
+              Saving…
+            </span>
+          ) : "Save into EQ"}
         </button>
         <button
           type="button"
@@ -356,12 +393,46 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
             </tbody>
           </table>
 
+          {result.perEntity.some((r) => r.flaggedRows.length > 0) && (
+            <details style={{ marginTop: 12 }}>
+              <summary
+                style={{
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  color: "#d97706",
+                }}
+              >
+                Show rows that saved but need checking
+              </summary>
+              <p style={{ fontSize: 12, color: "#78350f", margin: "6px 0 8px" }}>
+                These rows are in EQ, but something caught our eye. Review each one before relying on it.
+              </p>
+              <div style={{ marginTop: 8, fontSize: 12 }}>
+                {result.perEntity.map((r) =>
+                  r.flaggedRows.length === 0 ? null : (
+                    <div key={r.entity} style={{ marginBottom: 12 }}>
+                      <div style={{ fontWeight: 500, color: "#1A1A2E" }}>{entityLabel(r.entity)}</div>
+                      <ul style={{ paddingLeft: 18, margin: "4px 0 0", color: "#78350f" }}>
+                        {r.flaggedRows.map((fr, i) => (
+                          <li key={i}>
+                            Row {fr.source_row_index + 1}: {fr.reasons.join("; ")}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ),
+                )}
+              </div>
+            </details>
+          )}
+
           {result.perEntity.some((r) => r.rejectedRows.length > 0) && (
-            <details style={{ marginTop: 16 }}>
+            <details style={{ marginTop: 12 }}>
               <summary
                 style={{ cursor: "pointer", fontSize: 13, fontWeight: 500 }}
               >
-                Show the rows that didn't save — and why
+                Show rows that couldn't save — and why
               </summary>
               <div style={{ marginTop: 8, fontSize: 12 }}>
                 {result.perEntity.map((r) =>
