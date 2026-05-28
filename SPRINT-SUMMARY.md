@@ -1,135 +1,85 @@
-# EQ Intake — Sprint Summary (Sprints 1–8)
+# EQ Intake — What Got Built
 
-> Last updated: 2026-05-28  
-> All sprints merged to main. Work branched per sprint, merged --no-ff.
-
----
-
-## What got built
-
-### Sprint 1–3 (foundation, already merged before this session)
-- Canonical spine: 42 schemas, `sql/001–027`
-- Idempotent upserts on `(tenant_id, external_id)` partial index
-- 5 canonical entity types: customer / site / contact / staff / licence
-- Staff → licence FK two-pass resolution
-- SimPRO rollup: dual browser+CLI engine parity, orphan handling
-- RollupDropZone multi-sheet support
-- Import progress streaming in CanonicalCommitSection
-- Schema lint as pnpm check step
+> Last updated: 2026-05-29
+> All work merged to main across two repos: `eq-intake` and `eq-solves-service`.
 
 ---
 
-### Sprint 4 — PPM schemas + schema drift (`sql/028`)
-- 4 new PPM tables: `service_visits`, `service_task_completions`, `asset_test_results`, `asset_defects`
-- `asset` backfilled: `condition`, `ppm_frequency`, `defects_summary`, `client_classification`
-- `x-eq-primary-key` added to asset / schedule / toolbox-talk schemas
-- Chunked commit transactions: 500-row chunks, partial failure recovery
+## The point of this work
 
-**Why it matters:** These four tables flip SKS from "bookkeeper manually types test results back into the register" to "register is computed from what happened on site."
+The canonical layer is the product. EQ apps are replaceable interfaces that read and write to one source of truth. This sprint series built that source of truth and wired EQ Service into it.
 
 ---
 
-### Sprint 5 — UI hardening + infra SQL + format profiles
-**New derive profiles:**
-- `equinix-audit-simpro`: Equinix audit CSV → SimPRO job completion. Normalises test types to SimPRO section names, handles column name variants.
-- `ppm-sow`: canonical assets → PPM Statement of Work. Pre-populates scheduled tasks by asset type, sorts by criticality.
+## What is live and useful today
 
-**UI (CanonicalCommitSection):**
-- Pre-commit column mapping preview (shows source→canonical before you hit Save, unmatched columns highlighted amber)
-- Download rejected rows as CSV (one click, all rejected rows with reason)
+### Canonical Supabase (sks-canonical — ehowgjardagevnrluult)
 
-**SQL:**
-- `sql/029`: per-tenant rolling-window rate limiting (50 calls/60 min)
-- `sql/030`: `eq_get_intake_health` observability RPC (commit counts, error rate, entity breakdown, recent files)
+**Tables with real data:**
+- `customers` — 128 rows
+- `sites` — 52 rows
+- `staff` — 50 rows
+- `assets` — 1000 rows (with `condition`, `ppm_frequency`, `criticality`, `last_service_date`, `next_service_due`)
+- `licences` — 3 rows
 
-**Scripts:**
-- `scripts/migrate-cards-to-canonical.mjs`: idempotent one-shot migration from Cards Supabase → canonical staff + licence rows
+**PPM tables (live, empty — populated by EQ Service write-through):**
+- `service_visits`
+- `service_task_completions`
+- `asset_test_results`
+- `asset_defects`
 
----
-
-### Sprint 6 — Bug fixes + export profiles + API intake edge function
-**Bug fix (C1):** validate.ts row cap now emits ONE summary rejection entry instead of one-per-skipped-row. Eliminates memory blowup on large imports (a 1M-row import no longer allocates 900k objects).
-
-**New derive profiles (registry now has 12):**
-- `asset-register-export`: canonical assets → client-ready asset register (condition, criticality, open defects)
-- `site-register-export`: canonical sites → site register (addresses, access instructions, emergency contacts)
-- `service-visit-schedule`: canonical service visits → monthly schedule (sorted by date, status priority, cancelled visits last)
-
-**Edge function — `edge-functions/api-intake`:**
-- Fourth intake surface: POST canonical rows from any external system
-- Bearer JWT auth, tenant_id from user_metadata or request body
-- Rate-limited via sql/029 RPCs (429 if exceeded)
-- `dry_run` flag: validate without writing
-- Returns 200 (full/partial success), 422 (all rows rejected), 429 (rate limit)
-- CORS headers for future cross-origin use
+**RPCs callable from Studio today:**
+- `eq_ppm_asset_status(tenant_id, site_id?)` — per-asset compliance snapshot
+- `eq_ppm_site_summary(tenant_id, site_id?)` — per-site health, open defects, next visit
+- `eq_ppm_overdue_assets(tenant_id, days_overdue?)` — assets past due sorted by criticality
+- `eq_ppm_open_defects(tenant_id, severity?)` — open defects with age in days
+- `eq_ppm_visit_completion_rate(tenant_id, from_date?, to_date?)` — task completion per visit
 
 ---
 
-### Sprint 7 — Tests + schema registry sync
-**Derive profile test suite (`eq-format-ui/test/derive-profiles.test.ts`):**
-- 131 test assertions across 5 profiles + registry smoke tests
-- Covers: column shape, row count, sort order, sort key stripping, edge cases (empty input, null fields, unknown enums), label normalisation
+### EQ Service write-through (eq-solves-service — live at service.eq.solutions)
 
-**validate.test.ts:** Updated cap test to assert exactly 1 `cap_exceeded` entry (not N).
+Every time a technician does work in EQ Service, the relevant record syncs to canonical:
 
-**eq-format-ui:** Added vitest infrastructure (package.json, vite.config.ts, tsconfig.json).
+| EQ Service action | Canonical table populated |
+|---|---|
+| Asset created / updated | `asset_test_results` via `syncAsset` |
+| Test record saved (generic) | `asset_test_results` via `syncTestResult` |
+| RCD test saved & marked complete | `asset_test_results` via `syncTestResult` |
+| Defect raised | `asset_defects` via `syncDefect` |
+| Defect status changed | `asset_defects` via `syncDefect` |
 
-**`sql/031_schema_registry_sync.sql`:** Upserts all 33+ canonical entities into `eq_schema_registry` with correct version markers and staleness cleanup. Run after any sprint that changes schemas.
+All syncs are fire-and-forget — EQ Service never blocks on canonical being reachable.
 
----
-
-### Sprint 9 — PPM report RPCs + materialized views
-**`sql/033_exec_sql_rpc.sql`:** `app_data.eq_exec_sql` SECURITY DEFINER RPC — required by `apply-migrations.mjs`. REVOKE from anon + authenticated (service_role only).
-
-**`sql/034_ppm_report_queries.sql`:** Five PPM report RPCs:
-- `eq_ppm_asset_status` — per-asset snapshot: last thermal/RCD test, defect counts, compliance status
-- `eq_ppm_site_summary` — per-site health: asset counts, compliance %, open critical defects, next visit
-- `eq_ppm_overdue_assets` — assets past due (or within N days) sorted by criticality
-- `eq_ppm_open_defects` — open defects by severity with age in days
-- `eq_ppm_visit_completion_rate` — task completion % per service visit in a date range
-
-**`sql/035_ppm_materialized_views.sql`:**
-- `ppm_asset_compliance` + `ppm_site_health` materialized views — CONCURRENT refresh, unique indexes
-- `eq_refresh_ppm_views()` — refreshes both concurrently, returns timing string
-- Schedule daily via pg_cron: `cron.schedule('refresh-ppm-views', '0 20 * * *', $$SELECT app_data.eq_refresh_ppm_views()$$)`
+Key file: `lib/canonical-sync.ts` — `syncAsset`, `syncTestResult`, `syncDefect`, plus external-ID helpers (`eq-service:asset:<id>`, `eq-service:rcd_test:<id>`, etc.)
 
 ---
 
-### E1 — EQ Service write-through adapter (eq-solves-service)
-**`lib/canonical-sync.ts` extended** with three new fire-and-forget sync functions:
-- `syncAsset` — wired into `createAssetAction` + `updateAssetAction`
-- `syncTestResult` — wired into `createTestRecordAction`, `updateTestRecordAction`, and `saveRcdTestCompleteAction` (on markComplete)
-- `syncDefect` — wired into `raiseDefectAction` + `updateDefectAction`
+### eq-intake (canonical intake engine)
 
-External-ID helpers: `assetExternalId`, `rcdTestExternalId`, `acbTestExternalId`, `nsxTestExternalId`, `testRecordExternalId`, `defectExternalId` — all follow the `eq-service:<type>:<id>` convention.
+**What it does:** Parses structured files (CSV, XLSX, SimPRO exports) and commits rows to the canonical Supabase via RPCs.
 
-All syncs are fire-and-forget (`void`). Canonical unreachable = logged, never surfaced to user.
+**Four intake surfaces:**
+1. `RollupDropZone` — browser drag-and-drop, multi-sheet XLSX
+2. `CanonicalCommitSection` — browser canonical commit with mapping preview + rejected-row CSV download
+3. `scripts/migrate-cards-to-canonical.mjs` — one-shot CLI migration (Cards → canonical)
+4. `edge-functions/api-intake` — POST endpoint, Bearer JWT auth, rate-limited, `dry_run` flag
 
----
+**SQL migrations (sql/001–035):**
+- 001–027: canonical spine — customers, sites, contacts, staff, licences, RPCs, RLS
+- 028: PPM tables on canonical
+- 029: per-tenant rate limiting (50 calls / 60 min rolling window)
+- 030: `eq_get_intake_health` observability RPC
+- 031: schema registry sync
+- 032: `api_intake_calls` audit log
+- 033: `eq_exec_sql` RPC (service_role only, used by migration runner)
+- 034: 5 PPM report RPCs
+- 035: (contains materialized views — **not applied to sks-canonical**, dropped as premature)
 
-### Sprint 8 — Developer experience + final hardening
-**`sql/032_api_audit_log.sql`:**
-- `app_data.api_intake_calls` table: records every api-intake edge function call
-- `eq_record_api_intake_call` RPC: called by the edge function after each request
-- `eq_get_api_call_log` RPC: Studio-friendly paginated call log for debugging integrations
+**Migration runner:** `scripts/apply-migrations.mjs` — sequential, idempotent, `--dry-run` flag. `pnpm migrate` from the workspace root.
 
-**`scripts/apply-migrations.mjs`:**
-- Sequential migration runner with tracking table (`app_data.eq_migrations`)
-- Idempotent: already-applied migrations are skipped
-- `--from` / `--to` flags to apply a range
-- `--dry-run` to preview without executing
-- `pnpm migrate` / `pnpm migrate:dry` scripts in workspace package.json
+**Derive profiles (12):**
 
----
-
-## Schema count
-**46 schemas** across: S1 spine (30) · S2.A Field domain · S3 supplemental seed · 4 PPM entities
-
-## SQL migration count
-`sql/001–035` — 35 migrations total
-
-## Derive profile count
-**12 profiles** in the registry:
 | ID | Input | Purpose |
 |---|---|---|
 | `bom` | raw | Bill of materials |
@@ -145,35 +95,38 @@ All syncs are fire-and-forget (`void`). Canonical unreachable = logged, never su
 | `site-register-export` | canonical | Site register |
 | `service-visit-schedule` | canonical | Monthly service visit schedule |
 
-## Bug status
-| ID | Description | Status |
-|---|---|---|
-| C1 | 100k row cap silently truncates | **Fixed (Sprint 6)** — single summary entry, no memory blowup |
-| C2 | FK misses silently dropped | **Fixed (Sprint 2)** — `fk_no_match` rejections emitted |
-| C3 | CLI orphan drops | **Fixed** — orphan site + contact rows surface in output |
+**Test coverage:** 131 assertions across all 5 canonical profiles + registry smoke tests (`eq-platform/packages/eq-format-ui/test/`).
 
-## What's NOT done (and why)
-| Item | Reason deferred |
+---
+
+## What is NOT built yet
+
+| Item | Why not |
 |---|---|
-| E1: EQ Service write-through adapter | **Done** — merged to eq-solves-service main (feat/canonical-ppm-sync) |
+| PPM dashboard UI | No `/ppm` page exists in EQ Service. Build this before adding any more backend. |
 | Cards → canonical migration (actual run) | Needs `sks-canonical-eq` Supabase provisioned (billing decision) |
-| PostHog / Sentry integration | Config-only change, can be wired when API keys are in env vars |
+| PostHog / Sentry wiring | Config-only, wire when API keys are ready |
+| Materialized views for PPM | Dropped — premature without a dashboard. Add them if the live RPCs are too slow once a UI exists. |
+
+---
+
+## Known CI issues (eq-solves-service, pre-existing)
+
+- `SUPABASE_ACCESS_TOKEN` GitHub secret expired — Data Quality workflow 401s on every push. Rotate in GitHub → Settings → Secrets.
+- 4 moderate npm vulns remain (uuid chain through exceljs/svix/resend) — require breaking changes to fix, deferred.
 
 ---
 
 ## How to apply SQL migrations
 
 ```sh
-# Against the SKS NSW canonical Supabase:
 node scripts/apply-migrations.mjs \
   --url  $SUPABASE_URL \
   --key  $SUPABASE_SERVICE_ROLE_KEY
 
-# Dry run first to see what would run:
+# Dry run:
 node scripts/apply-migrations.mjs --url $URL --key $KEY --dry-run
-```
 
-Or from the `eq-platform/` workspace:
-```sh
+# From the eq-platform workspace:
 SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... pnpm migrate
 ```
