@@ -13,6 +13,8 @@ import { equinixAssetRegisterProfile } from './profiles/equinix-asset-register';
 import { equinixContractorProfile } from './profiles/equinix-contractor';
 import { xeroPayrollTimesheetsProfile } from './profiles/xero-payroll-timesheets';
 import { myobPayrollTimesheetsProfile } from './profiles/myob-payroll-timesheets';
+import { equinixAuditSimproProfile } from './profiles/equinix-audit-simpro';
+import { ppmSowProfile } from './profiles/ppm-sow';
 
 const profiles: Map<string, DeriveProfile> = new Map();
 
@@ -30,7 +32,8 @@ register(equinixAssetRegisterProfile);
 register(equinixContractorProfile);
 register(xeroPayrollTimesheetsProfile);
 register(myobPayrollTimesheetsProfile);
-// Future: register(ppmSowProfile);           // item 7
+register(equinixAuditSimproProfile);
+register(ppmSowProfile);
 
 export function getProfile(id: string): DeriveProfile | undefined {
   return profiles.get(id);
