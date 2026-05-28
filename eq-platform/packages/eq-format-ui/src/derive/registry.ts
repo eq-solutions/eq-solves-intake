@@ -15,6 +15,9 @@ import { xeroPayrollTimesheetsProfile } from './profiles/xero-payroll-timesheets
 import { myobPayrollTimesheetsProfile } from './profiles/myob-payroll-timesheets';
 import { equinixAuditSimproProfile } from './profiles/equinix-audit-simpro';
 import { ppmSowProfile } from './profiles/ppm-sow';
+import { assetRegisterExportProfile } from './profiles/asset-register-export';
+import { siteRegisterExportProfile } from './profiles/site-register-export';
+import { serviceVisitScheduleProfile } from './profiles/service-visit-schedule';
 
 const profiles: Map<string, DeriveProfile> = new Map();
 
@@ -34,6 +37,9 @@ register(xeroPayrollTimesheetsProfile);
 register(myobPayrollTimesheetsProfile);
 register(equinixAuditSimproProfile);
 register(ppmSowProfile);
+register(assetRegisterExportProfile);
+register(siteRegisterExportProfile);
+register(serviceVisitScheduleProfile);
 
 export function getProfile(id: string): DeriveProfile | undefined {
   return profiles.get(id);
