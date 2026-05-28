@@ -12,6 +12,7 @@
   "scripts": {
     "build": "pnpm -r build",
     "test": "pnpm -r test",
+    "check": "pnpm schemas:lint && pnpm -r --if-present typecheck",
     "schemas:lint": "pnpm --filter @eq/schemas schemas:lint",
     "generate": "pnpm --filter @eq/schemas generate",
     "generate:sql": "pnpm --filter @eq/schemas generate:sql",

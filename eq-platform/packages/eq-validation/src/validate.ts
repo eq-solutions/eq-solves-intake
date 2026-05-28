@@ -293,8 +293,10 @@ export async function validate(opts: ValidateOpts): Promise<ValidationResult> {
         try {
           passed = rule.eval(canonical);
         } catch (e) {
-          // Rule eval failed (e.g. accessing missing field) — treat as pass, log
+          // Rule eval failed (e.g. accessing a missing field) — treat as pass so
+          // a broken rule doesn't reject valid data. Log so bad rules are visible.
           passed = true;
+          console.warn(`[eq-validation] Rule "${rule.id}" threw during eval — treating as pass.`, e);
         }
         if (!passed) {
           if (rule.severity === 'error' || treatWarningsAsErrors) {

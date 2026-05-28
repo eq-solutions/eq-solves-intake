@@ -31,6 +31,8 @@ import type { ParsedSheet } from "@eq/intake";
 import customerJsonSchema from "@eq/schemas/schemas/customer.schema.json";
 import contactJsonSchema from "@eq/schemas/schemas/contact.schema.json";
 import siteJsonSchema from "@eq/schemas/schemas/site.schema.json";
+import staffJsonSchema from "@eq/schemas/schemas/staff.schema.json";
+import licenceJsonSchema from "@eq/schemas/schemas/licence.schema.json";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -58,12 +60,14 @@ export interface SupabaseLikeClient {
   };
 }
 
-export type CanonicalEntity = "customer" | "site" | "contact";
+export type CanonicalEntity = "customer" | "site" | "contact" | "staff" | "licence";
 
 export interface BundleSheets {
   customer?: ParsedSheet;
   site?: ParsedSheet;
   contact?: ParsedSheet;
+  staff?: ParsedSheet;
+  licence?: ParsedSheet;
 }
 
 export interface EntityCommitResult {
@@ -75,6 +79,8 @@ export interface EntityCommitResult {
   rejectedCount: number;
   /** Per-row rejection reasons for the operator to see. */
   rejectedRows: Array<{ source_row_index: number; reasons: string[] }>;
+  /** Rows that saved but have flags the operator should review. */
+  flaggedRows: Array<{ source_row_index: number; reasons: string[] }>;
   /** If the whole entity commit failed (RPC error, network, etc.), the message. */
   fatalError?: string;
 }
@@ -87,6 +93,11 @@ export interface CommitOptions {
   sourceFilename?: string;
   /** Override schemas — useful for testing. Production callers pass nothing. */
   schemas?: Partial<Record<CanonicalEntity, JsonSchema>>;
+  /**
+   * Optional progress callback. Called with a plain-English status message at
+   * each major step so the UI can show live progress without polling.
+   */
+  onProgress?: (msg: string) => void;
 }
 
 export interface CommitResult {
@@ -121,17 +132,25 @@ const CANONICAL_SCHEMAS: Record<CanonicalEntity, JsonSchema> = {
   customer: customerJsonSchema as unknown as JsonSchema,
   site: siteJsonSchema as unknown as JsonSchema,
   contact: contactJsonSchema as unknown as JsonSchema,
+  staff: staffJsonSchema as unknown as JsonSchema,
+  licence: licenceJsonSchema as unknown as JsonSchema,
 };
 
 const ENTITY_TABLE: Record<CanonicalEntity, string> = {
   customer: "customers",
   site: "sites",
   contact: "contacts",
+  staff: "staff",
+  licence: "licences",
 };
 
-// FK resolution order — sites and contacts both reference customer.customer_id,
-// so customers commit first and we cache their (external_id → customer_id) map.
-const COMMIT_ORDER: CanonicalEntity[] = ["customer", "site", "contact"];
+// FK resolution order:
+//   1. customers — no upstream FK
+//   2. sites     — FK to customer
+//   3. contacts  — FK to customer
+//   4. staff     — no FK to customer (field entity, independent)
+//   5. licences  — FK to staff
+const COMMIT_ORDER: CanonicalEntity[] = ["customer", "site", "contact", "staff", "licence"];
 
 // ---------------------------------------------------------------------------
 // Mapping inference
@@ -171,12 +190,6 @@ export function inferMapping(
 // Error formatting
 // ---------------------------------------------------------------------------
 
-/**
- * Turn a ValidationError discriminated union into a human-readable string
- * for the rejected-rows UI. Each variant has different secondary keys —
- * most have `field`, some have rule_id / value / allowed / expected. We
- * surface what's there without claiming what isn't.
- */
 function formatValidationError(e: {
   kind: string;
   field?: string;
@@ -189,15 +202,54 @@ function formatValidationError(e: {
   got?: unknown;
   format?: string;
 }): string {
-  const where = e.field ?? e.rule_id ?? "(row)";
-  if (e.message) return `${e.kind} on ${where}: ${e.message}`;
-  if (e.reason) return `${e.kind} on ${where}: ${e.reason}`;
-  if (e.allowed && Array.isArray(e.allowed)) {
-    return `${e.kind} on ${where}: expected one of ${e.allowed.join(", ")}`;
+  const f = e.field ? `"${e.field}"` : e.rule_id ? `rule "${e.rule_id}"` : "this row";
+  switch (e.kind) {
+    case 'required_field_missing': return `${f}: required — fill this in`;
+    case 'invalid_enum': return e.allowed?.length
+      ? `${f}: must be one of ${e.allowed.join(", ")}`
+      : `${f}: value not in the allowed list`;
+    case 'type_error': return e.expected
+      ? `${f}: expected ${e.expected}, got "${String(e.got)}"`
+      : `${f}: wrong type`;
+    case 'format_error': return e.format
+      ? `${f}: expected format "${e.format}"`
+      : `${f}: wrong format`;
+    case 'cap_exceeded': return `Row limit reached — split the file and re-import`;
+    case 'fk_no_match': return `${f}: no matching record found — check the ID`;
+    case 'cross_field_error': return e.message ? `${f}: ${e.message}` : `${f}: cross-field validation failed`;
+    default:
+      if (e.message) return `${f}: ${e.message}`;
+      if (e.reason) return `${f}: ${e.reason}`;
+      if (e.allowed?.length) return `${f}: must be one of ${e.allowed.join(", ")}`;
+      if (e.expected) return `${f}: expected ${e.expected}`;
+      return `${f}: validation error (${e.kind})`;
   }
-  if (e.expected) return `${e.kind} on ${where}: expected ${e.expected}, got ${String(e.got)}`;
-  if (e.format) return `${e.kind} on ${where}: expected format ${e.format}`;
-  return `${e.kind} on ${where}`;
+}
+
+function formatFlag(f: {
+  kind: string;
+  field?: string;
+  rule_id?: string;
+  message?: string;
+  reason?: string;
+  candidates?: unknown[];
+}): string {
+  const where = f.field ? `"${f.field}"` : f.rule_id ? `rule "${f.rule_id}"` : "this row";
+  switch (f.kind) {
+    case 'phone_kept_raw': return `${where}: phone format not recognised — kept as-is, check before saving`;
+    case 'sensitive_field': return `${where}: contains sensitive data — verify before sharing`;
+    case 'fk_fuzzy_match': {
+      const n = Array.isArray(f.candidates) ? f.candidates.length : 'multiple';
+      return `${where}: ${n} possible match${n === 1 ? '' : 'es'} — needs a manual pick`;
+    }
+    case 'date_ambiguous': {
+      const opts = Array.isArray(f.candidates) ? f.candidates.join(" or ") : "multiple formats";
+      return `${where}: date is ambiguous — could be ${opts}`;
+    }
+    case 'value_unusual': return `${where}: ${f.reason ?? 'value looks unusual — check it'}`;
+    case 'cross_field_warning': return f.message ?? `warning on ${where}`;
+    default: return f.message ? `${where}: ${f.message}` : `${where}: ${f.kind}`;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -215,8 +267,9 @@ interface CreateIntakeEventArgs {
 }
 
 async function createIntakeEvent(args: CreateIntakeEventArgs): Promise<string> {
-  // Generate UUID client-side so we can pass it to commit_batch.
-  // crypto.randomUUID() is available in modern browsers + Node 19+.
+  if (typeof crypto === 'undefined' || typeof crypto.randomUUID !== 'function') {
+    throw new Error('crypto.randomUUID is not available in this environment — use a modern browser or Node 19+');
+  }
   const intakeId = crypto.randomUUID();
   // shell_control is not in the Supabase exposed-schemas list — direct
   // from("eq_intake_events").insert() fails with "Invalid schema: shell_control".
@@ -229,7 +282,7 @@ async function createIntakeEvent(args: CreateIntakeEventArgs): Promise<string> {
     p_source_filename: args.sourceFilename ?? null,
     p_schema_version: args.schemaVersion,
     p_status: "committing",
-    p_import_mode: "append",
+    p_import_mode: "upsert",
     p_created_by: args.createdBy,
   });
   if (error) {
@@ -309,6 +362,71 @@ async function buildCustomerIdMap(
 }
 
 /**
+ * Build an external_id → staff UUID map from a freshly-committed staff batch.
+ * Licences use this to resolve their staff_id FK before validate() runs.
+ * Requires eq_read_staff_by_intake RPC (migration 027).
+ */
+async function buildStaffIdMap(
+  supabase: SupabaseLikeClient,
+  intakeId: string,
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const { data, error } = await supabase.rpc("eq_read_staff_by_intake", {
+    p_intake_id: intakeId,
+  });
+  if (error) {
+    throw new Error(`Failed to read back staff for FK resolution: ${(error as { message: string }).message}`);
+  }
+  for (const row of (data as Array<{ staff_id: string; external_id: string }> | null) ?? []) {
+    if (row.external_id) {
+      map.set(row.external_id, row.staff_id);
+    }
+  }
+  return map;
+}
+
+/**
+ * Resolve the staff_id FK for licence rows. The source spreadsheet carries
+ * an external staff identifier (payroll number, HR ID, etc.) under
+ * `external_staff_id` or `staff_id`. Rows that resolve become `resolved`
+ * with `staff_id` stamped as a UUID; unresolvable rows go to `missedIndices`.
+ */
+function resolveStaffFk(
+  rows: Record<string, unknown>[],
+  staffIdMap: Map<string, string>,
+): { resolved: Record<string, unknown>[]; missedIndices: number[] } {
+  const resolved: Record<string, unknown>[] = [];
+  const missedIndices: number[] = [];
+  rows.forEach((row, idx) => {
+    const out = { ...row };
+    // Source column might map to `external_staff_id` or arrive as `staff_id`
+    // (a non-UUID string before FK resolution). Try both.
+    const externalStaffId = String(
+      row["external_staff_id"] ?? row["staff_id"] ?? row["payroll_no"] ?? "",
+    ).trim();
+    if (!externalStaffId) {
+      missedIndices.push(idx);
+      return;
+    }
+    // Skip if it's already a UUID (e.g. importing from another EQ extract).
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (UUID_RE.test(externalStaffId)) {
+      out["staff_id"] = externalStaffId;
+      resolved.push(out);
+      return;
+    }
+    const staffId = staffIdMap.get(externalStaffId);
+    if (staffId) {
+      out["staff_id"] = staffId;
+      resolved.push(out);
+    } else {
+      missedIndices.push(idx);
+    }
+  });
+  return { resolved, missedIndices };
+}
+
+/**
  * Apply a customerId map to a list of pre-validation rows. Rows whose
  * external_customer_id resolves to a known UUID are returned in `resolved`
  * with `customer_id` stamped. Rows with no match are tracked in `missedIndices`
@@ -367,6 +485,7 @@ interface CommitOneEntityArgs {
   createdBy: string;
   sourceFilename?: string;
   customerIdMap?: Map<string, string>;
+  staffIdMap?: Map<string, string>;
 }
 
 async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitResult> {
@@ -394,6 +513,7 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
       flaggedCount: 0,
       rejectedCount: args.sheet.rows.length,
       rejectedRows: [],
+      flaggedRows: [],
       fatalError: e instanceof Error ? e.message : String(e),
     };
   }
@@ -423,6 +543,29 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
       });
     }
     let cursor = 0;
+    for (let i = 0; i < preValidatedRows.length; i++) {
+      if (!missedSet.has(i)) resolvedToOriginalIndex[cursor++] = i;
+    }
+    preValidatedRows = resolved;
+  }
+
+  if (args.entity === "licence" && args.staffIdMap) {
+    const { resolved, missedIndices } = resolveStaffFk(preValidatedRows, args.staffIdMap);
+    const missedSet = new Set(missedIndices);
+    for (const idx of missedIndices) {
+      const row = preValidatedRows[idx]!;
+      const rawId = String(
+        row["external_staff_id"] ?? row["staff_id"] ?? row["payroll_no"] ?? "",
+      ).trim();
+      const reason = rawId
+        ? `fk_no_match on staff_id: no staff found for ID "${rawId}"`
+        : `fk_no_match on staff_id: row has no staff identifier — cannot resolve FK`;
+      fkMissedRejections.push({
+        source_row_index: idx,
+        reasons: [reason],
+      });
+    }
+    let cursor = resolvedToOriginalIndex.length;
     for (let i = 0; i < preValidatedRows.length; i++) {
       if (!missedSet.has(i)) resolvedToOriginalIndex[cursor++] = i;
     }
@@ -474,13 +617,18 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
       flaggedCount: 0,
       rejectedCount: args.sheet.rows.length,
       rejectedRows: [],
+      flaggedRows: [],
       fatalError: e instanceof Error ? e.message : String(e),
     };
   }
 
-  const toCommit = [
-    ...validationResult.valid_rows.map((r) => r.canonical),
-    ...validationResult.flagged_rows.map((r) => r.canonical),
+  type _ValidLike   = { canonical: Record<string, unknown> };
+  type _FlaggedLike = { source_row_index: number; canonical: Record<string, unknown>; flags: Parameters<typeof formatFlag>[0][] };
+  type _RejectedLike = { source_row_index: number; errors: Parameters<typeof formatValidationError>[0][] };
+
+  const toCommit: Record<string, unknown>[] = [
+    ...(validationResult.valid_rows as _ValidLike[]).map((r) => r.canonical),
+    ...(validationResult.flagged_rows as _FlaggedLike[]).map((r) => r.canonical),
   ];
 
   if (toCommit.length === 0) {
@@ -501,11 +649,15 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
       rejectedCount: validationResult.summary.rejected + fkMissedRejections.length,
       rejectedRows: [
         ...fkMissedRejections,
-        ...validationResult.rejected_rows.map((r) => ({
+        ...(validationResult.rejected_rows as _RejectedLike[]).map((r) => ({
           source_row_index: remapIdx(r.source_row_index),
           reasons: r.errors.map(formatValidationError),
         })),
       ],
+      flaggedRows: (validationResult.flagged_rows as _FlaggedLike[]).map((r) => ({
+        source_row_index: remapIdx(r.source_row_index),
+        reasons: r.flags.map(formatFlag),
+      })),
     };
   }
 
@@ -536,11 +688,15 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
       rejectedCount: validationResult.summary.rejected + toCommit.length + fkMissedRejections.length,
       rejectedRows: [
         ...fkMissedRejections,
-        ...validationResult.rejected_rows.map((r) => ({
+        ...(validationResult.rejected_rows as _RejectedLike[]).map((r) => ({
           source_row_index: remapIdx(r.source_row_index),
           reasons: r.errors.map(formatValidationError),
         })),
       ],
+      flaggedRows: (validationResult.flagged_rows as _FlaggedLike[]).map((r) => ({
+        source_row_index: remapIdx(r.source_row_index),
+        reasons: r.flags.map(formatFlag),
+      })),
       fatalError: error.message,
     };
   }
@@ -566,11 +722,15 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
     rejectedCount: validationResult.summary.rejected + fkMissedRejections.length,
     rejectedRows: [
       ...fkMissedRejections,
-      ...validationResult.rejected_rows.map((r) => ({
+      ...(validationResult.rejected_rows as _RejectedLike[]).map((r) => ({
         source_row_index: remapIdx(r.source_row_index),
         reasons: r.errors.map(formatValidationError),
       })),
     ],
+    flaggedRows: (validationResult.flagged_rows as _FlaggedLike[]).map((r) => ({
+      source_row_index: remapIdx(r.source_row_index),
+      reasons: r.flags.map(formatFlag),
+    })),
   };
 }
 
@@ -592,12 +752,26 @@ export async function commitBundleToCanonical(opts: CommitOptions): Promise<Comm
 
   const perEntity: EntityCommitResult[] = [];
   let customerIdMap: Map<string, string> | undefined;
+  let staffIdMap: Map<string, string> | undefined;
   let bundleSuccess = true;
+
+  const progress = opts.onProgress ?? (() => undefined);
+  const entityLabels: Record<CanonicalEntity, string> = {
+    customer: "customers",
+    site: "sites",
+    contact: "contacts",
+    staff: "staff",
+    licence: "licences",
+  };
 
   for (const entity of COMMIT_ORDER) {
     const sheet = opts.bundle[entity];
     if (!sheet) continue;
     const schema = opts.schemas?.[entity] ?? CANONICAL_SCHEMAS[entity];
+    const label = entityLabels[entity];
+    const rowCount = sheet.rows.length;
+
+    progress(`Reading ${label} (${rowCount.toLocaleString()} row${rowCount === 1 ? "" : "s"})…`);
 
     const result = await commitOneEntity({
       supabase: opts.supabase,
@@ -608,17 +782,25 @@ export async function commitBundleToCanonical(opts: CommitOptions): Promise<Comm
       createdBy,
       sourceFilename: opts.sourceFilename,
       customerIdMap,
+      staffIdMap,
     });
     perEntity.push(result);
 
     if (result.fatalError) {
+      progress(`Failed on ${label}: ${result.fatalError}`);
       bundleSuccess = false;
       // Stop the bundle early — later entities depend on earlier ones via FK.
       break;
     }
 
+    const parts: string[] = [`${result.committedCount} saved`];
+    if (result.flaggedCount > 0) parts.push(`${result.flaggedCount} need checking`);
+    if (result.rejectedCount > 0) parts.push(`${result.rejectedCount} rejected`);
+    progress(`${label.charAt(0).toUpperCase() + label.slice(1)} done — ${parts.join(", ")}.`);
+
     // If we just committed customers, build the FK lookup for sites + contacts.
     if (entity === "customer" && result.committedCount > 0 && result.intakeId) {
+      progress("Building customer links for sites and contacts…");
       try {
         customerIdMap = await buildCustomerIdMap(
           opts.supabase,
@@ -636,7 +818,23 @@ export async function commitBundleToCanonical(opts: CommitOptions): Promise<Comm
         customerIdMap = new Map();
       }
     }
+
+    // If we just committed staff, build the FK lookup for licences.
+    if (entity === "staff" && result.committedCount > 0 && result.intakeId) {
+      progress("Building staff links for licences…");
+      try {
+        staffIdMap = await buildStaffIdMap(opts.supabase, result.intakeId);
+      } catch (e) {
+        bundleSuccess = false;
+        // eslint-disable-next-line no-console
+        console.error(
+          `Failed to build staff FK map: ${e instanceof Error ? e.message : String(e)}`,
+        );
+        staffIdMap = new Map();
+      }
+    }
   }
 
+  progress(bundleSuccess ? "All done." : "Finished with errors — check the results below.");
   return { bundleSuccess, perEntity };
 }
