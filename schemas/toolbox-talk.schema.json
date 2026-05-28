@@ -8,6 +8,7 @@
   "x-eq-module": "cards",
   "x-eq-version": "1.0.0",
   "x-eq-table": "toolbox_talks",
+  "x-eq-primary-key": "talk_id",
   "required": ["talk_id", "tenant_id", "site_id", "topic", "delivered_by", "delivered_at", "attendees"],
   "properties": {
     "talk_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },

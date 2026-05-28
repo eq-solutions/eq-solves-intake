@@ -8,6 +8,7 @@
   "x-eq-module": "field",
   "x-eq-version": "1.0.0",
   "x-eq-table": "schedule_entries",
+  "x-eq-primary-key": "entry_id",
   "required": ["entry_id", "tenant_id", "staff_id", "site_id", "date", "hours_planned"],
   "properties": {
     "entry_id": {
