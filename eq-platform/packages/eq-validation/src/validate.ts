@@ -319,12 +319,25 @@ export async function validate(opts: ValidateOpts): Promise<ValidationResult> {
     }
   }
 
-  // Rows beyond the cap get explicit rejected entries — never silently dropped.
-  for (let rowIdx = limit; rowIdx < rows.length; rowIdx++) {
+  // Rows beyond the cap get a SINGLE summary rejection entry — never silently
+  // dropped, but we don't allocate N rejected-row objects just to say the same
+  // thing. A 1M-row import would otherwise allocate 900k objects for the cap
+  // alone, which defeats the purpose of having a cap.
+  if (rows.length > limit) {
+    const cappedCount = rows.length - limit;
     rejected_rows.push({
-      source_row_index: rowIdx,
-      raw: rows[rowIdx]!,
-      errors: [{ kind: 'cap_exceeded', field: '_input', reason: `Batch exceeds the ${maxRowsToReturn.toLocaleString()}-row cap. Split into smaller batches and re-import.` }],
+      source_row_index: limit,
+      raw: { _note: `${cappedCount.toLocaleString()} rows not processed` },
+      errors: [
+        {
+          kind: 'cap_exceeded',
+          field: '_input',
+          reason:
+            `${cappedCount.toLocaleString()} rows exceed the ${maxRowsToReturn.toLocaleString()}-row ` +
+            `limit (rows ${(limit + 1).toLocaleString()}–${rows.length.toLocaleString()} skipped). ` +
+            `Split into smaller batches and re-import.`,
+        },
+      ],
     });
     countErr(by_field_errors, '_cap_exceeded');
   }
