@@ -78,6 +78,35 @@
 
 ---
 
+### Sprint 9 — PPM report RPCs + materialized views
+**`sql/033_exec_sql_rpc.sql`:** `app_data.eq_exec_sql` SECURITY DEFINER RPC — required by `apply-migrations.mjs`. REVOKE from anon + authenticated (service_role only).
+
+**`sql/034_ppm_report_queries.sql`:** Five PPM report RPCs:
+- `eq_ppm_asset_status` — per-asset snapshot: last thermal/RCD test, defect counts, compliance status
+- `eq_ppm_site_summary` — per-site health: asset counts, compliance %, open critical defects, next visit
+- `eq_ppm_overdue_assets` — assets past due (or within N days) sorted by criticality
+- `eq_ppm_open_defects` — open defects by severity with age in days
+- `eq_ppm_visit_completion_rate` — task completion % per service visit in a date range
+
+**`sql/035_ppm_materialized_views.sql`:**
+- `ppm_asset_compliance` + `ppm_site_health` materialized views — CONCURRENT refresh, unique indexes
+- `eq_refresh_ppm_views()` — refreshes both concurrently, returns timing string
+- Schedule daily via pg_cron: `cron.schedule('refresh-ppm-views', '0 20 * * *', $$SELECT app_data.eq_refresh_ppm_views()$$)`
+
+---
+
+### E1 — EQ Service write-through adapter (eq-solves-service)
+**`lib/canonical-sync.ts` extended** with three new fire-and-forget sync functions:
+- `syncAsset` — wired into `createAssetAction` + `updateAssetAction`
+- `syncTestResult` — wired into `createTestRecordAction`, `updateTestRecordAction`, and `saveRcdTestCompleteAction` (on markComplete)
+- `syncDefect` — wired into `raiseDefectAction` + `updateDefectAction`
+
+External-ID helpers: `assetExternalId`, `rcdTestExternalId`, `acbTestExternalId`, `nsxTestExternalId`, `testRecordExternalId`, `defectExternalId` — all follow the `eq-service:<type>:<id>` convention.
+
+All syncs are fire-and-forget (`void`). Canonical unreachable = logged, never surfaced to user.
+
+---
+
 ### Sprint 8 — Developer experience + final hardening
 **`sql/032_api_audit_log.sql`:**
 - `app_data.api_intake_calls` table: records every api-intake edge function call
@@ -97,7 +126,7 @@
 **46 schemas** across: S1 spine (30) · S2.A Field domain · S3 supplemental seed · 4 PPM entities
 
 ## SQL migration count
-`sql/001–032` — 32 migrations total
+`sql/001–035` — 35 migrations total
 
 ## Derive profile count
 **12 profiles** in the registry:
@@ -126,9 +155,8 @@
 ## What's NOT done (and why)
 | Item | Reason deferred |
 |---|---|
-| E1: EQ Service write-through adapter | Separate repo (eq-solves-service) — needs explicit instruction per non-negotiables |
+| E1: EQ Service write-through adapter | **Done** — merged to eq-solves-service main (feat/canonical-ppm-sync) |
 | Cards → canonical migration (actual run) | Needs `sks-canonical-eq` Supabase provisioned (billing decision) |
-| Sprint 9: Template marketplace | Needs multi-tenant foundation first |
 | PostHog / Sentry integration | Config-only change, can be wired when API keys are in env vars |
 
 ---
