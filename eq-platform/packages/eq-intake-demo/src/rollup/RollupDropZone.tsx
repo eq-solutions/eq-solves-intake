@@ -131,27 +131,29 @@ export function RollupDropZone(): JSX.Element {
         const bytes = new Uint8Array(buf);
         try {
           const parsed = await parseFile({ bytes, fileName: file.name });
-          const sheet = parsed.sheets[0];
-          if (!sheet) {
+          if (!parsed.sheets.length) {
             next.push({ file, role: "unknown", error: "Parser returned no sheets" });
             continue;
           }
-          const classification = await classifySheet({
-            schemas: ROLE_REGISTRY,
-            sheet,
-          });
-          const role =
-            classification.entity === "customer" ||
-            classification.entity === "contact" ||
-            classification.entity === "site"
-              ? (classification.entity as RoleName)
-              : "unknown";
-          next.push({
-            file,
-            role,
-            sheet,
-            confidence: classification.confidence,
-          });
+          // One slot per sheet so multi-tab workbooks work end-to-end.
+          for (const sheet of parsed.sheets) {
+            const classification = await classifySheet({
+              schemas: ROLE_REGISTRY,
+              sheet,
+            });
+            const role =
+              classification.entity === "customer" ||
+              classification.entity === "contact" ||
+              classification.entity === "site"
+                ? (classification.entity as RoleName)
+                : "unknown";
+            next.push({
+              file,
+              role,
+              sheet,
+              confidence: classification.confidence,
+            });
+          }
         } catch (e) {
           next.push({
             file,

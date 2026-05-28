@@ -89,6 +89,11 @@ export interface CommitOptions {
   sourceFilename?: string;
   /** Override schemas — useful for testing. Production callers pass nothing. */
   schemas?: Partial<Record<CanonicalEntity, JsonSchema>>;
+  /**
+   * Optional progress callback. Called with a plain-English status message at
+   * each major step so the UI can show live progress without polling.
+   */
+  onProgress?: (msg: string) => void;
 }
 
 export interface CommitResult {
@@ -648,10 +653,21 @@ export async function commitBundleToCanonical(opts: CommitOptions): Promise<Comm
   let customerIdMap: Map<string, string> | undefined;
   let bundleSuccess = true;
 
+  const progress = opts.onProgress ?? (() => undefined);
+  const entityLabels: Record<CanonicalEntity, string> = {
+    customer: "customers",
+    site: "sites",
+    contact: "contacts",
+  };
+
   for (const entity of COMMIT_ORDER) {
     const sheet = opts.bundle[entity];
     if (!sheet) continue;
     const schema = opts.schemas?.[entity] ?? CANONICAL_SCHEMAS[entity];
+    const label = entityLabels[entity];
+    const rowCount = sheet.rows.length;
+
+    progress(`Reading ${label} (${rowCount.toLocaleString()} row${rowCount === 1 ? "" : "s"})…`);
 
     const result = await commitOneEntity({
       supabase: opts.supabase,
@@ -666,13 +682,20 @@ export async function commitBundleToCanonical(opts: CommitOptions): Promise<Comm
     perEntity.push(result);
 
     if (result.fatalError) {
+      progress(`Failed on ${label}: ${result.fatalError}`);
       bundleSuccess = false;
       // Stop the bundle early — later entities depend on earlier ones via FK.
       break;
     }
 
+    const parts: string[] = [`${result.committedCount} saved`];
+    if (result.flaggedCount > 0) parts.push(`${result.flaggedCount} need checking`);
+    if (result.rejectedCount > 0) parts.push(`${result.rejectedCount} rejected`);
+    progress(`${label.charAt(0).toUpperCase() + label.slice(1)} done — ${parts.join(", ")}.`);
+
     // If we just committed customers, build the FK lookup for sites + contacts.
     if (entity === "customer" && result.committedCount > 0 && result.intakeId) {
+      progress("Building customer links for sites and contacts…");
       try {
         customerIdMap = await buildCustomerIdMap(
           opts.supabase,
@@ -692,5 +715,6 @@ export async function commitBundleToCanonical(opts: CommitOptions): Promise<Comm
     }
   }
 
+  progress(bundleSuccess ? "All done." : "Finished with errors — check the results below.");
   return { bundleSuccess, perEntity };
 }

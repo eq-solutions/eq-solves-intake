@@ -77,6 +77,22 @@ const CUST_STATE = (r: Record<string, unknown>) => str(r["State"]);
 const CUST_POSTCODE = (r: Record<string, unknown>) => str(r["Postcode"]);
 const CUST_COUNTRY = (r: Record<string, unknown>) => str(r["Country"]) || "Australia";
 
+// SimPRO site column names (from site_export_*.csv).
+const SITE_NAME = (r: Record<string, unknown>) =>
+  str(r["Site Name"] ?? r["Name"] ?? r["Location Name"] ?? r["site_name"]);
+const SITE_EXT_ID = (r: Record<string, unknown>) =>
+  str(r["simPRO Site ID"] ?? r["Site ID"] ?? r["External ID"] ?? r["ID"]);
+const SITE_CUST_ID = (r: Record<string, unknown>) =>
+  str(r["simPRO Customer ID"] ?? r["Customer ID"] ?? r["Account ID"]);
+const SITE_ADDR = (r: Record<string, unknown>) =>
+  str(r["Street Address"] ?? r["Address"]);
+const SITE_SUBURB = (r: Record<string, unknown>) =>
+  str(r["Suburb"] ?? r["City"] ?? r["Town"]);
+const SITE_STATE = (r: Record<string, unknown>) => str(r["State"]);
+const SITE_POSTCODE = (r: Record<string, unknown>) => str(r["Postcode"]);
+const SITE_NOTES = (r: Record<string, unknown>) =>
+  str(r["Public Notes"] ?? r["Notes"] ?? r["Site Notes"]);
+
 export const QUICK_DESTINATIONS: QuickDestination[] = [
   {
     id: "outlook-contacts",
@@ -127,6 +143,25 @@ export const QUICK_DESTINATIONS: QuickDestination[] = [
       { name: "PORegion", value: CUST_STATE },
       { name: "POPostalCode", value: CUST_POSTCODE },
       { name: "POCountry", value: CUST_COUNTRY },
+    ],
+  },
+
+  {
+    id: "site-sharepoint",
+    label: "Sites → SharePoint / CMDB",
+    description:
+      "Site register CSV for SharePoint or a CMDB. One row per site. Drop your SimPRO sites file.",
+    needsRole: "site",
+    filename: "site-register.csv",
+    columns: [
+      { name: "Site Name",         value: SITE_NAME },
+      { name: "SimPRO Site ID",    value: SITE_EXT_ID },
+      { name: "SimPRO Customer ID",value: SITE_CUST_ID },
+      { name: "Street Address",    value: SITE_ADDR },
+      { name: "Suburb",            value: SITE_SUBURB },
+      { name: "State",             value: SITE_STATE },
+      { name: "Postcode",          value: SITE_POSTCODE },
+      { name: "Notes",             value: SITE_NOTES },
     ],
   },
 

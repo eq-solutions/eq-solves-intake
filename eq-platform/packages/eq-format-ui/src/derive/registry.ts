@@ -10,6 +10,8 @@ import { bomProfile } from './profiles/bom';
 import { deviceRegisterProfile } from './profiles/device-register';
 import { labourSummaryProfile } from './profiles/labour-summary';
 import { equinixAssetRegisterProfile } from './profiles/equinix-asset-register';
+import { equinixContractorProfile } from './profiles/equinix-contractor';
+import { xeroPayrollTimesheetsProfile } from './profiles/xero-payroll-timesheets';
 
 const profiles: Map<string, DeriveProfile> = new Map();
 
@@ -24,6 +26,8 @@ register(bomProfile);
 register(deviceRegisterProfile);
 register(labourSummaryProfile);
 register(equinixAssetRegisterProfile);
+register(equinixContractorProfile);
+register(xeroPayrollTimesheetsProfile);
 // Future: register(ppmSowProfile);           // item 7
 
 export function getProfile(id: string): DeriveProfile | undefined {

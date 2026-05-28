@@ -84,22 +84,24 @@ export function QuickExportSection(): JSX.Element {
         const bytes = new Uint8Array(buf);
         try {
           const parsed = await parseFile({ bytes, fileName: file.name });
-          const sheet = parsed.sheets[0];
-          if (!sheet) {
+          if (!parsed.sheets.length) {
             next.push({ file, role: "unknown", error: "Couldn't read this file" });
             continue;
           }
-          const classification = await classifySheet({
-            schemas: ROLE_REGISTRY,
-            sheet,
-          });
-          const role =
-            classification.entity === "customer" ||
-            classification.entity === "contact" ||
-            classification.entity === "site"
-              ? (classification.entity as RoleName)
-              : "unknown";
-          next.push({ file, role, sheet, confidence: classification.confidence });
+          // Classify every sheet in the workbook — one FileSlot per sheet.
+          for (const sheet of parsed.sheets) {
+            const classification = await classifySheet({
+              schemas: ROLE_REGISTRY,
+              sheet,
+            });
+            const role =
+              classification.entity === "customer" ||
+              classification.entity === "contact" ||
+              classification.entity === "site"
+                ? (classification.entity as RoleName)
+                : "unknown";
+            next.push({ file, role, sheet, confidence: classification.confidence });
+          }
         } catch (e) {
           next.push({
             file,
@@ -233,7 +235,13 @@ export function QuickExportSection(): JSX.Element {
               }}
             >
               <span style={{ flex: 1 }}>
-                <strong>{slot.file.name}</strong>{" "}
+                <strong>{slot.file.name}</strong>
+                {slot.sheet?.name && slot.sheet.name !== "Sheet1" && (
+                  <span style={{ color: "#2986B4", fontSize: 11, marginLeft: 6 }}>
+                    [{slot.sheet.name}]
+                  </span>
+                )}
+                {" "}
                 <span style={{ color: "#1A1A2E", opacity: 0.6 }}>
                   {slot.role === "unknown"
                     ? "— couldn't tell what this is"

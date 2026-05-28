@@ -14,7 +14,7 @@
  * brand notes.
  */
 
-import { useState, useRef, type DragEvent, type JSX } from "react";
+import { useState, useRef, useMemo, type DragEvent, type JSX } from "react";
 import { parseFile, classifySheet, type ParsedSheet } from "@eq/intake";
 import {
   CUSTOMER_SCHEMA,
@@ -70,6 +70,7 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CommitResult | null>(null);
+  const [progressMsg, setProgressMsg] = useState<string | null>(null);
 
   const ingestFiles = async (files: File[]) => {
     setError(null);
@@ -82,22 +83,24 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
         const bytes = new Uint8Array(buf);
         try {
           const parsed = await parseFile({ bytes, fileName: file.name });
-          const sheet = parsed.sheets[0];
-          if (!sheet) {
+          if (!parsed.sheets.length) {
             next.push({ file, role: "unknown", error: "Parser returned no sheets" });
             continue;
           }
-          const classification = await classifySheet({
-            schemas: ROLE_REGISTRY,
-            sheet,
-          });
-          const role =
-            classification.entity === "customer" ||
-            classification.entity === "contact" ||
-            classification.entity === "site"
-              ? (classification.entity as RoleName)
-              : "unknown";
-          next.push({ file, role, sheet, confidence: classification.confidence });
+          // Classify every sheet — one slot per sheet so multi-tab exports work.
+          for (const sheet of parsed.sheets) {
+            const classification = await classifySheet({
+              schemas: ROLE_REGISTRY,
+              sheet,
+            });
+            const role =
+              classification.entity === "customer" ||
+              classification.entity === "contact" ||
+              classification.entity === "site"
+                ? (classification.entity as RoleName)
+                : "unknown";
+            next.push({ file, role, sheet, confidence: classification.confidence });
+          }
         } catch (e) {
           next.push({
             file,
@@ -141,6 +144,7 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
       return;
     }
     setBusy(true);
+    setProgressMsg(null);
     try {
       const commitResult = await commitBundleToCanonical({
         supabase: props.supabase,
@@ -150,8 +154,10 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
           .filter((s) => s.role !== "unknown")
           .map((s) => s.file.name)
           .join("+"),
+        onProgress: (msg) => setProgressMsg(msg),
       });
       setResult(commitResult);
+      setProgressMsg(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -167,6 +173,7 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
     setSlots([]);
     setResult(null);
     setError(null);
+    setProgressMsg(null);
   };
 
   return (
@@ -265,7 +272,13 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
               }}
             >
               <span style={{ flex: 1 }}>
-                <strong>{slot.file.name}</strong>{" "}
+                <strong>{slot.file.name}</strong>
+                {slot.sheet?.name && slot.sheet.name !== "Sheet1" && (
+                  <span style={{ color: "#2986B4", fontSize: 11, marginLeft: 6 }}>
+                    [{slot.sheet.name}]
+                  </span>
+                )}
+                {" "}
                 <span style={{ color: "#1A1A2E", opacity: 0.6 }}>
                   {slot.role === "unknown"
                     ? "— couldn't tell what this is"
@@ -304,6 +317,25 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
             </li>
           ))}
         </ul>
+      )}
+
+      {progressMsg && (
+        <div
+          style={{
+            padding: "8px 12px",
+            background: "#EAF5FB",
+            borderRadius: 4,
+            fontSize: 13,
+            color: "#2986B4",
+            marginBottom: 12,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <span className="eq-spinner__dot" style={{ width: 10, height: 10, flexShrink: 0 }} />
+          {progressMsg}
+        </div>
       )}
 
       {error && (
@@ -394,63 +426,27 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
           </table>
 
           {result.perEntity.some((r) => r.flaggedRows.length > 0) && (
-            <details style={{ marginTop: 12 }}>
-              <summary
-                style={{
-                  cursor: "pointer",
-                  fontSize: 13,
-                  fontWeight: 500,
-                  color: "#d97706",
-                }}
-              >
-                Show rows that saved but need checking
-              </summary>
-              <p style={{ fontSize: 12, color: "#78350f", margin: "6px 0 8px" }}>
-                These rows are in EQ, but something caught our eye. Review each one before relying on it.
-              </p>
-              <div style={{ marginTop: 8, fontSize: 12 }}>
-                {result.perEntity.map((r) =>
-                  r.flaggedRows.length === 0 ? null : (
-                    <div key={r.entity} style={{ marginBottom: 12 }}>
-                      <div style={{ fontWeight: 500, color: "#1A1A2E" }}>{entityLabel(r.entity)}</div>
-                      <ul style={{ paddingLeft: 18, margin: "4px 0 0", color: "#78350f" }}>
-                        {r.flaggedRows.map((fr, i) => (
-                          <li key={i}>
-                            Row {fr.source_row_index + 1}: {fr.reasons.join("; ")}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ),
-                )}
-              </div>
-            </details>
+            <RowsDisclosure
+              label="Show rows that saved but need checking"
+              hint="These rows are in EQ, but something caught our eye. Review each one before relying on it."
+              accentColor="#d97706"
+              hintColor="#78350f"
+              perEntity={result.perEntity.map((r) => ({
+                entity: r.entity,
+                rows: r.flaggedRows,
+              }))}
+            />
           )}
 
           {result.perEntity.some((r) => r.rejectedRows.length > 0) && (
-            <details style={{ marginTop: 12 }}>
-              <summary
-                style={{ cursor: "pointer", fontSize: 13, fontWeight: 500 }}
-              >
-                Show rows that couldn't save — and why
-              </summary>
-              <div style={{ marginTop: 8, fontSize: 12 }}>
-                {result.perEntity.map((r) =>
-                  r.rejectedRows.length === 0 ? null : (
-                    <div key={r.entity} style={{ marginBottom: 12 }}>
-                      <div style={{ fontWeight: 500 }}>{entityLabel(r.entity)}</div>
-                      <ul style={{ paddingLeft: 18, margin: 0 }}>
-                        {r.rejectedRows.map((rr, i) => (
-                          <li key={i}>
-                            Row {rr.source_row_index + 1}: {rr.reasons.join("; ")}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ),
-                )}
-              </div>
-            </details>
+            <RowsDisclosure
+              label="Show rows that couldn't save — and why"
+              accentColor="#1A1A2E"
+              perEntity={result.perEntity.map((r) => ({
+                entity: r.entity,
+                rows: r.rejectedRows,
+              }))}
+            />
           )}
         </div>
       )}
@@ -460,6 +456,121 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
 
 function entityLabel(entity: EntityCommitResult["entity"]): string {
   return entity === "customer" ? "Customers" : entity === "site" ? "Sites" : "Contacts";
+}
+
+interface RowsDisclosureProps {
+  label: string;
+  hint?: string;
+  accentColor: string;
+  hintColor?: string;
+  perEntity: Array<{
+    entity: EntityCommitResult["entity"];
+    rows: Array<{ source_row_index: number; reasons: string[] }>;
+  }>;
+}
+
+function RowsDisclosure({ label, hint, accentColor, hintColor, perEntity }: RowsDisclosureProps): JSX.Element {
+  const [filter, setFilter] = useState("");
+  const [sortAsc, setSortAsc] = useState(true);
+
+  // Flatten all rows across entities with entity label prepended to reason.
+  const allRows = useMemo(() => {
+    const out: Array<{ rowNum: number; entity: string; reason: string }> = [];
+    for (const { entity, rows } of perEntity) {
+      const label = entityLabel(entity);
+      for (const r of rows) {
+        for (const reason of r.reasons) {
+          out.push({ rowNum: r.source_row_index + 1, entity: label, reason });
+        }
+      }
+    }
+    return out;
+  }, [perEntity]);
+
+  const filtered = useMemo(() => {
+    const q = filter.toLowerCase();
+    const rows = q
+      ? allRows.filter(
+          (r) =>
+            r.entity.toLowerCase().includes(q) ||
+            r.reason.toLowerCase().includes(q) ||
+            String(r.rowNum).includes(q),
+        )
+      : allRows;
+    return [...rows].sort((a, b) =>
+      sortAsc ? a.rowNum - b.rowNum : b.rowNum - a.rowNum,
+    );
+  }, [allRows, filter, sortAsc]);
+
+  return (
+    <details style={{ marginTop: 12 }}>
+      <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 500, color: accentColor }}>
+        {label}{" "}
+        <span style={{ fontWeight: 400, opacity: 0.7 }}>({allRows.length})</span>
+      </summary>
+      {hint && (
+        <p style={{ fontSize: 12, color: hintColor ?? accentColor, margin: "6px 0 8px" }}>
+          {hint}
+        </p>
+      )}
+      <div style={{ marginTop: 8 }}>
+        <input
+          type="text"
+          placeholder="Filter by row number, entity, or reason…"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          style={{
+            width: "100%",
+            boxSizing: "border-box",
+            padding: "5px 8px",
+            fontSize: 12,
+            border: "1px solid #EAF5FB",
+            borderRadius: 4,
+            fontFamily: "inherit",
+            marginBottom: 6,
+          }}
+        />
+        <div style={{ overflowX: "auto", border: "1px solid #EAF5FB", borderRadius: 4 }}>
+          <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ background: "#EAF5FB" }}>
+                <th
+                  style={{ padding: "4px 8px", textAlign: "left", whiteSpace: "nowrap", cursor: "pointer", userSelect: "none" }}
+                  onClick={() => setSortAsc((a) => !a)}
+                >
+                  Row {sortAsc ? "↑" : "↓"}
+                </th>
+                <th style={{ padding: "4px 8px", textAlign: "left" }}>Type</th>
+                <th style={{ padding: "4px 8px", textAlign: "left" }}>Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={3} style={{ padding: "8px", color: "#1A1A2E", opacity: 0.5, textAlign: "center" }}>
+                    No rows match
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((r, i) => (
+                  <tr key={i} style={{ borderBottom: "1px solid #F4F4F8" }}>
+                    <td style={{ padding: "4px 8px", fontFamily: "monospace" }}>{r.rowNum}</td>
+                    <td style={{ padding: "4px 8px", whiteSpace: "nowrap" }}>{r.entity}</td>
+                    <td style={{ padding: "4px 8px" }}>{r.reason}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        {filtered.length < allRows.length && (
+          <div style={{ fontSize: 11, color: "#1A1A2E", opacity: 0.5, marginTop: 4 }}>
+            Showing {filtered.length} of {allRows.length} rows
+          </div>
+        )}
+      </div>
+    </details>
+  );
 }
 
 function EntityResultRow({ r }: { r: EntityCommitResult }): JSX.Element {
