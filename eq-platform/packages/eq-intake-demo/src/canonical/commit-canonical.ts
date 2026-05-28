@@ -98,6 +98,13 @@ export interface CommitOptions {
    * each major step so the UI can show live progress without polling.
    */
   onProgress?: (msg: string) => void;
+  /**
+   * Max rows per RPC call to the commit batch function. Defaults to 500.
+   * Smaller chunks mean a mid-import failure loses at most chunkSize rows
+   * rather than the entire entity. Increase only if the DB connection can
+   * reliably handle larger payloads.
+   */
+  chunkSize?: number;
 }
 
 export interface CommitResult {
@@ -486,6 +493,10 @@ interface CommitOneEntityArgs {
   sourceFilename?: string;
   customerIdMap?: Map<string, string>;
   staffIdMap?: Map<string, string>;
+  /** Max rows per RPC call. Defaults to 500. */
+  chunkSize?: number;
+  /** Progress callback forwarded from CommitOptions. */
+  onProgress?: (msg: string) => void;
 }
 
 async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitResult> {
@@ -661,56 +672,69 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
     };
   }
 
-  // RPC call.
-  const { data, error } = await args.supabase.rpc("eq_intake_commit_batch", {
-    p_intake_id: intakeId,
-    p_tenant_id: args.tenantId,
-    p_table: table,
-    p_rows: toCommit,
-  });
-
-  if (error) {
-    await finishIntakeEvent({
-      supabase: args.supabase,
-      intakeId,
-      status: "failed",
-      rowsCommitted: 0,
-      rowsFlagged: validationResult.summary.flagged,
-      rowsRejected: validationResult.summary.rejected + toCommit.length + fkMissedRejections.length,
-      errorMessage: error.message,
-    });
-    return {
-      entity: args.entity,
-      table,
-      intakeId,
-      committedCount: 0,
-      flaggedCount: validationResult.summary.flagged,
-      rejectedCount: validationResult.summary.rejected + toCommit.length + fkMissedRejections.length,
-      rejectedRows: [
-        ...fkMissedRejections,
-        ...(validationResult.rejected_rows as _RejectedLike[]).map((r) => ({
-          source_row_index: remapIdx(r.source_row_index),
-          reasons: r.errors.map(formatValidationError),
-        })),
-      ],
-      flaggedRows: (validationResult.flagged_rows as _FlaggedLike[]).map((r) => ({
-        source_row_index: remapIdx(r.source_row_index),
-        reasons: r.flags.map(formatFlag),
-      })),
-      fatalError: error.message,
-    };
+  // Chunked RPC calls — split toCommit into batches of chunkSize (default 500).
+  // A failure in one chunk emits those rows as rejected and continues with the
+  // remaining chunks, preserving partial progress instead of rolling back everything.
+  const CHUNK_SIZE = args.chunkSize ?? 500;
+  const chunks: Record<string, unknown>[][] = [];
+  for (let i = 0; i < toCommit.length; i += CHUNK_SIZE) {
+    chunks.push(toCommit.slice(i, i + CHUNK_SIZE));
   }
 
-  const rpcRow = Array.isArray(data) ? (data[0] as { committed_count?: number } | undefined) : undefined;
-  const committedCount = rpcRow?.committed_count ?? 0;
+  let committedCount = 0;
+  const chunkFailRejections: Array<{ source_row_index: number; reasons: string[] }> = [];
+  let firstFatalError: string | undefined;
+
+  const progress = args.onProgress ?? (() => undefined);
+
+  for (let ci = 0; ci < chunks.length; ci++) {
+    const chunk = chunks[ci]!;
+    if (chunks.length > 1) {
+      progress(
+        `Saving ${table} — chunk ${ci + 1} of ${chunks.length} (${chunk.length} rows)…`,
+      );
+    }
+
+    const { data, error } = await args.supabase.rpc("eq_intake_commit_batch", {
+      p_intake_id: intakeId,
+      p_tenant_id: args.tenantId,
+      p_table: table,
+      p_rows: chunk,
+    });
+
+    if (error) {
+      // This chunk failed — record the rows as rejected but continue with the
+      // next chunk. The original row indices for this chunk span
+      // [ci * CHUNK_SIZE, ci * CHUNK_SIZE + chunk.length).
+      if (!firstFatalError) firstFatalError = error.message;
+      const startIdx = ci * CHUNK_SIZE;
+      for (let ri = 0; ri < chunk.length; ri++) {
+        chunkFailRejections.push({
+          source_row_index: remapIdx(startIdx + ri),
+          reasons: [`Commit chunk failed: ${error.message}`],
+        });
+      }
+    } else {
+      const rpcRow = Array.isArray(data)
+        ? (data[0] as { committed_count?: number } | undefined)
+        : undefined;
+      committedCount += rpcRow?.committed_count ?? chunk.length;
+    }
+  }
+
+  const totalChunkRejected = chunkFailRejections.length;
+
+  const totalRejected =
+    validationResult.summary.rejected + fkMissedRejections.length + totalChunkRejected;
 
   await finishIntakeEvent({
     supabase: args.supabase,
     intakeId,
-    status: "completed",
+    status: firstFatalError && committedCount === 0 ? "failed" : "completed",
     rowsCommitted: committedCount,
     rowsFlagged: validationResult.summary.flagged,
-    rowsRejected: validationResult.summary.rejected + fkMissedRejections.length,
+    rowsRejected: totalRejected,
+    errorMessage: firstFatalError,
   });
 
   return {
@@ -719,18 +743,20 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
     intakeId,
     committedCount,
     flaggedCount: validationResult.summary.flagged,
-    rejectedCount: validationResult.summary.rejected + fkMissedRejections.length,
+    rejectedCount: totalRejected,
     rejectedRows: [
       ...fkMissedRejections,
       ...(validationResult.rejected_rows as _RejectedLike[]).map((r) => ({
         source_row_index: remapIdx(r.source_row_index),
         reasons: r.errors.map(formatValidationError),
       })),
+      ...chunkFailRejections,
     ],
     flaggedRows: (validationResult.flagged_rows as _FlaggedLike[]).map((r) => ({
       source_row_index: remapIdx(r.source_row_index),
       reasons: r.flags.map(formatFlag),
     })),
+    fatalError: firstFatalError && committedCount === 0 ? firstFatalError : undefined,
   };
 }
 
@@ -783,6 +809,8 @@ export async function commitBundleToCanonical(opts: CommitOptions): Promise<Comm
       sourceFilename: opts.sourceFilename,
       customerIdMap,
       staffIdMap,
+      chunkSize: opts.chunkSize,
+      onProgress: opts.onProgress,
     });
     perEntity.push(result);
 
