@@ -143,7 +143,7 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
     }
     if (!bundle.customer && !bundle.site && !bundle.contact && !bundle.staff && !bundle.licence) {
       setError(
-        "Drop at least one file first — a customer, site, contact, or staff list.",
+        "Drop at least one file first — a customer, site, contact, staff, or licence list.",
       );
       return;
     }
@@ -286,14 +286,14 @@ export function CanonicalCommitSection(props: CanonicalCommitSectionProps): JSX.
                 <span style={{ color: "#1A1A2E", opacity: 0.6 }}>
                   {slot.role === "unknown"
                     ? "— couldn't tell what this is"
-                    : `— looks like ${slot.role}s`}
+                    : `— looks like ${entityLabel(slot.role as EntityCommitResult["entity"]).toLowerCase()}`}
                   {slot.confidence != null && slot.role !== "unknown"
                     ? ` (${Math.round(slot.confidence * 100)}% sure)`
                     : ""}
                 </span>
                 {slot.confidence != null && slot.confidence < 0.7 && slot.role !== "unknown" && (
                   <span style={{ display: "block", color: "#d97706", fontSize: 11, marginTop: 2, fontWeight: 500 }}>
-                    Low confidence — is this really {slot.role}s? Use the role selector if not.
+                    Low confidence — is this really {entityLabel(slot.role as EntityCommitResult["entity"]).toLowerCase()}? Check and remove if wrong.
                   </span>
                 )}
                 {slot.error && (
