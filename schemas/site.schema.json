@@ -26,7 +26,13 @@
     "external_id": {
       "type": ["string", "null"],
       "description": "Customer's own ID for this site. Preserved for round-trip exports.",
-      "x-eq-source-aliases": ["site_no", "site_number", "site_code", "ref", "code", "project_no"],
+      "x-eq-source-aliases": ["site_no", "site_number", "site_code", "ref", "code", "project_no", "simpro_site_id"],
+      "maxLength": 64
+    },
+    "external_customer_id": {
+      "type": ["string", "null"],
+      "description": "Source-system Customer ID that owns this site. Used at intake to resolve customer_id FK before commit. SimPRO exports carry this as 'simPRO Customer ID'.",
+      "x-eq-source-aliases": ["simpro_customer_id", "external_customer_id", "account_id"],
       "maxLength": 64
     },
     "name": {

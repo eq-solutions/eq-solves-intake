@@ -15,6 +15,7 @@ import {
   CUSTOMER_SCHEMA,
   CONTACT_SCHEMA,
   SITE_SCHEMA,
+  STAFF_SCHEMA,
 } from "../simpro-schemas.js";
 import type { RoleName } from "../rollup/roles.js";
 import { QUICK_DESTINATIONS, encodeCsv } from "./destinations.js";
@@ -23,6 +24,7 @@ const ROLE_REGISTRY: Record<RoleName, Record<string, unknown>> = {
   customer: CUSTOMER_SCHEMA,
   contact: CONTACT_SCHEMA,
   site: SITE_SCHEMA,
+  staff: STAFF_SCHEMA,
 };
 
 interface FileSlot {
@@ -37,6 +39,7 @@ function roleLabel(role: RoleName | "unknown"): string {
   if (role === "customer") return "customers";
   if (role === "site") return "sites";
   if (role === "contact") return "contacts";
+  if (role === "staff") return "staff";
   return "unknown";
 }
 
@@ -61,6 +64,18 @@ export function QuickExportSection(): JSX.Element {
     [slots, dest],
   );
 
+  // Preview: first 5 mapped rows shown before download.
+  const previewRows = useMemo((): Record<string, unknown>[] | null => {
+    if (!matchedSlot?.sheet) return null;
+    return (matchedSlot.sheet.rows as Record<string, unknown>[]).slice(0, 5).map((r) => {
+      const out: Record<string, unknown> = {};
+      for (const col of dest.columns) {
+        out[col.name] = col.value(r as Record<string, unknown>);
+      }
+      return out;
+    });
+  }, [matchedSlot, dest]);
+
   const ingestFiles = async (files: File[]) => {
     setError(null);
     setDownloaded(null);
@@ -72,22 +87,25 @@ export function QuickExportSection(): JSX.Element {
         const bytes = new Uint8Array(buf);
         try {
           const parsed = await parseFile({ bytes, fileName: file.name });
-          const sheet = parsed.sheets[0];
-          if (!sheet) {
+          if (!parsed.sheets.length) {
             next.push({ file, role: "unknown", error: "Couldn't read this file" });
             continue;
           }
-          const classification = await classifySheet({
-            schemas: ROLE_REGISTRY,
-            sheet,
-          });
-          const role =
-            classification.entity === "customer" ||
-            classification.entity === "contact" ||
-            classification.entity === "site"
-              ? (classification.entity as RoleName)
-              : "unknown";
-          next.push({ file, role, sheet, confidence: classification.confidence });
+          // Classify every sheet in the workbook — one FileSlot per sheet.
+          for (const sheet of parsed.sheets) {
+            const classification = await classifySheet({
+              schemas: ROLE_REGISTRY,
+              sheet,
+            });
+            const role =
+              classification.entity === "customer" ||
+              classification.entity === "contact" ||
+              classification.entity === "site" ||
+              classification.entity === "staff"
+                ? (classification.entity as RoleName)
+                : "unknown";
+            next.push({ file, role, sheet, confidence: classification.confidence });
+          }
         } catch (e) {
           next.push({
             file,
@@ -138,6 +156,11 @@ export function QuickExportSection(): JSX.Element {
     setDownloaded({ filename: dest.filename, rowCount: rows.length });
   };
 
+  const removeSlot = (idx: number) => {
+    setSlots((prev) => prev.filter((_, i) => i !== idx));
+    setDownloaded(null);
+  };
+
   const reset = () => {
     setSlots([]);
     setError(null);
@@ -178,11 +201,14 @@ export function QuickExportSection(): JSX.Element {
           marginBottom: 12,
         }}
       >
-        {busy
-          ? "Working..."
-          : slots.length === 0
-            ? "Drop a file here, or click to pick"
-            : `${slots.length} file${slots.length === 1 ? "" : "s"} ready`}
+        {busy ? (
+          <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            <span className="eq-spinner__dot" />
+            Reading file…
+          </span>
+        ) : slots.length === 0
+          ? "Drop a file here, or click to pick"
+          : `${slots.length} file${slots.length === 1 ? "" : "s"} ready`}
         <input
           ref={inputRef}
           type="file"
@@ -208,20 +234,53 @@ export function QuickExportSection(): JSX.Element {
                 fontSize: 13,
                 display: "flex",
                 justifyContent: "space-between",
-                alignItems: "center",
+                alignItems: "flex-start",
+                gap: 8,
               }}
             >
-              <span>
-                <strong>{slot.file.name}</strong>{" "}
+              <span style={{ flex: 1 }}>
+                <strong>{slot.file.name}</strong>
+                {slot.sheet?.name && slot.sheet.name !== "Sheet1" && (
+                  <span style={{ color: "#2986B4", fontSize: 11, marginLeft: 6 }}>
+                    [{slot.sheet.name}]
+                  </span>
+                )}
+                {" "}
                 <span style={{ color: "#1A1A2E", opacity: 0.6 }}>
                   {slot.role === "unknown"
                     ? "— couldn't tell what this is"
                     : `— looks like ${roleLabel(slot.role)}`}
+                  {slot.confidence != null && slot.role !== "unknown"
+                    ? ` (${Math.round(slot.confidence * 100)}% sure)`
+                    : ""}
                 </span>
+                {slot.confidence != null && slot.confidence < 0.7 && slot.role !== "unknown" && (
+                  <span style={{ display: "block", color: "#d97706", fontSize: 11, marginTop: 2, fontWeight: 500 }}>
+                    Low confidence — does this look right?
+                  </span>
+                )}
+                {slot.error && (
+                  <span style={{ display: "block", color: "#B33A3A", fontSize: 12, marginTop: 2 }}>{slot.error}</span>
+                )}
               </span>
-              {slot.error && (
-                <span style={{ color: "#B33A3A", fontSize: 12 }}>{slot.error}</span>
-              )}
+              <button
+                type="button"
+                onClick={() => removeSlot(i)}
+                disabled={busy}
+                aria-label={`Remove ${slot.file.name}`}
+                style={{
+                  padding: "2px 8px",
+                  fontSize: 12,
+                  flexShrink: 0,
+                  background: "white",
+                  color: "#1A1A2E",
+                  border: "1px solid #EAF5FB",
+                  borderRadius: 4,
+                  cursor: busy ? "not-allowed" : "pointer",
+                }}
+              >
+                Remove
+              </button>
             </li>
           ))}
         </ul>
@@ -267,6 +326,39 @@ export function QuickExportSection(): JSX.Element {
           {dest.description}
         </span>
       </div>
+
+      {previewRows && previewRows.length > 0 && !downloaded && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 12, color: "#1A1A2E", opacity: 0.6, marginBottom: 6 }}>
+            Preview — first {previewRows.length} of {matchedSlot!.sheet!.rows.length.toLocaleString()} rows → {dest.label}
+          </div>
+          <div style={{ overflowX: "auto", border: "1px solid #EAF5FB", borderRadius: 4 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: "#EAF5FB" }}>
+                  {dest.columns.map((c) => (
+                    <th key={c.name} style={{ padding: "4px 8px", textAlign: "left", whiteSpace: "nowrap", fontWeight: 600, color: "#2986B4" }}>
+                      {c.name}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {previewRows.map((row, i) => (
+                  <tr key={i} style={{ borderBottom: "1px solid #F4F4F8" }}>
+                    {dest.columns.map((c) => (
+                      <td key={c.name} style={{ padding: "4px 8px", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                          title={String(row[c.name] ?? "")}>
+                        {String(row[c.name] ?? "")}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div

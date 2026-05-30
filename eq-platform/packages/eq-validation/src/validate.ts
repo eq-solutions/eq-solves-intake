@@ -104,7 +104,19 @@ export type Flag =
   | { kind: 'sensitive_field'; field: string }
   | { kind: 'value_unusual'; field: string; reason: string }
   | { kind: 'cross_field_warning'; rule_id: string; message: string }
-  | { kind: 'phone_kept_raw'; field: string };
+  | { kind: 'phone_kept_raw'; field: string }
+  // Attached post-validation by the confirm-flow driver, not by validate()
+  // itself: an AI-suggested value for a field the source left empty.
+  | { kind: 'ai_enrichment'; field: string; suggested: unknown; confidence: number; reason: string }
+  // Likely duplicate of another row in the batch, or of an existing DB asset.
+  | {
+      kind: 'duplicate';
+      reason: 'serial' | 'external_id_site';
+      matchType: 'within_batch' | 'existing';
+      key: string;
+      duplicateOf?: number;
+      existingAssetId?: string;
+    };
 
 export type ValidationError =
   | { kind: 'field_required'; field: string }
@@ -293,8 +305,10 @@ export async function validate(opts: ValidateOpts): Promise<ValidationResult> {
         try {
           passed = rule.eval(canonical);
         } catch (e) {
-          // Rule eval failed (e.g. accessing missing field) — treat as pass, log
+          // Rule eval failed (e.g. accessing a missing field) — treat as pass so
+          // a broken rule doesn't reject valid data. Log so bad rules are visible.
           passed = true;
+          console.warn(`[eq-validation] Rule "${rule.id}" threw during eval — treating as pass.`, e);
         }
         if (!passed) {
           if (rule.severity === 'error' || treatWarningsAsErrors) {
@@ -317,12 +331,25 @@ export async function validate(opts: ValidateOpts): Promise<ValidationResult> {
     }
   }
 
-  // Rows beyond the cap get explicit rejected entries — never silently dropped.
-  for (let rowIdx = limit; rowIdx < rows.length; rowIdx++) {
+  // Rows beyond the cap get a SINGLE summary rejection entry — never silently
+  // dropped, but we don't allocate N rejected-row objects just to say the same
+  // thing. A 1M-row import would otherwise allocate 900k objects for the cap
+  // alone, which defeats the purpose of having a cap.
+  if (rows.length > limit) {
+    const cappedCount = rows.length - limit;
     rejected_rows.push({
-      source_row_index: rowIdx,
-      raw: rows[rowIdx]!,
-      errors: [{ kind: 'cap_exceeded', field: '_input', reason: `Batch exceeds the ${maxRowsToReturn.toLocaleString()}-row cap. Split into smaller batches and re-import.` }],
+      source_row_index: limit,
+      raw: { _note: `${cappedCount.toLocaleString()} rows not processed` },
+      errors: [
+        {
+          kind: 'cap_exceeded',
+          field: '_input',
+          reason:
+            `${cappedCount.toLocaleString()} rows exceed the ${maxRowsToReturn.toLocaleString()}-row ` +
+            `limit (rows ${(limit + 1).toLocaleString()}–${rows.length.toLocaleString()} skipped). ` +
+            `Split into smaller batches and re-import.`,
+        },
+      ],
     });
     countErr(by_field_errors, '_cap_exceeded');
   }
