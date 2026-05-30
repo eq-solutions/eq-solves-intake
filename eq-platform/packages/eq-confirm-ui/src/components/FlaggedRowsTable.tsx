@@ -23,6 +23,7 @@ export function FlaggedRowsTable(props: FlaggedRowsTableProps): JSX.Element {
   const resolutions = props.store((s) => s.resolutions);
   const resolveFlag = props.store((s) => s.resolveFlag);
   const resolveBulk = props.store((s) => s.resolveBulk);
+  const resolveBulkPickTop = props.store((s) => s.resolveBulkPickTop);
 
   if (!result) {
     return <div className="eq-confirm-empty">No validation result yet.</div>;
@@ -83,6 +84,7 @@ export function FlaggedRowsTable(props: FlaggedRowsTableProps): JSX.Element {
           <BulkActions
             flagged={result.flagged_rows}
             onBulk={resolveBulk}
+            onBulkPickTop={resolveBulkPickTop}
           />
         </section>
       )}
@@ -134,7 +136,17 @@ function flagSummary(f: Flag): string {
       return `Cross-field warning: ${f.message}`;
     case "phone_kept_raw":
       return `Phone on '${f.field}' could not be normalised — kept raw`;
+    case "ai_enrichment":
+      return `AI suggests '${f.field}' = ${String(f.suggested)} (${Math.round(f.confidence * 100)}%) — ${f.reason}`;
+    case "duplicate":
+      return f.matchType === "existing"
+        ? `Likely duplicate of an existing asset (${dupReasonLabel(f.reason)}: ${f.key})`
+        : `Likely duplicate of row ${(f.duplicateOf ?? 0) + 1} in this file (${dupReasonLabel(f.reason)}: ${f.key})`;
   }
+}
+
+function dupReasonLabel(reason: "serial" | "external_id_site"): string {
+  return reason === "serial" ? "same serial" : "same tag in site";
 }
 
 function errorSummary(e: import("@eq/validation").ValidationError): string {
@@ -161,6 +173,8 @@ function errorSummary(e: import("@eq/validation").ValidationError): string {
       return `Ambiguous date on ${e.field} (strict mode)`;
     case "coerce_failed":
       return `Coercion failed on ${e.field}: ${e.reason}`;
+    case "cap_exceeded":
+      return e.reason;
   }
 }
 
@@ -276,8 +290,61 @@ function ResolutionPicker(props: {
   current: FlagResolution | undefined;
   onChange: (r: FlagResolution) => void;
 }): JSX.Element {
+  const dup = props.flags.find((f) => f.kind === "duplicate");
   const fuzzy = props.flags.find((f) => f.kind === "fk_fuzzy_match");
   const dateAmbig = props.flags.find((f) => f.kind === "date_ambiguous");
+  const enrichments = props.flags.filter(
+    (f): f is Extract<Flag, { kind: "ai_enrichment" }> => f.kind === "ai_enrichment",
+  );
+
+  // Identity decision first: a duplicate is resolved before anything else.
+  if (dup && dup.kind === "duplicate") {
+    if (dup.matchType === "existing" && dup.existingAssetId) {
+      return (
+        <div className="eq-resolution">
+          <button
+            type="button"
+            onClick={() =>
+              props.onChange({
+                kind: "set_value",
+                field: "asset_id",
+                value: dup.existingAssetId,
+              })
+            }
+            aria-pressed={props.current?.kind === "set_value"}
+          >
+            Update existing
+          </button>
+          <button
+            type="button"
+            onClick={() => props.onChange({ kind: "skip_row" })}
+            aria-pressed={props.current?.kind === "skip_row"}
+          >
+            Skip
+          </button>
+        </div>
+      );
+    }
+    // within-batch duplicate
+    return (
+      <div className="eq-resolution">
+        <button
+          type="button"
+          onClick={() => props.onChange({ kind: "accept_canonical" })}
+          aria-pressed={props.current?.kind === "accept_canonical"}
+        >
+          Keep both
+        </button>
+        <button
+          type="button"
+          onClick={() => props.onChange({ kind: "skip_row" })}
+          aria-pressed={props.current?.kind === "skip_row"}
+        >
+          Skip duplicate
+        </button>
+      </div>
+    );
+  }
 
   if (fuzzy && fuzzy.kind === "fk_fuzzy_match") {
     return (
@@ -337,6 +404,42 @@ function ResolutionPicker(props: {
     );
   }
 
+  // AI enrichment suggestions — one toggle per suggested field. Toggling on
+  // accumulates the field into a set_fields resolution; toggling all off
+  // commits the row as-is (the field stays empty). Nothing is written until
+  // the user accepts here.
+  if (enrichments.length > 0) {
+    const accepted =
+      props.current?.kind === "set_fields" ? props.current.values : {};
+    return (
+      <div className="eq-resolution eq-resolution--enrichment">
+        {enrichments.map((f) => {
+          const isOn = Object.prototype.hasOwnProperty.call(accepted, f.field);
+          return (
+            <button
+              key={f.field}
+              type="button"
+              aria-pressed={isOn}
+              onClick={() => {
+                const next = { ...accepted };
+                if (isOn) delete next[f.field];
+                else next[f.field] = f.suggested;
+                props.onChange(
+                  Object.keys(next).length > 0
+                    ? { kind: "set_fields", values: next }
+                    : { kind: "accept_canonical" },
+                );
+              }}
+            >
+              {isOn ? "✓ " : "Use "}
+              {f.field} = {String(f.suggested)} ({Math.round(f.confidence * 100)}%)
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
   // Default: accept or skip
   return (
     <div className="eq-resolution">
@@ -361,6 +464,7 @@ function ResolutionPicker(props: {
 function BulkActions(props: {
   flagged: import("@eq/validation").FlaggedRow[];
   onBulk: (kind: Flag["kind"], r: FlagResolution) => void;
+  onBulkPickTop: (kind: Flag["kind"]) => void;
 }): JSX.Element | null {
   const kinds = new Set<Flag["kind"]>();
   for (const row of props.flagged) {
@@ -368,18 +472,30 @@ function BulkActions(props: {
   }
   if (kinds.size === 0) return null;
 
+  // Candidate-bearing flags (fuzzy FK, ambiguous date) can't be bulk-accepted
+  // with one shared resolution — each row has its own candidates. For those,
+  // offer "accept top match for all" which picks each row's best candidate.
+  const usesTopPick = (k: Flag["kind"]): boolean =>
+    k === "fk_fuzzy_match" || k === "date_ambiguous";
+
   return (
     <div className="eq-bulk-actions">
       <span>Bulk apply:</span>
-      {Array.from(kinds).map((k) => (
-        <button
-          key={k}
-          type="button"
-          onClick={() => props.onBulk(k, { kind: "accept_canonical" })}
-        >
-          Accept all '{k}'
-        </button>
-      ))}
+      {Array.from(kinds).map((k) =>
+        usesTopPick(k) ? (
+          <button key={k} type="button" onClick={() => props.onBulkPickTop(k)}>
+            Accept top match for all '{k}'
+          </button>
+        ) : (
+          <button
+            key={k}
+            type="button"
+            onClick={() => props.onBulk(k, { kind: "accept_canonical" })}
+          >
+            Accept all '{k}'
+          </button>
+        ),
+      )}
     </div>
   );
 }

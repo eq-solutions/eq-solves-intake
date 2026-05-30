@@ -59,3 +59,16 @@ export type {
   ParseFileMeta,
   FileFormat,
 } from "./parse-file.js";
+
+export { enrichAssets } from "./enrich.js";
+export type { EnrichAssetsOptions, EnrichAssetsRow } from "./enrich.js";
+
+export { detectDuplicates, findExistingDuplicates } from "./dedup.js";
+export type {
+  DedupRow,
+  DuplicateFinding,
+  DuplicateReason,
+  DupLookup,
+  ExistingAssetKey,
+  ExistingAssetMatch,
+} from "./dedup.js";
