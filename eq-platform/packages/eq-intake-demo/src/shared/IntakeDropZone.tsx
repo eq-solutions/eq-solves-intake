@@ -85,9 +85,9 @@ export function IntakeDropZone({ bundle }: { bundle: IntakeBundle }): JSX.Elemen
             >
               <span style={{ flex: 1 }}>
                 <strong>{slot.file.name}</strong>
-                {slot.sheet?.name && slot.sheet.name !== "Sheet1" && (
+                {slot.sheet?.sheetName && slot.sheet.sheetName !== "Sheet1" && (
                   <span style={{ color: "#2986B4", fontSize: 11, marginLeft: 6 }}>
-                    [{slot.sheet.name}]
+                    [{slot.sheet.sheetName}]
                   </span>
                 )}{" "}
                 <span style={{ color: "#1A1A2E", opacity: 0.6 }}>
