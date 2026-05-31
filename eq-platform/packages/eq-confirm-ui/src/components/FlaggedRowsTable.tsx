@@ -161,6 +161,8 @@ function errorSummary(e: import("@eq/validation").ValidationError): string {
       return `Ambiguous date on ${e.field} (strict mode)`;
     case "coerce_failed":
       return `Coercion failed on ${e.field}: ${e.reason}`;
+    default:
+      return `Validation issue: ${e.kind}`;
   }
   // Fallback for any ValidationError kind not enumerated above, so this
   // always returns a string (satisfies TS exhaustiveness + future-proofs
