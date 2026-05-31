@@ -20,6 +20,15 @@ This doc captures the decision we've made — and when it gets actioned.
 > share-API between EQ surfaces. What's changed is *where a Cards person
 > first lands*. Read `EQ-TENANCY-MODEL.md` → "The control plane" before
 > this section.
+>
+> **⚠ Audit correction (2026-05-31, see status log).** The worker-pool /
+> control-plane references in this section are **intended design, not
+> as-built**. The audit found: the control plane is `eq-canonical`
+> (`jvknxcmbtrfnxfrwfimn`), NOT `eq-canonical-internal`; the worker-pool
+> tables sit (empty) on `eq-canonical-internal`; and Cards currently writes
+> to the control plane's `public.profiles`/`licences`, not the pool. Treat
+> the steps below as the target, and confirm project refs against the
+> tenancy doc's "Project roles — AUDITED" table before acting.
 
 The architectural destination is **one canonical spine** with two layers:
 
@@ -162,4 +171,20 @@ The internal cross-product story (share-tokens, redeem endpoint, destination reg
 
 - **2026-04-29:** Path A decided. Migration deferred until end of Sprint 3 / start of Phase 2. Cards stays on its own Supabase project in pause-and-polish mode. This doc created.
 - **2026-05-30:** Worker-pool tables (`workers`, `worker_credentials`, `worker_inductions`, `worker_assignments`) live on the control plane (`zaapmfdkgedqupfjtchl`); Cards approve→sync backend deployed, two bugs fixed. Flutter app still on the old `profiles` model — open gap.
+- **2026-05-31 (corrected after live audit):** An earlier entry today had
+  the projects **inverted** — it called `eq-canonical-internal` the control
+  plane. A read-only audit of all three projects set it straight:
+  - **`eq-canonical` (`jvknxcmbtrfnxfrwfimn`) = control plane** — live auth,
+    tenant routing (`shell_control.tenants`/`tenant_routing`), and the
+    **Cards backend** (`eq_cards_*` RPCs). **This is where Cards data lands
+    today** (`public.profiles` / `licences`) — *not* the worker pool.
+  - **`eq-canonical-internal` (`zaapmfdkgedqupfjtchl`) = a tenant data plane**
+    (EQ-Solutions tenant, demo data) that happens to hold the empty
+    worker-pool tables.
+  - **⚠ Name trap:** the `-internal` project is NOT the control plane despite
+    its name. The worker-first model in this doc is **intended design, not
+    as-built**: Cards currently writes to the control plane's `public` tables,
+    and the worker pool is unused. Whether the pool moves to the control plane
+    (or Cards repoints to it) is an open item. See `EQ-TENANCY-MODEL.md` →
+    "Project roles — AUDITED & CORRECTED 2026-05-31".
 - **2026-05-31:** Doc refined to the **worker-first** model. The original "copy `profiles` → tenant `staff`" framing was wrong: a Cards person lands in the control-plane **worker pool** first, and is *projected* into a tenant's `staff` only on engagement. Schema mapping + migration steps rewritten to match. Cutover still blocked on the billing/provisioning call; Cards remains on `hshvnjzczdytfiklhojz`.

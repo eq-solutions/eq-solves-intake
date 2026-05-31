@@ -53,11 +53,15 @@ inside it:
 
 Modules:
 - **EQ Cards** — mobile capture (inductions, prestarts, SWMS). Lives in a
-  separate repo (`C:\Projects\eq-cards`), already in production for SKS
-  on its own Supabase (`hshvnjzczdytfiklhojz`). Onboards a *person*, who
-  lands in the **worker pool on the control plane** — not directly in a
-  tenant. Phase 4: migrate onto canonical (worker-first — see below + the
-  bridge doc).
+  separate repo (`C:\Projects\eq-cards`). Onboards a *person* (licence
+  wallet, inductions). **As-built (audited 2026-05-31):** the Cards backend
+  RPCs (`eq_cards_*`) and captured data (profiles/licences) live on the
+  **control plane `eq-canonical`** (`jvknxcmbtrfnxfrwfimn`) — *not* the
+  worker pool, and *not* the `hshvnjzczdytfiklhojz` project older docs cite
+  (verify which Supabase the Flutter app actually points at before relying
+  on either). The *intended* model is worker-first (a person lands in a
+  global worker pool, projected into a tenant on engagement) — that's design,
+  not current reality. See the bridge doc + `EQ-TENANCY-MODEL.md`.
 - **EQ Field** — scheduling / staff. SKS Field LIVE is in production on
   its own Supabase. Phase 3: migrates onto canonical.
 - **EQ Service** — work-order management. Built for SKS, going live in
@@ -77,17 +81,23 @@ Modules:
 Two layers (refined 2026-05-31 — earlier versions of this doc described
 only the per-tenant layer):
 
-**1. Control plane — one shared project** (`eq-canonical-internal` /
-`zaapmfdkgedqupfjtchl`). Holds *identity*, not customer data: the **worker
-pool** (`workers`, `worker_credentials`, `worker_inductions`,
-`worker_assignments`) plus the tenant registry. A person onboarded via EQ
-Cards exists here *once*, whether or not any tenant has hired them.
-Identity is global; employment is per-tenant. *(Live caveat: that project
-today also carries a transitional internal `app_data` canonical — target
-is a thin control plane. See `EQ-TENANCY-MODEL.md`.)*
+**1. Control plane — one shared project: `eq-canonical`**
+(`jvknxcmbtrfnxfrwfimn`). Holds *auth + routing*, not customer data: live
+login + JWT minting, the tenant registry/router (`shell_control.tenants` /
+`tenant_routing` — which tenants exist and which Supabase holds each one's
+data), and currently the **Cards backend** (`eq_cards_*` RPCs). This is where
+you log in and get routed to your tenant. **⚠ Name trap:** the control plane
+is `eq-canonical`, NOT `eq-canonical-internal` — the `-internal` project is a
+*tenant data store* despite its name. (Verified by live audit 2026-05-31; an
+earlier doc pass had these two inverted.)
 
-**2. Per-tenant canonical — one Supabase project per customer.** Physical
-data isolation, not RLS-shared. Decision logged 2026-05-18 after walking
+**2. Per-tenant data plane — one Supabase project per customer.** Physical
+data isolation, not RLS-shared. **`sks-canonical`** (`ehowgjardagevnrluult`)
+is the SKS tenant (real data); **`eq-canonical-internal`**
+(`zaapmfdkgedqupfjtchl`) is the EQ-Solutions tenant (seeded with demo data
+today). EQ Quotes reads customers/sites/contacts from the relevant tenant
+plane. See `EQ-TENANCY-MODEL.md` → "Project roles — AUDITED & CORRECTED
+2026-05-31" for the full picture and open items. Decision logged 2026-05-18 after walking
 through trade-offs. When a tenant engages a worker, that worker is
 **projected** into the tenant's canonical as a `staff` row (`role = self`).
 One worker → N tenant projections, no re-import — that's how "capture once
