@@ -30,6 +30,12 @@ import {
   type CommitResult,
 } from "../canonical/commit-canonical.js";
 import type { RoleName } from "../rollup/roles.js";
+import { BUILTIN_TEMPLATES } from "../rollup/templates.js";
+import {
+  renderTemplate,
+  renderToCsv,
+  type DestinationTemplate,
+} from "../rollup/template.js";
 
 export interface IntakeModuleProps {
   /**
@@ -54,6 +60,13 @@ export interface IntakeModuleProps {
 }
 
 const INTO_EQ_ID = "into-eq";
+/**
+ * Destination IDs collide across the two source lists — both QUICK_DESTINATIONS
+ * and BUILTIN_TEMPLATES carry an "outlook-contacts" id, for instance. Namespace
+ * them so the picker's <select> value is unambiguous.
+ */
+const QUICK_PREFIX = "quick:";
+const TEMPLATE_PREFIX = "tpl:";
 const DEFAULT_TENANT_ID = "00000000-0000-4000-8000-000000000001";
 const ROUTE_LOG_KEY = "eq-intake:routes";
 
@@ -84,7 +97,11 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
   const [destId, setDestId] = useState<string>(INTO_EQ_ID);
 
   const exportDest = useMemo(
-    () => QUICK_DESTINATIONS.find((d) => d.id === destId),
+    () => QUICK_DESTINATIONS.find((d) => `${QUICK_PREFIX}${d.id}` === destId),
+    [destId],
+  );
+  const joinTemplate = useMemo(
+    () => BUILTIN_TEMPLATES.find((t) => `${TEMPLATE_PREFIX}${t.id}` === destId),
     [destId],
   );
   const isCanonical = destId === INTO_EQ_ID;
@@ -123,6 +140,8 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
               supabase={props.supabase}
               tenantId={props.tenantId ?? DEFAULT_TENANT_ID}
             />
+          ) : joinTemplate ? (
+            <TemplateExportView bundle={bundle} template={joinTemplate} />
           ) : (
             exportDest && <ExportView bundle={bundle} dest={exportDest} />
           )}
@@ -155,33 +174,65 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
 // ============================================================================
 
 interface DestOption {
+  /** Namespaced ID used as the <select> value (see QUICK_PREFIX/TEMPLATE_PREFIX). */
   id: string;
   label: string;
   description: string;
-  /** null = Into EQ (accepts any role); otherwise the role this export needs. */
-  needsRole: RoleName | null;
+  /**
+   * Roles this destination needs present in the dropped bundle. Empty array =
+   * Into EQ (accepts any recognised file). Single-file quick exports need one
+   * role; join templates can need several (e.g. customers + contacts + sites).
+   */
+  needsRoles: RoleName[];
 }
 
-const DEST_OPTIONS: DestOption[] = [
-  {
-    id: INTO_EQ_ID,
-    label: "Into EQ",
-    description:
-      "Save these records into EQ — customers, sites and contacts in one place, so you don't retype them anywhere else.",
-    needsRole: null,
-  },
-  ...QUICK_DESTINATIONS.map((d) => ({
-    id: d.id,
-    label: d.label,
-    description: d.description,
-    needsRole: d.needsRole,
-  })),
-];
+const INTO_EQ_OPTION: DestOption = {
+  id: INTO_EQ_ID,
+  label: "Into EQ",
+  description:
+    "Save these records into EQ — customers, sites and contacts in one place, so you don't retype them anywhere else.",
+  needsRoles: [],
+};
+
+/** Single-file reshape-out destinations (one file in, one CSV out — no join). */
+const QUICK_OPTIONS: DestOption[] = QUICK_DESTINATIONS.map((d) => ({
+  id: `${QUICK_PREFIX}${d.id}`,
+  label: d.label,
+  description: d.description,
+  needsRoles: [d.needsRole],
+}));
+
+/**
+ * Multi-file JOIN templates from the rollup engine (e.g. Xero ContactsImport
+ * that denormalises company info across the customers + contacts files). These
+ * only make sense once more than one file is dropped, so they surface here in
+ * their own group and stay unavailable until every required role is present.
+ */
+const TEMPLATE_OPTIONS: DestOption[] = BUILTIN_TEMPLATES.map((t) => ({
+  id: `${TEMPLATE_PREFIX}${t.id}`,
+  label: t.name,
+  description: t.description ?? "",
+  needsRoles: t.requiredRoles,
+}));
 
 function destAvailable(opt: DestOption, bundle: IntakeBundle): boolean {
-  if (opt.needsRole === null) return bundle.availableRoles.size > 0;
-  return bundle.availableRoles.has(opt.needsRole);
+  if (opt.needsRoles.length === 0) return bundle.availableRoles.size > 0;
+  return opt.needsRoles.every((r) => bundle.availableRoles.has(r));
 }
+
+/** Roles a destination still needs that aren't yet in the dropped bundle. */
+function missingRoles(opt: DestOption, bundle: IntakeBundle): RoleName[] {
+  return opt.needsRoles.filter((r) => !bundle.availableRoles.has(r));
+}
+
+function optionSuffix(opt: DestOption, bundle: IntakeBundle): string {
+  if (destAvailable(opt, bundle)) return "";
+  const missing = missingRoles(opt, bundle);
+  if (missing.length === 0) return " — needs a file";
+  return ` — needs ${missing.map(roleLabel).join(" + ")}`;
+}
+
+const ALL_OPTIONS: DestOption[] = [INTO_EQ_OPTION, ...QUICK_OPTIONS, ...TEMPLATE_OPTIONS];
 
 function DestinationPicker({
   destId,
@@ -192,8 +243,9 @@ function DestinationPicker({
   bundle: IntakeBundle;
   onChange: (id: string) => void;
 }): JSX.Element {
-  const selected = DEST_OPTIONS.find((o) => o.id === destId) ?? DEST_OPTIONS[0]!;
+  const selected = ALL_OPTIONS.find((o) => o.id === destId) ?? INTO_EQ_OPTION;
   const available = destAvailable(selected, bundle);
+  const missing = missingRoles(selected, bundle);
 
   return (
     <div
@@ -222,20 +274,35 @@ function DestinationPicker({
             background: "white",
           }}
         >
-          {DEST_OPTIONS.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.label}
-              {destAvailable(o, bundle) ? "" : " — needs a file"}
-            </option>
-          ))}
+          <option value={INTO_EQ_OPTION.id}>
+            {INTO_EQ_OPTION.label}
+            {optionSuffix(INTO_EQ_OPTION, bundle)}
+          </option>
+          <optgroup label="Send one file out">
+            {QUICK_OPTIONS.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+                {optionSuffix(o, bundle)}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="Join files & send out">
+            {TEMPLATE_OPTIONS.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+                {optionSuffix(o, bundle)}
+              </option>
+            ))}
+          </optgroup>
         </select>
       </label>
       <span style={{ fontSize: 13, color: "#1A1A2E", opacity: 0.7, flex: 1, minWidth: 200 }}>
         {selected.description}
       </span>
-      {!available && selected.needsRole && (
+      {!available && missing.length > 0 && (
         <span style={{ fontSize: 13, color: "#d97706", fontWeight: 500 }}>
-          Drop a {roleLabel(selected.needsRole)} file above first.
+          Drop {missing.map(roleLabel).join(" + ")}{" "}
+          {missing.length === 1 ? "file" : "files"} above first.
         </span>
       )}
     </div>
@@ -353,6 +420,142 @@ function ExportView({
         }}
       >
         Download {dest.label}
+      </button>
+
+      {downloaded && (
+        <div style={{ marginTop: 16, padding: 12, background: "#EAF5FB", border: "1px solid #2986B4", borderRadius: 4, fontSize: 14, color: "#1A1A2E" }}>
+          ✓ Downloaded <strong>{downloaded.filename}</strong> — {downloaded.rowCount}{" "}
+          row{downloaded.rowCount === 1 ? "" : "s"}.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// TEMPLATE EXPORT VIEW — multi-file JOIN templates (Xero ContactsImport, the
+// quotes-by-site rollup, …). Reuses the rollup engine's renderTemplate /
+// renderToCsv — no join logic is reimplemented here. The same dropped files
+// feed it as everything else; it just joins them by simPRO Customer ID.
+// ============================================================================
+
+function TemplateExportView({
+  bundle,
+  template,
+}: {
+  bundle: IntakeBundle;
+  template: DestinationTemplate;
+}): JSX.Element {
+  const [error, setError] = useState<string | null>(null);
+  const [downloaded, setDownloaded] = useState<{ filename: string; rowCount: number } | null>(null);
+
+  // Build the role→sheet map the engine wants. We pass EVERY recognised file,
+  // not just the required ones, so templates that optionally join extra roles
+  // (e.g. Xero's customer template pulling the default contact from a contacts
+  // file when present) get the richer output. First file per role wins.
+  const byRole = useMemo(() => {
+    const map: Partial<Record<RoleName, ParsedSheet>> = {};
+    for (const slot of bundle.slots) {
+      if (slot.role === "unknown" || !slot.sheet) continue;
+      if (!map[slot.role]) map[slot.role] = slot.sheet;
+    }
+    return map;
+  }, [bundle.slots]);
+
+  const missing = template.requiredRoles.filter((r) => !byRole[r]);
+  const filename = `${template.id}.csv`;
+
+  const result = useMemo(() => {
+    if (missing.length > 0) return null;
+    return renderTemplate(template, byRole);
+  }, [template, byRole, missing.length]);
+
+  const previewRows = result ? result.rows.slice(0, 5) : null;
+
+  const download = () => {
+    setError(null);
+    if (!result) {
+      setError(
+        `This needs ${missing.map(roleLabel).join(" + ")}. Drop the missing file(s) above first.`,
+      );
+      return;
+    }
+    const csv = renderToCsv(result);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setDownloaded({ filename, rowCount: result.rows.length });
+  };
+
+  const destLabel = template.destinationLabel ?? "CSV";
+
+  return (
+    <div>
+      {result && previewRows && previewRows.length > 0 && !downloaded && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 12, color: "#1A1A2E", opacity: 0.6, marginBottom: 6 }}>
+            Preview — first {previewRows.length} of{" "}
+            {result.rows.length.toLocaleString()} rows → {destLabel}
+          </div>
+          <div style={{ overflowX: "auto", border: "1px solid #EAF5FB", borderRadius: 4 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: "#EAF5FB" }}>
+                  {result.headers.map((h) => (
+                    <th key={h} style={{ padding: "4px 8px", textAlign: "left", whiteSpace: "nowrap", fontWeight: 600, color: "#2986B4" }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {previewRows.map((row, i) => (
+                  <tr key={i} style={{ borderBottom: "1px solid #F4F4F8" }}>
+                    {result.headers.map((h) => (
+                      <td
+                        key={h}
+                        style={{ padding: "4px 8px", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                        title={row[h] ?? ""}
+                      >
+                        {row[h] ?? ""}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div role="alert" style={{ padding: 12, background: "#FBEAEA", border: "1px solid #B33A3A", borderRadius: 4, color: "#B33A3A", fontSize: 13, marginBottom: 16 }}>
+          {error}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={download}
+        disabled={!result}
+        style={{
+          padding: "10px 18px",
+          background: result ? "#3DA8D8" : "#BFD4DF",
+          color: "white",
+          border: "none",
+          borderRadius: 4,
+          fontWeight: 500,
+          cursor: result ? "pointer" : "not-allowed",
+          fontSize: 14,
+        }}
+      >
+        Download {destLabel}
       </button>
 
       {downloaded && (
