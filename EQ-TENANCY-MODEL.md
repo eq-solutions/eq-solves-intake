@@ -14,19 +14,24 @@ decision from here on answers to this doc.
 
 ```
 ┌───────────────────────────────────────────────────────────────────┐
-│  CONTROL PLANE — ONE shared project (eq-canonical-internal)         │
-│  ref: zaapmfdkgedqupfjtchl                                          │
+│  CONTROL PLANE — ONE shared project (eq-canonical)                  │
+│  ref: jvknxcmbtrfnxfrwfimn                                          │
+│  ⚠ NAME TRAP: the control plane is "eq-canonical" — NOT             │
+│    "eq-canonical-internal". The "-internal" project is a tenant     │
+│    data plane despite its name. Confirmed by live audit 2026-05-31. │
 │                                                                     │
-│  Worker pool — global identity, tenant-independent:                 │
-│    workers · worker_credentials · worker_inductions ·               │
-│    worker_assignments                                               │
-│  Tenant registry — which tenants exist, which modules each runs     │
+│  Live auth + JWT minting:                                           │
+│    custom_access_token_hook · sessions · mint/revoke · 8 users      │
+│  Tenant routing — shell_control.tenants · tenant_routing            │
+│    (which tenants exist → which Supabase holds each one's data)     │
+│  Cards backend — eq_cards_* RPCs · cards_field_approvals            │
 │                                                                     │
-│  A person exists here ONCE, whether or not any tenant has           │
-│  engaged them. Fed by EQ Cards. This is the identity layer.         │
+│  This is where login happens and where each tenant request is       │
+│  routed to its data-plane Supabase.                                 │
 └───────────────┬─────────────────────────────────────────────────────┘
-                │  on engagement, a worker is PROJECTED into a
-                │  tenant's canonical as a staff row (role = self)
+                │  routes a logged-in user to their tenant's data plane
+                │  (and, in the intended worker model, a worker is
+                │   PROJECTED into that tenant's canonical as a staff row)
                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │         ONE canonical Supabase project — PER TENANT             │
@@ -54,11 +59,13 @@ decision from here on answers to this doc.
       All share @eq/schemas + @eq/validation + @eq/confirm-ui.
 ```
 
-**Two layers, two jobs.** The **control plane** is one shared project
-that holds *identity* — the worker pool and the tenant registry. The
-**per-tenant canonical** is one project per customer that holds *their
-data*. A worker exists once in the pool; they become a `staff` row in a
-tenant's canonical only when that tenant engages them.
+**Two layers, two jobs.** The **control plane** (`eq-canonical` /
+`jvknxcmbtrfnxfrwfimn`) is one shared project that holds *auth + routing*:
+who you are (login, JWT minting) and which tenant Supabase your request is
+sent to (`shell_control.tenants` / `tenant_routing`). It also currently
+hosts the **Cards backend** (`eq_cards_*` RPCs). The **per-tenant data
+plane** is one project per customer that holds *their data*
+(`sks-canonical` = SKS; `eq-canonical-internal` = the EQ-Solutions tenant).
 
 **Each customer (SKS, future customers) gets their own Supabase project.**
 That project is THEIR canonical layer. Every EQ module they use points at it.
@@ -72,8 +79,10 @@ That project is THEIR canonical layer. Every EQ module they use points at it.
 
 **Identity is global; employment is per-tenant.** A sparkie who does one
 induction through EQ Cards exists in the system whether or not anyone has
-hired them. That person lives in the **worker pool** on the control-plane
-project (`eq-canonical-internal` / `zaapmfdkgedqupfjtchl`):
+hired them. In the *intended* model that person lives in a **worker pool**.
+The pool tables exist today on `eq-canonical-internal` (`zaapmfdkgedqupfjtchl`)
+— note that's a tenant data plane, not the control plane (see "Project roles —
+AUDITED" below; pool placement is an open item):
 
 - `workers` — the person (one row, one identity)
 - `worker_credentials` — licences / tickets / cards
@@ -93,18 +102,50 @@ carry their licence wallet across engagements. Pinning identity inside a
 single tenant's database would lose that — and would force a re-import
 every time the same person turns up at a second EQ customer.
 
-### Current live state (2026-05-31) — transitional
+### Current live state (audited 2026-05-31)
 
-The worker-pool tables are live and empty on `zaapmfdkgedqupfjtchl` (RLS
-on). **Caveat for anyone reading the DB directly:** that same project
-*also* currently carries a full `app_data` canonical (staff, customers,
-sites, assets, quotes, leave, tenders, …) and an `app_data.tenant_app_configs`
-table. That `app_data` canonical is **internal/dev only and transitional** —
-the target is a *thin* control plane (worker pool + tenant registry only),
-with real customer data living in per-tenant projects like `sks-canonical`.
-There is no dedicated `tenants` / `module_entitlements` registry table yet;
-`tenant_app_configs` is the only tenant-aware seam today. Don't treat the
-control plane's `app_data` as a real tenant canonical — it isn't one.
+Superseded framing removed. For the verified state of all three projects,
+see **"Project roles — AUDITED & CORRECTED 2026-05-31"** immediately below.
+Short version: the tenant registry *does* exist (`shell_control.tenants` on
+the control plane `eq-canonical`), the worker-pool tables sit on
+`eq-canonical-internal`'s data plane (empty), and that project's `app_data`
+canonical holds *demo* tenant data — it's a tenant store, not control-plane
+cruft.
+
+### Project roles — AUDITED & CORRECTED 2026-05-31
+
+> **This block is authoritative and supersedes any earlier role labels in
+> this section.** An earlier 2026-05-31 pass had the control plane and tenant
+> roles *inverted* (it called `eq-canonical-internal` the control plane). A
+> live read-only audit of all three projects corrected it. The mistake came
+> from the misleading name — see the NAME TRAP note below.
+
+| Project | Ref | **Real role (audited)** | Evidence |
+|---|---|---|---|
+| **`eq-canonical`** | `jvknxcmbtrfnxfrwfimn` | **Control plane** — live auth, tenant routing, Cards backend. | 8 auth users · 339 minted logins · `shell_control.tenants`(4) + `tenant_routing`(2) · `custom_access_token_hook` · `eq_cards_*` RPCs · `cards_field_approvals`. |
+| **`eq-canonical-internal`** | `zaapmfdkgedqupfjtchl` | **EQ-Solutions tenant data plane** (currently seeded with *demo* data). | 0 auth users · `app_data` canonical with 50 customers / 30 sites / 26 staff / 500 schedule rows · full intake engine · worker-pool tables (empty). |
+| **`sks-canonical`** | `ehowgjardagevnrluult` | **SKS production tenant data plane.** | 0 auth users · `app_data` with 125 customers / 331 contacts / 50 staff / 4,808 assets / 713 test results. |
+
+**⚠ NAME TRAP.** `eq-canonical-internal` *sounds* like the control plane but
+is a tenant data store. `eq-canonical` (no suffix) is the actual control
+plane. The Supabase project names can't be cheaply renamed, so the names stay
+and the docs carry this warning. Don't relabel on a hunch — re-read this
+table.
+
+**Decision (2026-05-31): adopt reality.** No data moves, no auth migration,
+no project rename. The system is already wired this way; we document the true
+roles rather than fight them. The only way to make the *names* match the
+*jobs* would be to migrate live auth + routing off `eq-canonical` — costly
+and not worth it for tidiness.
+
+**Open items flagged by the audit (not yet resolved):**
+- The **worker-pool tables** physically sit on `eq-canonical-internal` (a
+  tenant data plane), not on the control plane — at odds with the "identity
+  is global, lives on the control plane" intent below. Where the pool *should*
+  live is unsettled.
+- The Cards app currently writes to `eq-canonical`'s `public.profiles` /
+  `licences` (via `eq_cards_*` RPCs), **not** to the worker pool at all. The
+  worker-first projection model below is intended design, not as-built.
 
 ## Why per-tenant Supabase (not one shared DB with RLS)
 

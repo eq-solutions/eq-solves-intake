@@ -90,10 +90,11 @@ are gated on `ANTHROPIC_API_KEY` and cost ~half a cent per run.
 | `schemas/` | Canonical JSON Schemas (source of truth, root copy) |
 | `types/` | TS types generated from `schemas/` via `scripts/gen-types.mjs` |
 | `samples/` | Real and synthetic fixtures used by the sample-validation harness |
-| `sql/` | Base migrations (not yet run against any provisioned Supabase) |
-| `simpro/` | Real SimPRO CSV exports used for fixture smoke tests |
+| `test-fixtures/` | Synthetic edge-case fixtures for the coercion + validation tests |
+| `sql/` | Canonical migrations (001–035; applied to the live `sks-canonical`) |
+| `edge-functions/` | Supabase Edge Functions (`api-intake`, `approve-worker-assignment`) |
 | `prompts/` | AI prompt templates (column mapping, vision extraction, continuation playbooks) |
-| `demos/` | Standalone Node ESM demos exercising the engine on real shapes |
+| `demos/` | Standalone demos — engine smoke tests + the Intake one-screen prototype |
 | `eq-platform/` | pnpm workspace — apps (`eq-shell`), packages, scripts |
 | `_archive/` | Superseded planning + status docs, kept for archaeology only |
 

@@ -18,7 +18,7 @@ The earlier framing of EQ Format as "the universal sheet wrangler, both directio
 
 Adding a 4th profile is a single file under `eq-platform/packages/eq-format-ui/src/derive/profiles/` plus an explicit registry entry. No plugin system. No generic adapter layer. The registry stays a hardcoded Map on purpose — that's the brake on N×M scope creep.
 
-The currently-named candidate for a 4th profile (per `PLAN-2026-05-22.md`) is Equinix audit format → SimPRO export. That profile lands when Royce's parallel workstream is ready, not speculatively.
+The currently-named candidate for a 4th profile (per `PLAN-2026-05-24.md`) is Equinix audit format → SimPRO export. That profile lands when Royce's parallel workstream is ready, not speculatively.
 
 ## What's also available today as a desktop fallback
 
@@ -80,7 +80,7 @@ These don't need answers today. They're parked.
 
 1. **What's the in-mode UI?** Web app, native mobile, or PWA inside Cards' existing shell? The on-phone constraint argues for shared infrastructure with Cards.
 2. **Where does the canonical spine live?** Cleanup-in writes to canonical. The canonical Supabase needs to exist first (per `EQ-TENANCY-MODEL.md`).
-3. **Which client formats are first for reshape-out?** Equinix is the obvious first target (per `PLAN-2026-05-22.md`). NEXTDC and the data-centre principal contractors next. Each format is bespoke and small — half a day of work per format once a real recurring need lands.
+3. **Which client formats are first for reshape-out?** Equinix is the obvious first target (per `PLAN-2026-05-24.md`). NEXTDC and the data-centre principal contractors next. Each format is bespoke and small — half a day of work per format once a real recurring need lands.
 
 ---
 

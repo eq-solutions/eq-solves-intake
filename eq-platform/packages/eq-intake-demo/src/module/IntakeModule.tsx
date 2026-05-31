@@ -3,48 +3,49 @@
  *
  * Host app (the EQ Shell) imports this and mounts it at /intake.
  *
- * Renders two parallel flows:
- *   1. RollupDropZone — drop the SimPRO bundle, pick a destination template
- *      (Xero / MYOB / SharePoint rollup / etc.), download the reshape-out
- *      CSV. Doesn't write to canonical.
- *   2. CanonicalCommitSection — drop the same bundle, validate against the
- *      canonical schemas, write via eq_intake_commit_batch. Disabled when
- *      Supabase isn't configured.
+ * One screen, two questions:
+ *   1. Drop a file — parsed + classified once by the shared useIntakeBundle
+ *      hook ("looks like customers — 92% sure").
+ *   2. Pick where it goes — Into EQ (canonical commit) or out to Xero / MYOB /
+ *      Outlook / SharePoint / Equinix (reshape-out CSV). The same dropped
+ *      files feed every destination, so nobody drops twice.
  *
- * Both flows use the same SimPRO classification (customer / contact / site).
- * The bookkeeper drops files twice today — once per flow — because the
- * rollup engine is mid-refactor in a sibling branch and we don't want to
- * couple state across both flows yet. When the refactor settles, lifting
- * shared classification state up into IntakeModule is the next step.
+ * This replaces the old three-stacked-sections layout (QuickExportSection +
+ * RollupDropZone + CanonicalCommitSection), which made the bookkeeper drop
+ * files once per flow. Those components still exist for the standalone
+ * playground; the shell mount now uses this consolidated flow.
  *
  * Routes log to `eq-intake:routes` in localStorage by default. Host can
  * override via the onDestinationChange prop.
  */
 
-import { useMemo, type JSX } from "react";
-import { QuickExportSection } from "../quick-export/QuickExportSection.js";
-import { RollupDropZone } from "../rollup/RollupDropZone.js";
-import { CanonicalCommitSection } from "../canonical/CanonicalCommitSection.js";
-import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
+import { useMemo, useState, type JSX } from "react";
+import { type ParsedSheet } from "@eq/intake";
+import { useIntakeBundle, roleLabel, type IntakeBundle } from "../shared/intake-bundle.js";
+import { IntakeDropZone } from "../shared/IntakeDropZone.js";
+import { QUICK_DESTINATIONS, encodeCsv, type QuickDestination } from "../quick-export/destinations.js";
+import {
+  commitBundleToCanonical,
+  type SupabaseLikeClient,
+  type CommitResult,
+} from "../canonical/commit-canonical.js";
+import type { RoleName } from "../rollup/roles.js";
 
 export interface IntakeModuleProps {
   /**
    * Authenticated Supabase client. Passed by the EQ Shell via getSupabase().
-   * When omitted, the canonical-commit section renders in a disabled state
-   * with a "Configure Supabase to enable" hint. The standalone Vite demo
-   * playground always renders disabled.
+   * When omitted, the Into-EQ destination renders disabled with a "Configure
+   * Supabase to enable" hint. The standalone Vite demo passes nothing.
    */
   supabase?: SupabaseLikeClient | null;
   /**
    * Tenant ID for canonical commits. In the per-tenant Supabase model the
-   * shell reads this from env (VITE_TENANT_ID) and passes it down. Default
-   * keeps the demo working in isolation.
+   * shell reads this from env (VITE_TENANT_ID) and passes it down.
    */
   tenantId?: string;
   /**
-   * Optional callback fired when the user picks a destination in the
-   * "Where is this going?" prompt. Defaults to a localStorage logger
-   * keyed `eq-intake:routes`.
+   * Optional callback fired when the user picks a destination. Defaults to a
+   * localStorage logger keyed `eq-intake:routes`.
    */
   onDestinationChange?: (
     value: string | undefined,
@@ -52,6 +53,8 @@ export interface IntakeModuleProps {
   ) => void;
 }
 
+const INTO_EQ_ID = "into-eq";
+const DEFAULT_TENANT_ID = "00000000-0000-4000-8000-000000000001";
 const ROUTE_LOG_KEY = "eq-intake:routes";
 
 function defaultRouteLogger(
@@ -65,8 +68,7 @@ function defaultRouteLogger(
       ? JSON.parse(existing)
       : [];
     log.push({ at: new Date().toISOString(), destination: value, source });
-    const trimmed = log.slice(-200);
-    localStorage.setItem(ROUTE_LOG_KEY, JSON.stringify(trimmed));
+    localStorage.setItem(ROUTE_LOG_KEY, JSON.stringify(log.slice(-200)));
   } catch {
     // localStorage full / disabled — silently skip
   }
@@ -78,20 +80,483 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
     [props.onDestinationChange],
   );
 
-  // RollupDropZone today doesn't take onDestinationChange (the destination
-  // prompt is built into the per-file confirm flow, not the bundle flow).
-  // Leaving the prop here for forward compatibility — when the bundle flow
-  // gains its own destination prompt, this will plug in.
-  void onDestinationChange;
+  const bundle = useIntakeBundle();
+  const [destId, setDestId] = useState<string>(INTO_EQ_ID);
+
+  const exportDest = useMemo(
+    () => QUICK_DESTINATIONS.find((d) => d.id === destId),
+    [destId],
+  );
+  const isCanonical = destId === INTO_EQ_ID;
 
   return (
-    <div className="eq-intake-module">
-      <QuickExportSection />
-      <RollupDropZone />
-      <CanonicalCommitSection
-        supabase={props.supabase}
-        tenantId={props.tenantId}
-      />
+    <section
+      className="eq-intake-module"
+      style={{
+        padding: "24px 0",
+        fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+        color: "#1A1A2E",
+      }}
+    >
+      <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 6 }}>Bring a file in</h2>
+      <p style={{ fontSize: 14, color: "#1A1A2E", opacity: 0.7, marginBottom: 16 }}>
+        Drop a SimPRO export — we'll work out what it is, then you choose where
+        it goes. One drop, no retyping.
+      </p>
+
+      <IntakeDropZone bundle={bundle} />
+
+      {bundle.slots.length > 0 && (
+        <>
+          <DestinationPicker
+            destId={destId}
+            bundle={bundle}
+            onChange={(id) => {
+              setDestId(id);
+              onDestinationChange(id, "suggested");
+            }}
+          />
+
+          {isCanonical ? (
+            <CommitView
+              bundle={bundle}
+              supabase={props.supabase}
+              tenantId={props.tenantId ?? DEFAULT_TENANT_ID}
+            />
+          ) : (
+            exportDest && <ExportView bundle={bundle} dest={exportDest} />
+          )}
+
+          <button
+            type="button"
+            onClick={() => bundle.reset()}
+            disabled={bundle.busy}
+            style={{
+              marginTop: 16,
+              padding: "10px 18px",
+              background: "white",
+              color: "#1A1A2E",
+              border: "1px solid #EAF5FB",
+              borderRadius: 4,
+              cursor: bundle.busy ? "not-allowed" : "pointer",
+              fontSize: 14,
+            }}
+          >
+            Start over
+          </button>
+        </>
+      )}
+    </section>
+  );
+}
+
+// ============================================================================
+// DESTINATION PICKER — Into EQ + the reshape-out destinations, one list.
+// ============================================================================
+
+interface DestOption {
+  id: string;
+  label: string;
+  description: string;
+  /** null = Into EQ (accepts any role); otherwise the role this export needs. */
+  needsRole: RoleName | null;
+}
+
+const DEST_OPTIONS: DestOption[] = [
+  {
+    id: INTO_EQ_ID,
+    label: "Into EQ",
+    description:
+      "Save these records into EQ — customers, sites and contacts in one place, so you don't retype them anywhere else.",
+    needsRole: null,
+  },
+  ...QUICK_DESTINATIONS.map((d) => ({
+    id: d.id,
+    label: d.label,
+    description: d.description,
+    needsRole: d.needsRole,
+  })),
+];
+
+function destAvailable(opt: DestOption, bundle: IntakeBundle): boolean {
+  if (opt.needsRole === null) return bundle.availableRoles.size > 0;
+  return bundle.availableRoles.has(opt.needsRole);
+}
+
+function DestinationPicker({
+  destId,
+  bundle,
+  onChange,
+}: {
+  destId: string;
+  bundle: IntakeBundle;
+  onChange: (id: string) => void;
+}): JSX.Element {
+  const selected = DEST_OPTIONS.find((o) => o.id === destId) ?? DEST_OPTIONS[0]!;
+  const available = destAvailable(selected, bundle);
+
+  return (
+    <div
+      style={{
+        marginBottom: 16,
+        padding: 12,
+        background: "#EAF5FB",
+        borderRadius: 4,
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        flexWrap: "wrap",
+      }}
+    >
+      <label style={{ fontSize: 14, fontWeight: 500 }}>
+        Where's it going?{" "}
+        <select
+          value={selected.id}
+          onChange={(e) => onChange(e.target.value)}
+          style={{
+            fontFamily: "inherit",
+            fontSize: 14,
+            padding: "6px 10px",
+            borderRadius: 4,
+            border: "1px solid #2986B4",
+            background: "white",
+          }}
+        >
+          {DEST_OPTIONS.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
+              {destAvailable(o, bundle) ? "" : " — needs a file"}
+            </option>
+          ))}
+        </select>
+      </label>
+      <span style={{ fontSize: 13, color: "#1A1A2E", opacity: 0.7, flex: 1, minWidth: 200 }}>
+        {selected.description}
+      </span>
+      {!available && selected.needsRole && (
+        <span style={{ fontSize: 13, color: "#d97706", fontWeight: 500 }}>
+          Drop a {roleLabel(selected.needsRole)} file above first.
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// EXPORT VIEW — reshape-out preview + download (Xero / MYOB / Outlook / …).
+// ============================================================================
+
+function ExportView({
+  bundle,
+  dest,
+}: {
+  bundle: IntakeBundle;
+  dest: QuickDestination;
+}): JSX.Element {
+  const [error, setError] = useState<string | null>(null);
+  const [downloaded, setDownloaded] = useState<{ filename: string; rowCount: number } | null>(null);
+
+  const matched = bundle.slotForRole(dest.needsRole);
+
+  const previewRows = useMemo((): Record<string, unknown>[] | null => {
+    if (!matched?.sheet) return null;
+    return (matched.sheet.rows as Record<string, unknown>[]).slice(0, 5).map((r) => {
+      const out: Record<string, unknown> = {};
+      for (const col of dest.columns) out[col.name] = col.value(r);
+      return out;
+    });
+  }, [matched, dest]);
+
+  const download = () => {
+    setError(null);
+    if (!matched?.sheet) {
+      setError(`This needs a ${roleLabel(dest.needsRole)} file. Drop one above first.`);
+      return;
+    }
+    const headers = dest.columns.map((c) => c.name);
+    const rows = matched.sheet.rows.map((r) => {
+      const out: Record<string, unknown> = {};
+      for (const col of dest.columns) out[col.name] = col.value(r as Record<string, unknown>);
+      return out;
+    });
+    const csv = encodeCsv(headers, rows);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = dest.filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setDownloaded({ filename: dest.filename, rowCount: rows.length });
+  };
+
+  return (
+    <div>
+      {previewRows && previewRows.length > 0 && !downloaded && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 12, color: "#1A1A2E", opacity: 0.6, marginBottom: 6 }}>
+            Preview — first {previewRows.length} of{" "}
+            {matched!.sheet!.rows.length.toLocaleString()} rows → {dest.label}
+          </div>
+          <div style={{ overflowX: "auto", border: "1px solid #EAF5FB", borderRadius: 4 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: "#EAF5FB" }}>
+                  {dest.columns.map((c) => (
+                    <th key={c.name} style={{ padding: "4px 8px", textAlign: "left", whiteSpace: "nowrap", fontWeight: 600, color: "#2986B4" }}>
+                      {c.name}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {previewRows.map((row, i) => (
+                  <tr key={i} style={{ borderBottom: "1px solid #F4F4F8" }}>
+                    {dest.columns.map((c) => (
+                      <td
+                        key={c.name}
+                        style={{ padding: "4px 8px", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                        title={String(row[c.name] ?? "")}
+                      >
+                        {String(row[c.name] ?? "")}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div role="alert" style={{ padding: 12, background: "#FBEAEA", border: "1px solid #B33A3A", borderRadius: 4, color: "#B33A3A", fontSize: 13, marginBottom: 16 }}>
+          {error}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={download}
+        disabled={!matched}
+        style={{
+          padding: "10px 18px",
+          background: matched ? "#3DA8D8" : "#BFD4DF",
+          color: "white",
+          border: "none",
+          borderRadius: 4,
+          fontWeight: 500,
+          cursor: matched ? "pointer" : "not-allowed",
+          fontSize: 14,
+        }}
+      >
+        Download {dest.label}
+      </button>
+
+      {downloaded && (
+        <div style={{ marginTop: 16, padding: 12, background: "#EAF5FB", border: "1px solid #2986B4", borderRadius: 4, fontSize: 14, color: "#1A1A2E" }}>
+          ✓ Downloaded <strong>{downloaded.filename}</strong> — {downloaded.rowCount}{" "}
+          row{downloaded.rowCount === 1 ? "" : "s"}.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// COMMIT VIEW — Into EQ (canonical commit) + compact result summary.
+// ============================================================================
+
+type CommitBundle = {
+  customer?: ParsedSheet;
+  site?: ParsedSheet;
+  contact?: ParsedSheet;
+  staff?: ParsedSheet;
+  licence?: ParsedSheet;
+};
+
+function CommitView({
+  bundle,
+  supabase,
+  tenantId,
+}: {
+  bundle: IntakeBundle;
+  supabase?: SupabaseLikeClient | null;
+  tenantId: string;
+}): JSX.Element {
+  const enabled = !!supabase;
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [progressMsg, setProgressMsg] = useState<string | null>(null);
+  const [result, setResult] = useState<CommitResult | null>(null);
+
+  const commit = async () => {
+    if (!supabase) return;
+    setError(null);
+    setResult(null);
+
+    const commitBundle: CommitBundle = {};
+    for (const slot of bundle.slots) {
+      if (slot.role === "unknown" || !slot.sheet) continue;
+      const key = slot.role as keyof CommitBundle;
+      if (commitBundle[key]) {
+        setError(`Two files look like ${slot.role}s. Remove one before saving.`);
+        return;
+      }
+      commitBundle[key] = slot.sheet;
+    }
+    if (
+      !commitBundle.customer &&
+      !commitBundle.site &&
+      !commitBundle.contact &&
+      !commitBundle.staff &&
+      !commitBundle.licence
+    ) {
+      setError("Drop at least one file we recognise — a customer, site, contact, staff, or licence list.");
+      return;
+    }
+
+    setBusy(true);
+    setProgressMsg(null);
+    try {
+      const commitResult = await commitBundleToCanonical({
+        supabase,
+        bundle: commitBundle,
+        tenantId,
+        sourceFilename: bundle.slots
+          .filter((s) => s.role !== "unknown")
+          .map((s) => s.file.name)
+          .join("+"),
+        onProgress: (msg) => setProgressMsg(msg),
+      });
+      setResult(commitResult);
+      setProgressMsg(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      {!enabled && (
+        <div style={{ padding: 12, background: "#EAF5FB", border: "1px solid #2986B4", borderRadius: 4, fontSize: 13, marginBottom: 16 }}>
+          EQ isn't connected yet — ask whoever set this up to fill in the
+          connection details. Saving stays inactive until then.
+        </div>
+      )}
+
+      {progressMsg && (
+        <div style={{ padding: "8px 12px", background: "#EAF5FB", borderRadius: 4, fontSize: 13, color: "#2986B4", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+          <span className="eq-spinner__dot" style={{ width: 10, height: 10, flexShrink: 0 }} />
+          {progressMsg}
+        </div>
+      )}
+
+      {error && (
+        <div role="alert" style={{ padding: 12, background: "#FBEAEA", border: "1px solid #B33A3A", borderRadius: 4, color: "#B33A3A", fontSize: 13, marginBottom: 16 }}>
+          {error}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={commit}
+        disabled={!enabled || busy}
+        style={{
+          padding: "10px 18px",
+          background: enabled && !busy ? "#3DA8D8" : "#BFD4DF",
+          color: "white",
+          border: "none",
+          borderRadius: 4,
+          fontWeight: 500,
+          cursor: enabled && !busy ? "pointer" : "not-allowed",
+          fontSize: 14,
+        }}
+      >
+        {busy ? (
+          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span className="eq-spinner__dot" style={{ width: 10, height: 10 }} />
+            Saving…
+          </span>
+        ) : (
+          "Save into EQ"
+        )}
+      </button>
+
+      {result && <CommitSummary result={result} />}
+    </div>
+  );
+}
+
+function entityLabel(entity: string): string {
+  switch (entity) {
+    case "customer":
+      return "Customers";
+    case "site":
+      return "Sites";
+    case "contact":
+      return "Contacts";
+    case "staff":
+      return "Staff";
+    case "licence":
+      return "Licences";
+    default:
+      return entity;
+  }
+}
+
+/**
+ * Compact post-save summary. The richer per-row disclosure UI (flagged /
+ * rejected drill-downs, mapping preview) still lives in CanonicalCommitSection
+ * and is a follow-up to port here — see the wire-in memory.
+ */
+function CommitSummary({ result }: { result: CommitResult }): JSX.Element {
+  const saved = result.perEntity.reduce((n, r) => n + r.committedCount, 0);
+  const flagged = result.perEntity.reduce((n, r) => n + r.flaggedCount, 0);
+  const rejected = result.perEntity.reduce((n, r) => n + r.rejectedCount, 0);
+  const hasFatal = result.perEntity.some((r) => r.fatalError);
+
+  const bg = hasFatal ? "#FBEAEA" : rejected > 0 ? "#FFF8EC" : "#EAF5FB";
+  const border = hasFatal ? "#B33A3A" : rejected > 0 ? "#d97706" : "#2986B4";
+  const icon = hasFatal ? "✗" : rejected > 0 ? "⚠" : "✓";
+  const iconColor = border;
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      style={{ marginTop: 16, padding: "12px 16px", background: bg, border: `1px solid ${border}`, borderRadius: 4, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}
+    >
+      <span style={{ fontSize: 20, color: iconColor, flexShrink: 0 }}>{icon}</span>
+      <div style={{ flex: 1, minWidth: 160 }}>
+        <span style={{ fontWeight: 600, fontSize: 14, color: "#1A1A2E" }}>
+          {saved.toLocaleString()} record{saved === 1 ? "" : "s"} saved
+        </span>
+        {flagged > 0 && (
+          <span style={{ marginLeft: 12, fontSize: 13, color: "#d97706" }}>
+            {flagged.toLocaleString()} need{flagged === 1 ? "s" : ""} checking
+          </span>
+        )}
+        {rejected > 0 && (
+          <span style={{ marginLeft: 12, fontSize: 13, color: "#B33A3A" }}>
+            {rejected.toLocaleString()} couldn't save
+          </span>
+        )}
+      </div>
+      {result.perEntity
+        .filter((r) => r.committedCount > 0)
+        .map((r) => (
+          <span
+            key={r.entity}
+            style={{ padding: "2px 8px", borderRadius: 100, background: "#2986B4", color: "white", fontSize: 12, fontWeight: 500, whiteSpace: "nowrap" }}
+          >
+            {r.committedCount} {entityLabel(r.entity).toLowerCase()}
+          </span>
+        ))}
     </div>
   );
 }
