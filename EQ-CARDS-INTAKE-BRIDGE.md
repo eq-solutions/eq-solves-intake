@@ -14,9 +14,36 @@ This doc captures the decision we've made — and when it gets actioned.
 
 ---
 
-## The decision: Path A (consolidate)
+## The decision: Path A (consolidate), worker-first form
 
-The architectural destination is **one canonical spine**. Cards data eventually lives in the canonical Supabase project alongside every other EQ surface. The §18 share-API model is preserved as an export profile for **external** consumers (e.g. Equinix's portal pulling Cards data into their compliance system) but is not used between EQ surfaces. Inside EQ, RLS on the canonical project is how every door reads and writes shared data.
+> **Refined 2026-05-31.** Path A still holds — one consolidated spine, no
+> share-API between EQ surfaces. What's changed is *where a Cards person
+> first lands*. Read `EQ-TENANCY-MODEL.md` → "The control plane" before
+> this section.
+
+The architectural destination is **one canonical spine** with two layers:
+
+1. **Control plane — the worker pool.** EQ Cards onboards a *person*, not
+   an employee of a specific tenant. A sparkie who does one induction
+   exists whether or not anyone has hired them. So Cards writes that
+   person into the **worker pool on the control plane**
+   (`eq-canonical-internal` / `zaapmfdkgedqupfjtchl`): `workers`,
+   `worker_credentials`, `worker_inductions`, `worker_assignments`.
+2. **Per-tenant canonical — the projection.** When a tenant engages a
+   worker, that worker is **projected into the tenant's canonical as a
+   `staff` row** (`role = self`). The pool stays the source of truth for
+   the person; the `staff` row is the tenant's view of their employment.
+   One worker → N tenant projections, no re-import.
+
+This is the correction to the original framing of this doc, which said
+Cards `profiles` rows copy straight into a tenant's `staff` table. That
+skipped the identity layer. A person belongs to the pool first; tenants
+get a projection.
+
+The §18 share-API model is preserved as an export profile for **external**
+consumers (e.g. Equinix's portal pulling a worker's wallet into their
+compliance system) but is not used between EQ surfaces. Inside EQ, the
+worker pool plus per-tenant RLS is how every door reads shared data.
 
 ### Why Path A and not Path B (federate)
 
@@ -37,27 +64,40 @@ Whichever lands first, that's the cutover window. Until then, none of the spine 
 
 The migration itself is one deliberate weekend of work:
 
-1. Provision (or repurpose) the canonical Supabase project.
-2. Apply the spine migrations + canonical schemas.
-3. Copy Cards' `profiles` rows into the canonical `staff` table (with `role = 'self'` per the schema mapping below).
-4. Copy Cards' `licences` rows into the canonical `licences` (or attached-to-staff) shape.
-5. Copy Cards' Storage bucket (licence photos) into the canonical Storage bucket, repointing the signed-URL paths.
-6. Repoint the Cards app's Supabase client to the new project.
+1. Confirm the control-plane worker-pool tables are live (`workers`,
+   `worker_credentials`, `worker_inductions`, `worker_assignments` —
+   already provisioned on `zaapmfdkgedqupfjtchl`).
+2. Copy Cards' `profiles` rows into the control-plane **`workers`** table
+   (one row per person — the global identity, NOT a tenant `staff` row).
+3. Copy Cards' `licences` rows into **`worker_credentials`** on the
+   control plane, attached to the worker.
+4. Copy Cards' Storage bucket (licence photos) into the control-plane
+   Storage bucket, repointing the signed-URL paths.
+5. For each tenant that already employs one of these workers (SKS today),
+   **project** the worker into that tenant's canonical as a `staff` row
+   (`role = self`) via the intake commit path.
+6. Repoint the Cards app's Supabase client to the control-plane project.
 7. Retest the whole Cards flow end-to-end.
 8. Inform any pilot users.
-9. Tear down the old project once everything is verified for a couple of weeks.
+9. Tear down the old Cards project once everything is verified for a
+   couple of weeks.
 
 ---
 
 ## Schema mapping (current → canonical)
 
-From Cards' STATUS.md:
+From Cards' STATUS.md, mapped to the worker-first model:
 
-| EQ Cards (today) | EQ Intake canonical |
-|---|---|
-| `profiles` | `staff` (a Cards user is a staff record where `role = self`) |
-| `licences` | (no direct canonical equivalent yet — likely `staff.licences[]` jsonb or a separate `licences` table linked by FK; called when Sprint 1 schema lands) |
-| `audit_log` | Subsumed by `eq_intake_row_audit` + `eq_intake_events` |
+| EQ Cards (today) | Lands in (control plane) | Then projected to (per-tenant) |
+|---|---|---|
+| `profiles` | `workers` (the global person) | `staff` (`role = self`) on engagement |
+| `licences` | `worker_credentials` (attached to worker) | reflected on the tenant `staff` record as needed |
+| inductions | `worker_inductions` | — (stays pool-side; tenants read via the pool) |
+| `audit_log` | Subsumed by `eq_intake_row_audit` + `eq_intake_events` | — |
+
+The person and their wallet (licences, inductions) live in the **pool**.
+The per-tenant `staff` row is a projection created when a tenant engages
+them — it carries employment-specific fields, not the identity itself.
 
 ---
 
@@ -121,3 +161,5 @@ The internal cross-product story (share-tokens, redeem endpoint, destination reg
 ## Status log
 
 - **2026-04-29:** Path A decided. Migration deferred until end of Sprint 3 / start of Phase 2. Cards stays on its own Supabase project in pause-and-polish mode. This doc created.
+- **2026-05-30:** Worker-pool tables (`workers`, `worker_credentials`, `worker_inductions`, `worker_assignments`) live on the control plane (`zaapmfdkgedqupfjtchl`); Cards approve→sync backend deployed, two bugs fixed. Flutter app still on the old `profiles` model — open gap.
+- **2026-05-31:** Doc refined to the **worker-first** model. The original "copy `profiles` → tenant `staff`" framing was wrong: a Cards person lands in the control-plane **worker pool** first, and is *projected* into a tenant's `staff` only on engagement. Schema mapping + migration steps rewritten to match. Cutover still blocked on the billing/provisioning call; Cards remains on `hshvnjzczdytfiklhojz`.
