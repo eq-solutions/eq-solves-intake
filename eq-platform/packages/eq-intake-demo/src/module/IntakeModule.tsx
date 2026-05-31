@@ -21,8 +21,11 @@
 
 import { useMemo, useState, type JSX } from "react";
 import { type ParsedSheet } from "@eq/intake";
-import { useIntakeBundle, roleLabel, type IntakeBundle } from "../shared/intake-bundle.js";
+import { useIntakeBundle, roleLabel, ROLE_REGISTRY, type IntakeBundle } from "../shared/intake-bundle.js";
 import { IntakeDropZone } from "../shared/IntakeDropZone.js";
+import { MappingPreviewPanel } from "../shared/MappingPreviewPanel.js";
+import { RowsDisclosure } from "../shared/RowsDisclosure.js";
+import { entityLabel } from "../shared/entity-label.js";
 import { QUICK_DESTINATIONS, encodeCsv, type QuickDestination } from "../quick-export/destinations.js";
 import {
   commitBundleToCanonical,
@@ -569,7 +572,8 @@ function TemplateExportView({
 }
 
 // ============================================================================
-// COMMIT VIEW — Into EQ (canonical commit) + compact result summary.
+// COMMIT VIEW — Into EQ (canonical commit). Pre-commit mapping preview, then
+// the compact result summary plus flagged/rejected per-row drill-downs.
 // ============================================================================
 
 type CommitBundle = {
@@ -665,6 +669,11 @@ function CommitView({
         </div>
       )}
 
+      {/* Pre-commit: show how the dropped columns line up with EQ fields. */}
+      {!result && bundle.slots.some((s) => s.role !== "unknown" && s.sheet) && (
+        <MappingPreviewPanel slots={bundle.slots} registry={ROLE_REGISTRY} />
+      )}
+
       <button
         type="button"
         onClick={commit}
@@ -691,31 +700,42 @@ function CommitView({
       </button>
 
       {result && <CommitSummary result={result} />}
+
+      {/* Post-commit: per-row drill-downs for anything that needs eyes. */}
+      {result?.perEntity.some((r) => r.flaggedRows.length > 0) && (
+        <RowsDisclosure
+          label="Show rows that saved but need checking"
+          hint="These rows are in EQ, but something caught our eye. Review each one before relying on it."
+          accentColor="#d97706"
+          hintColor="#78350f"
+          perEntity={result.perEntity.map((r) => ({
+            entity: r.entity,
+            rows: r.flaggedRows,
+          }))}
+        />
+      )}
+
+      {result?.perEntity.some((r) => r.rejectedRows.length > 0) && (
+        <RowsDisclosure
+          label="Show rows that couldn't save — and why"
+          accentColor="#1A1A2E"
+          showDownload
+          downloadFilename="eq-rejected-rows.csv"
+          perEntity={result.perEntity.map((r) => ({
+            entity: r.entity,
+            rows: r.rejectedRows,
+          }))}
+        />
+      )}
     </div>
   );
 }
 
-function entityLabel(entity: string): string {
-  switch (entity) {
-    case "customer":
-      return "Customers";
-    case "site":
-      return "Sites";
-    case "contact":
-      return "Contacts";
-    case "staff":
-      return "Staff";
-    case "licence":
-      return "Licences";
-    default:
-      return entity;
-  }
-}
-
 /**
- * Compact post-save summary. The richer per-row disclosure UI (flagged /
- * rejected drill-downs, mapping preview) still lives in CanonicalCommitSection
- * and is a follow-up to port here — see the wire-in memory.
+ * Compact post-save summary — the at-a-glance counts and per-entity chips.
+ * The richer per-row UI (flagged / rejected drill-downs via RowsDisclosure,
+ * and the pre-commit MappingPreviewPanel) now renders alongside this in
+ * CommitView, sharing the components under src/shared/.
  */
 function CommitSummary({ result }: { result: CommitResult }): JSX.Element {
   const saved = result.perEntity.reduce((n, r) => n + r.committedCount, 0);
