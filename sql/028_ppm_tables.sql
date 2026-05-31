@@ -29,7 +29,7 @@ ALTER TABLE app_data.assets
   ADD COLUMN IF NOT EXISTS defects_summary      varchar(500),
   ADD COLUMN IF NOT EXISTS client_classification jsonb;
 
-DROP CONSTRAINT IF EXISTS assets_condition_check ON app_data.assets;
+ALTER TABLE app_data.assets DROP CONSTRAINT IF EXISTS assets_condition_check;
 ALTER TABLE app_data.assets
   ADD CONSTRAINT assets_condition_check
     CHECK (condition IN ('good','fair','poor','needs_replacement','unknown'));
