@@ -73,7 +73,7 @@ export const serviceVisitScheduleProfile: DeriveProfile = {
   description:
     'Produces a monthly service visit schedule from canonical service_visit rows. ' +
     'One row per visit, sorted by date then status (active visits first). ' +
-    'For coordinators and crew — shows what's booked, where, and who's going.',
+    "For coordinators and crew — shows what's booked, where, and who's going.",
   inputShape: 'canonical',
 
   derive(rows: Record<string, unknown>[]): DeriveOutput {
