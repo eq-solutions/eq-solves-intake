@@ -3,7 +3,7 @@
 > **For anyone (or any AI session) joining this project cold.** Read this
 > first. The deeper docs are linked at the end.
 >
-> Last updated 2026-05-24.
+> Last updated 2026-05-31.
 
 ---
 
@@ -54,7 +54,10 @@ inside it:
 Modules:
 - **EQ Cards** — mobile capture (inductions, prestarts, SWMS). Lives in a
   separate repo (`C:\Projects\eq-cards`), already in production for SKS
-  on its own Supabase. Phase 4: migrates onto canonical.
+  on its own Supabase (`hshvnjzczdytfiklhojz`). Onboards a *person*, who
+  lands in the **worker pool on the control plane** — not directly in a
+  tenant. Phase 4: migrate onto canonical (worker-first — see below + the
+  bridge doc).
 - **EQ Field** — scheduling / staff. SKS Field LIVE is in production on
   its own Supabase. Phase 3: migrates onto canonical.
 - **EQ Service** — work-order management. Built for SKS, going live in
@@ -69,11 +72,26 @@ Modules:
 
 ---
 
-## Tenancy model — per-tenant Supabase
+## Tenancy model — control plane + per-tenant Supabase
 
-**Each EQ customer gets their own Supabase project.** Physical data
-isolation, not RLS-shared. Decision logged 2026-05-18 after
-walking through trade-offs.
+Two layers (refined 2026-05-31 — earlier versions of this doc described
+only the per-tenant layer):
+
+**1. Control plane — one shared project** (`eq-canonical-internal` /
+`zaapmfdkgedqupfjtchl`). Holds *identity*, not customer data: the **worker
+pool** (`workers`, `worker_credentials`, `worker_inductions`,
+`worker_assignments`) plus the tenant registry. A person onboarded via EQ
+Cards exists here *once*, whether or not any tenant has hired them.
+Identity is global; employment is per-tenant. *(Live caveat: that project
+today also carries a transitional internal `app_data` canonical — target
+is a thin control plane. See `EQ-TENANCY-MODEL.md`.)*
+
+**2. Per-tenant canonical — one Supabase project per customer.** Physical
+data isolation, not RLS-shared. Decision logged 2026-05-18 after walking
+through trade-offs. When a tenant engages a worker, that worker is
+**projected** into the tenant's canonical as a `staff` row (`role = self`).
+One worker → N tenant projections, no re-import — that's how "capture once
+in Cards, exist everywhere" works.
 
 Why per-tenant won:
 - EQ touches payroll / compliance / sensitive operational data — physical

@@ -63,6 +63,17 @@ export const MODULE_REGISTRY: ModuleDefinition[] = [
       import("./QuotesStub.js").then((m) => ({ default: m.QuotesStub })),
     ),
   },
+  {
+    id: "format",
+    label: "EQ Format",
+    path: "/format",
+    // Sheet wrangler — map, validate, derive. Embeds the eq-format-ui dev
+    // server via iframe. Start it with `pnpm -F @eq/format-ui dev`.
+    // VITE_FORMAT_UI_URL controls the target (default: http://localhost:5174).
+    component: lazy(() =>
+      import("./FormatModuleHost.js").then((m) => ({ default: m.FormatModuleHost })),
+    ),
+  },
 ];
 
 /** Modules the tenant has enabled, in nav order. */

@@ -13,8 +13,24 @@ decision from here on answers to this doc.
 ## The model in one diagram
 
 ```
+┌───────────────────────────────────────────────────────────────────┐
+│  CONTROL PLANE — ONE shared project (eq-canonical-internal)         │
+│  ref: zaapmfdkgedqupfjtchl                                          │
+│                                                                     │
+│  Worker pool — global identity, tenant-independent:                 │
+│    workers · worker_credentials · worker_inductions ·               │
+│    worker_assignments                                               │
+│  Tenant registry — which tenants exist, which modules each runs     │
+│                                                                     │
+│  A person exists here ONCE, whether or not any tenant has           │
+│  engaged them. Fed by EQ Cards. This is the identity layer.         │
+└───────────────┬─────────────────────────────────────────────────────┘
+                │  on engagement, a worker is PROJECTED into a
+                │  tenant's canonical as a staff row (role = self)
+                ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │         ONE canonical Supabase project — PER TENANT             │
+│         (e.g. sks-canonical · ehowgjardagevnrluult)             │
 │                                                                 │
 │  Platform tables:                                               │
 │    eq_schema_registry · eq_intake_events · eq_intake_row_audit  │
@@ -38,8 +54,57 @@ decision from here on answers to this doc.
       All share @eq/schemas + @eq/validation + @eq/confirm-ui.
 ```
 
+**Two layers, two jobs.** The **control plane** is one shared project
+that holds *identity* — the worker pool and the tenant registry. The
+**per-tenant canonical** is one project per customer that holds *their
+data*. A worker exists once in the pool; they become a `staff` row in a
+tenant's canonical only when that tenant engages them.
+
 **Each customer (SKS, future customers) gets their own Supabase project.**
 That project is THEIR canonical layer. Every EQ module they use points at it.
+
+## The control plane (worker pool + tenant registry)
+
+> Decision confirmed 2026-05-31. Earlier versions of this doc described
+> only the per-tenant layer; the control plane was implicit. It is now
+> explicit because EQ Cards onboards *people*, and a person is not the
+> same thing as an employee of a tenant.
+
+**Identity is global; employment is per-tenant.** A sparkie who does one
+induction through EQ Cards exists in the system whether or not anyone has
+hired them. That person lives in the **worker pool** on the control-plane
+project (`eq-canonical-internal` / `zaapmfdkgedqupfjtchl`):
+
+- `workers` — the person (one row, one identity)
+- `worker_credentials` — licences / tickets / cards
+- `worker_inductions` — inductions completed
+- `worker_assignments` — which tenants/sites they're engaged on
+
+When a tenant engages a worker, that worker is **projected into the
+tenant's canonical as a `staff` row** (`role = self`). The pool stays the
+source of truth for the person; the `staff` row is the tenant's view of
+their employment. One worker → N possible tenant `staff` projections, no
+re-import. This is what makes EQ's promise work: capture once in Cards,
+exist everywhere, no consent flow or token exchange between EQ surfaces.
+
+**Why the pool isn't just another per-tenant table.** A worker can move
+between subbies, do inductions for clients they don't work for yet, and
+carry their licence wallet across engagements. Pinning identity inside a
+single tenant's database would lose that — and would force a re-import
+every time the same person turns up at a second EQ customer.
+
+### Current live state (2026-05-31) — transitional
+
+The worker-pool tables are live and empty on `zaapmfdkgedqupfjtchl` (RLS
+on). **Caveat for anyone reading the DB directly:** that same project
+*also* currently carries a full `app_data` canonical (staff, customers,
+sites, assets, quotes, leave, tenders, …) and an `app_data.tenant_app_configs`
+table. That `app_data` canonical is **internal/dev only and transitional** —
+the target is a *thin* control plane (worker pool + tenant registry only),
+with real customer data living in per-tenant projects like `sks-canonical`.
+There is no dedicated `tenants` / `module_entitlements` registry table yet;
+`tenant_app_configs` is the only tenant-aware seam today. Don't treat the
+control plane's `app_data` as a real tenant canonical — it isn't one.
 
 ## Why per-tenant Supabase (not one shared DB with RLS)
 
@@ -242,8 +307,13 @@ Planned event, not an emergency. Approximate steps:
 
 ### Phase 4 — EQ Cards cutover (later, per EQ-CARDS-INTAKE-BRIDGE.md)
 
-Path A from the bridge doc: Cards data eventually migrates onto SKS
-canonical. Same shape as Phase 3, different module.
+Path A from the bridge doc, in its current (worker-first) form: Cards
+writes people into the **worker pool on the control plane**, and engaged
+workers are projected into a tenant's canonical as `staff` rows. This is
+NOT a straight copy of Cards `profiles` into a tenant's `staff` table —
+the person lands in the global pool first. Cards runs on its own Supabase
+(`hshvnjzczdytfiklhojz`) until cutover. See EQ-CARDS-INTAKE-BRIDGE.md for
+the full mapping.
 
 ## What this means for future tenants
 

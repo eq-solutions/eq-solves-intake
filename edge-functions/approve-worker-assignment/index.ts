@@ -24,8 +24,9 @@ Deno.serve(async (req: Request) => {
   const { data: { user }, error: authError } = await employerUserClient.auth.getUser()
   if (authError || !user) return new Response('Unauthorized', { status: 401 })
 
-  const tenantId = user.user_metadata?.tenant_id as string | undefined
-  if (!tenantId) return new Response('tenant_id missing from user metadata', { status: 400 })
+  const appMeta = user.app_metadata as { tenant_id?: string } | undefined
+  const tenantId = appMeta?.tenant_id
+  if (!tenantId) return new Response('tenant_id missing from app_metadata', { status: 400 })
 
   // Parse request body.
   let body: { assignment_id?: string }
@@ -34,26 +35,38 @@ Deno.serve(async (req: Request) => {
   const { assignment_id } = body
   if (!assignment_id) return new Response('assignment_id required', { status: 400 })
 
-  // ── Step 1: approve the assignment in the Cards worker pool ──────────────
   const cardsAdmin = createClient(CARDS_URL, CARDS_SERVICE_ROLE)
 
-  const { data: assignment, error: approveError } = await cardsAdmin
+  // ── Step 1a: fetch + verify tenant ownership BEFORE any state change ─────
+  // Approve-then-check is a TOCTOU: the approval fires before we confirm the
+  // assignment belongs to this caller. Fetch first, verify, then approve.
+  const { data: pendingAssignment, error: fetchError } = await cardsAdmin
+    .from('worker_assignments')
+    .select('tenant_id, worker_id')
+    .eq('id', assignment_id)
+    .single()
+
+  if (fetchError || !pendingAssignment) {
+    return Response.json({ error: 'assignment not found' }, { status: 404 })
+  }
+
+  if (pendingAssignment.tenant_id !== tenantId) {
+    return new Response('assignment does not belong to this tenant', { status: 403 })
+  }
+
+  // ── Step 1b: approve (tenant ownership confirmed above) ──────────────────
+  const { error: approveError } = await cardsAdmin
     .rpc('approve_worker_assignment', { p_assignment_id: assignment_id })
 
   if (approveError) {
     return Response.json({ error: approveError.message }, { status: 422 })
   }
 
-  // Confirm the assignment actually belongs to this tenant.
-  if (assignment.tenant_id !== tenantId) {
-    return new Response('assignment does not belong to this tenant', { status: 403 })
-  }
-
   // ── Step 2: fetch worker data from the Cards pool ────────────────────────
   const [workerRes, credentialsRes, inductionsRes] = await Promise.all([
-    cardsAdmin.from('workers').select('*').eq('id', assignment.worker_id).single(),
-    cardsAdmin.from('worker_credentials').select('*').eq('worker_id', assignment.worker_id).eq('status', 'active'),
-    cardsAdmin.from('worker_inductions').select('*').eq('worker_id', assignment.worker_id).eq('tenant_id', tenantId),
+    cardsAdmin.from('workers').select('*').eq('id', pendingAssignment.worker_id).single(),
+    cardsAdmin.from('worker_credentials').select('*').eq('worker_id', pendingAssignment.worker_id).eq('status', 'active'),
+    cardsAdmin.from('worker_inductions').select('*').eq('worker_id', pendingAssignment.worker_id).eq('tenant_id', tenantId),
   ])
 
   if (workerRes.error || !workerRes.data) {
