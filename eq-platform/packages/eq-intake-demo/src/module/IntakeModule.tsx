@@ -12,8 +12,9 @@
  *
  * This replaces the old three-stacked-sections layout (QuickExportSection +
  * RollupDropZone + CanonicalCommitSection), which made the bookkeeper drop
- * files once per flow. Those components still exist for the standalone
- * playground; the shell mount now uses this consolidated flow.
+ * files once per flow. QuickExportSection and CanonicalCommitSection have
+ * been removed; their reusable pieces now live in src/shared/. RollupDropZone
+ * survives for the standalone playground (App.tsx) and the package barrel.
  *
  * Routes log to `eq-intake:routes` in localStorage by default. Host can
  * override via the onDestinationChange prop.
