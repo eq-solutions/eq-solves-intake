@@ -176,9 +176,9 @@ A snapshot decays in days. Specific claims like "12 schemas" or "293 tests passi
 
 These are *starting points, not finished things*. Real running will reveal flaws. No "production-ready" claims for any of it.
 
-**Open: canonical Supabase unprovisioned.** `sks-canonical-eq` (Sydney) is the first tenant to provision — Week 1 in the current plan. Billing approval from Royce unlocks it. Field LIVE + Cards stay on their existing Supabases until planned cutovers in later phases.
+**Canonical Supabase: provisioned and live.** `sks-canonical` (`ehowgjardagevnrluult`, Sydney) is the SKS production tenant data plane — populated (125 customers, 331 contacts, 50 staff, 4,808 assets, PPM tables + RPCs) and migrations 001–035 applied. Auth + tenant routing live on the control plane `eq-canonical` (see the tenancy doc's "Project roles — AUDITED" table). Field LIVE + Cards still sit on their own Supabases until their planned cutovers.
 
-**Where to look for what's next:** `PLAN-2026-05-24.md` carries the live 90-day plan. The short version: fix C1-C2-C3 silent drops, provision `sks-canonical-eq`, build the Equinix → SimPRO reshape profile, wire Cards onto canonical. See the full 12-week sequence there.
+**Where to look for what's next:** `PLAN-2026-05-24.md` carries the live 90-day plan. The short version: fix the C1-C2-C3 silent drops, build the Equinix → SimPRO reshape profile, wire Cards onto canonical, and ship the Intake one-screen redesign (see `INTAKE-REDESIGN-SPEC.md` + `demos/intake-one-screen/`). See the full 12-week sequence there.
 
 ---
 

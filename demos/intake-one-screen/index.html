@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EQ Intake — Bring something in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<!-- Non-blocking: the page renders instantly on the system stack and Plus Jakarta
+     Sans swaps in once the network resolves, so it never waits on the font. -->
+<link rel="stylesheet" media="print" onload="this.media='all'"
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" />
+<style>
+  :root {
+    --sky:#3DA8D8; --deep:#2986B4; --ice:#EAF5FB; --ink:#1A1A2E;
+    --amber:#F59E0B;
+    --paper:#F4F2EE; --card:#FFFFFF;
+    --line:#E7E4DD; --line-2:#EFEDE7;
+    --muted:#6B6A66; --muted-2:#9A988F;
+    --side:#0C1018; --side-2:#161C28; --side-line:#222A38; --side-muted:#7E8AA0;
+    --good:#2FA37A; --warn:#C9722B;
+    --r:14px; --r-sm:10px;
+    font-synthesis:none;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; }
+  body {
+    font-family:"Plus Jakarta Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    color:var(--ink); background:var(--paper);
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  }
+  .app { display:grid; grid-template-columns:264px 1fr; min-height:100vh; }
+
+  /* ---------- sidebar ---------- */
+  .side { background:var(--side); color:#E7ECF5; padding:26px 20px; border-right:1px solid #05070b; display:flex; flex-direction:column; }
+  .brand { display:flex; align-items:center; gap:12px; font-weight:700; letter-spacing:.04em; }
+  .brand .logo { width:26px; height:26px; border-radius:7px; background:var(--sky); display:grid; place-items:center; color:#04121b; font-weight:800; font-size:13px; }
+  .brand .sep { color:#34405a; }
+  .brand .word { color:#AEB9CC; font-weight:600; font-size:14px; letter-spacing:.18em; }
+  .live { margin:22px 0 30px; display:inline-flex; align-items:center; gap:8px; align-self:flex-start; padding:6px 13px 6px 11px; border:1px solid #1f6f95; border-radius:999px; color:#bfe6f7; font-size:12px; font-weight:600; letter-spacing:.06em; }
+  .live .dot { width:8px; height:8px; border-radius:50%; background:var(--sky); position:relative; }
+  .live .dot::after { content:""; position:absolute; inset:-4px; border-radius:50%; border:2px solid var(--sky); opacity:.5; animation:pulse 2s ease-out infinite; }
+  @keyframes pulse { 0%{ transform:scale(.6); opacity:.6 } 100%{ transform:scale(1.5); opacity:0 } }
+  .nav-label { color:var(--side-muted); font-size:11px; letter-spacing:.18em; font-weight:600; margin:6px 4px 12px; }
+  .nav-item { display:flex; align-items:center; gap:13px; padding:11px 12px; border-radius:10px; color:#C7D0E0; cursor:pointer; text-decoration:none; }
+  .nav-item:hover { background:var(--side-2); }
+  .nav-item .ic { width:30px; height:30px; border-radius:8px; background:var(--side-2); display:grid; place-items:center; color:#9fb0cc; }
+  .nav-item .nm { flex:1; font-weight:600; font-size:14.5px; }
+  .nav-item .ct { color:var(--sky); font-weight:700; font-size:14px; }
+  .nav-item .beta { font-size:9px; letter-spacing:.12em; color:#8b96ab; border:1px solid #313c52; border-radius:5px; padding:2px 5px; margin-left:2px; }
+  .nav-item .warn-dot { width:7px; height:7px; border-radius:50%; background:var(--amber); margin-left:6px; }
+  .nav-item .ar { color:#56617a; }
+  .side-foot { margin-top:auto; padding-top:18px; border-top:1px solid var(--side-line); display:flex; align-items:center; gap:11px; color:#aeb8c9; }
+  .side-foot .av { width:34px; height:34px; border-radius:9px; background:#243043; display:grid; place-items:center; font-weight:700; font-size:13px; color:#cdd7e8; }
+  .side-foot .who { font-weight:700; font-size:13.5px; color:#dde4ef; }
+  .side-foot .role { font-size:11px; letter-spacing:.08em; color:var(--side-muted); }
+
+  /* ---------- main ---------- */
+  .main { padding:64px clamp(28px,6vw,96px); }
+  .stage { max-width:680px; }
+  h1 { font-size:48px; line-height:1.02; font-weight:700; letter-spacing:-.02em; margin:0 0 14px; color:var(--ink); }
+  h1 .soft { color:#3a3a52; }
+  .lede { font-size:18px; color:var(--muted); margin:0 0 36px; font-weight:400; }
+
+  /* dropzone */
+  .drop { border:1.5px dashed #b9d9ec; background:var(--ice); border-radius:20px; padding:44px; text-align:center; cursor:pointer; transition:border-color .15s, background .15s, transform .08s; }
+  .drop:hover { border-color:var(--sky); }
+  .drop.drag { border-color:var(--sky); background:#e2f1fa; }
+  .drop .upic { width:62px; height:62px; border-radius:16px; background:#fff; border:1px solid #dbeaf4; display:grid; place-items:center; margin:0 auto 18px; color:var(--deep); }
+  .drop .big { font-size:20px; font-weight:700; color:var(--ink); }
+  .drop .big a { color:var(--sky); text-decoration:none; }
+  .drop .big a:hover { text-decoration:underline; }
+  .drop .hint { color:var(--muted-2); font-size:14.5px; margin-top:7px; }
+
+  .rule { height:1px; background:var(--line); margin:34px 0 22px; border:0; }
+  .samples-label { color:var(--muted-2); font-size:12px; letter-spacing:.13em; font-weight:600; margin-bottom:14px; }
+  .samples { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+  .sample { display:flex; gap:12px; align-items:center; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 15px; cursor:pointer; transition:border-color .12s, transform .08s; }
+  .sample:hover { border-color:var(--sky); transform:translateY(-1px); }
+  .sample .fic { width:30px; height:34px; border-radius:6px; border:1px solid #dfe7ee; display:grid; place-items:center; color:var(--deep); flex-shrink:0; }
+  .sample .fn { font-weight:700; font-size:14px; }
+  .sample .meta { font-size:11px; letter-spacing:.07em; color:var(--muted-2); font-weight:600; margin-top:3px; }
+
+  /* working / detected card */
+  .filechip { display:inline-flex; align-items:center; gap:11px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:13px 16px; font-weight:700; }
+  .filechip .fic { color:var(--deep); display:grid; place-items:center; }
+  .filechip .x { margin-left:6px; color:var(--muted-2); cursor:pointer; border:0; background:none; font-size:16px; line-height:1; padding:2px; }
+  .filechip .x:hover { color:var(--ink); }
+
+  .reading { display:flex; align-items:center; gap:13px; color:var(--muted); font-size:16px; margin-top:24px; }
+  .spin { width:18px; height:18px; border-radius:50%; border:2.5px solid #d8e6f0; border-top-color:var(--sky); animation:spin .7s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg) } }
+
+  .detect { margin-top:26px; font-size:19px; display:flex; align-items:center; gap:11px; flex-wrap:wrap; }
+  .detect .tick { width:24px; height:24px; border-radius:50%; background:var(--good); color:#fff; display:grid; place-items:center; flex-shrink:0; }
+  .detect b { font-weight:800; }
+  .detect .change { color:var(--sky); font-size:14px; font-weight:600; cursor:pointer; margin-left:4px; }
+  .detect .change:hover { text-decoration:underline; }
+  .detect.ask .tick { background:#E7E2D6; color:var(--warn); }
+  .pick-inline { display:inline-flex; gap:8px; margin-left:4px; }
+  .pick-inline button { border:1px solid var(--line); background:#fff; border-radius:9px; padding:7px 13px; font:inherit; font-size:14px; font-weight:700; cursor:pointer; }
+  .pick-inline button:hover { border-color:var(--sky); }
+  .typesel { font:inherit; font-size:15px; font-weight:600; padding:9px 12px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+
+  .where { margin-top:30px; }
+  .where .q { font-size:17px; font-weight:700; margin-bottom:13px; }
+  .dests { display:flex; flex-wrap:wrap; gap:10px; }
+  .dest { border:1px solid var(--line); background:#fff; border-radius:11px; padding:11px 17px; font-weight:700; font-size:14.5px; cursor:pointer; color:var(--ink); display:flex; align-items:center; gap:9px; transition:border-color .12s; }
+  .dest .dt { width:7px; height:7px; border-radius:50%; background:#cdd5dd; }
+  .dest:hover { border-color:var(--sky); }
+  .dest.on { background:var(--sky); border-color:var(--sky); color:#fff; }
+  .dest.on .dt { background:#fff; }
+
+  .go { margin-top:30px; }
+  .btn { font:inherit; font-weight:700; font-size:16px; border:0; border-radius:12px; padding:15px 28px; cursor:pointer; }
+  .btn.primary { background:var(--sky); color:#fff; }
+  .btn.primary:hover { background:var(--deep); }
+  .btn.primary:disabled { background:#cfd6dc; color:#fff; cursor:default; }
+  .btn.ghost { background:none; border:1px solid var(--line); color:var(--ink); }
+  .btn.ghost:hover { border-color:var(--sky); }
+
+  /* result */
+  .result .head { display:flex; align-items:center; gap:13px; font-size:24px; font-weight:800; letter-spacing:-.01em; }
+  .result .head .tick { width:32px; height:32px; border-radius:50%; background:var(--good); color:#fff; display:grid; place-items:center; }
+  .result .sub { color:var(--muted); margin:12px 0 26px; font-size:15.5px; }
+  .result .sub a { color:var(--sky); text-decoration:none; }
+  .result .actions { display:flex; gap:12px; flex-wrap:wrap; }
+  .flagline { margin-top:18px; background:#FBF4E9; border:1px solid #F0E2C8; color:#8a5a1c; border-radius:12px; padding:13px 16px; font-weight:600; display:flex; align-items:center; gap:10px; cursor:pointer; }
+  .flagline:hover { border-color:var(--warn); }
+
+  .reviewbox { margin-top:18px; border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+  .reviewbox .rh { background:#FBF4E9; padding:12px 16px; font-weight:700; color:#8a5a1c; border-bottom:1px solid #F0E2C8; }
+  .reviewrow { display:flex; align-items:center; gap:14px; padding:13px 16px; border-bottom:1px solid var(--line-2); }
+  .reviewrow:last-child { border-bottom:0; }
+  .reviewrow .nm { font-weight:700; min-width:150px; }
+  .reviewrow .why { color:var(--warn); font-size:13.5px; flex:1; }
+  .reviewrow .act { display:flex; gap:8px; }
+  .reviewrow .mini { font:inherit; font-size:13px; font-weight:700; border:1px solid var(--line); background:#fff; border-radius:8px; padding:6px 12px; cursor:pointer; }
+  .reviewrow .mini:hover { border-color:var(--sky); }
+
+  .preview { margin-top:18px; border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#fff; }
+  .preview .ph { padding:11px 16px; font-size:12px; letter-spacing:.08em; font-weight:700; color:var(--muted-2); border-bottom:1px solid var(--line-2); display:flex; justify-content:space-between; }
+  table.pv { width:100%; border-collapse:collapse; font-size:13px; }
+  table.pv th { text-align:left; padding:9px 14px; color:var(--muted); font-weight:700; font-size:11px; letter-spacing:.05em; border-bottom:1px solid var(--line-2); }
+  table.pv td { padding:9px 14px; border-bottom:1px solid var(--line-2); }
+  table.pv tr:last-child td { border-bottom:0; }
+  td .pill { font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; }
+  td .pill.over { background:#FBE9E7; color:#B23A2E; }
+  td .pill.ok { background:#E6F4EE; color:#1d7a55; }
+
+  .hidden { display:none !important; }
+  .fade { animation:fade .25s ease both; }
+  @keyframes fade { from{ opacity:0; transform:translateY(6px) } to{ opacity:1; transform:none } }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ===================== SIDEBAR ===================== -->
+  <aside class="side">
+    <div class="brand"><span class="logo">eq</span><span class="sep">|</span><span class="word">SHELL</span></div>
+    <span class="live"><span class="dot"></span> LIVE</span>
+    <div class="nav-label">LAUNCH</div>
+    <a class="nav-item"><span class="ic">👷</span><span class="nm">EQ Field</span><span class="ct">04</span><span class="ar">→</span></a>
+    <a class="nav-item"><span class="ic">🔧</span><span class="nm">EQ Service</span><span class="ct">02</span><span class="warn-dot"></span><span class="ar">→</span></a>
+    <a class="nav-item"><span class="ic">📄</span><span class="nm">EQ Quotes</span><span class="ct">01</span><span class="ar">→</span></a>
+    <a class="nav-item"><span class="ic">🪪</span><span class="nm">EQ Cards</span><span class="beta">BETA</span><span class="ct">12</span><span class="ar">→</span></a>
+    <div class="side-foot">
+      <span class="av">RM</span>
+      <div><div class="who">Royce Milmlow</div><div class="role">OPS · SKS</div></div>
+    </div>
+  </aside>
+
+  <!-- ===================== MAIN ===================== -->
+  <main class="main">
+    <div class="stage">
+      <h1>Bring something <span class="soft">in</span></h1>
+      <p class="lede">Drop a file and tell us where it goes. We&rsquo;ll do the messy bit.</p>
+
+      <!-- INPUT -->
+      <section id="input">
+        <div class="drop" id="drop">
+          <div class="upic">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M5 16v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></svg>
+          </div>
+          <div class="big">Drop a file here, or <a id="pick">click to pick</a></div>
+          <div class="hint">CSV, Excel, PDF, or a photo of a list</div>
+          <input id="file" type="file" class="hidden" accept=".csv,.xlsx,.xls,.pdf,.png,.jpg,.jpeg" />
+        </div>
+
+        <hr class="rule" />
+        <div class="samples-label">NO FILE HANDY? TRY A SAMPLE</div>
+        <div class="samples">
+          <div class="sample" data-sample="plants">
+            <span class="fic">📄</span>
+            <div><div class="fn">plants.csv</div><div class="meta">CLEAN · 39 ROWS</div></div>
+          </div>
+          <div class="sample" data-sample="staff">
+            <span class="fic">📄</span>
+            <div><div class="fn">staff-list.csv</div><div class="meta">CLOSE CALL · 3 TO REVIEW</div></div>
+          </div>
+          <div class="sample" data-sample="notes">
+            <span class="fic">📄</span>
+            <div><div class="fn">site-notes.pdf</div><div class="meta">UNSURE · WE ASK</div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- WORKING / DETECTED -->
+      <section id="work" class="hidden">
+        <span class="filechip"><span class="fic">📄</span><span id="fname">file.csv</span><button class="x" id="clear">✕</button></span>
+
+        <div class="reading hidden" id="reading"><span class="spin"></span><span id="readinglabel">Reading…</span></div>
+
+        <div id="detected" class="hidden">
+          <div class="detect" id="detectline"></div>
+
+          <div class="where">
+            <div class="q">Where&rsquo;s it going?</div>
+            <div class="dests" id="dests"></div>
+          </div>
+
+          <div class="go">
+            <button class="btn primary" id="gobtn" disabled>Save into EQ</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- RESULT -->
+      <section id="result" class="result hidden"></section>
+    </div>
+  </main>
+</div>
+
+<script>
+/* ============================================================
+   EQ Intake — one screen. Real parse + detect + map + export.
+   Self-contained; no build step. Mirrors the canonical engine
+   (eq-intake classify + plant-register adapter + format-ui).
+   ============================================================ */
+
+/* ---------- tiny quoted-CSV parser ---------- */
+function parseCsv(text){
+  const rows=[]; let f="",row=[],q=false;
+  for(let i=0;i<text.length;i++){const c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){f+='"';i++;} else q=false; } else f+=c; }
+    else if(c==='"') q=true;
+    else if(c===',' ){ row.push(f); f=""; }
+    else if(c==='\n'){ row.push(f); rows.push(row); row=[]; f=""; }
+    else if(c!=='\r') f+=c;
+  }
+  if(f!==""||row.length){ row.push(f); rows.push(row); }
+  const header=(rows.shift()||[]).map(h=>h.trim());
+  const data=rows.filter(r=>r.some(x=>x.trim()!=="")).map(r=>{
+    const o={}; header.forEach((h,i)=>o[h]= (r[i]??"").trim()); return o;
+  });
+  return {header,rows:data};
+}
+
+/* ---------- AU date ---------- */
+function auDate(raw){const s=(raw||"").trim(); if(!s)return null;
+  const m=s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/); if(!m)return null;
+  let d=+m[1],mo=+m[2],y=+m[3]; if(y<100)y=y<50?2000+y:1900+y;
+  if(mo<1||mo>12||d<1||d>31)return null;
+  return `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+}
+
+/* ---------- detection: score headers vs known EQ list types ---------- */
+const TYPES=[
+  {key:'plant_item', label:'Plant & equipment', dest:'eq',
+   sig:['name','checked out to','next service','item number','assigned to','condition rating','serial number','date issued','serial','calibration']},
+  {key:'staff', label:'Staff', dest:'eq',
+   sig:['first name','last name','surname','employee','employment type','trade','start date','payroll','mobile','role']},
+  {key:'contact', label:'Contacts', dest:'out',
+   sig:['contact','first name','last name','email','phone','mobile','company','position','role']},
+  {key:'customer', label:'Customers', dest:'eq',
+   sig:['customer','company','account','abn','billing','client','trading name']},
+  {key:'site', label:'Sites', dest:'eq',
+   sig:['site','address','suburb','postcode','site code','location','region']},
+];
+function norm(s){return s.trim().toLowerCase();}
+function classify(header){
+  const H=header.map(norm);
+  const scored=TYPES.map(t=>{
+    let hit=0; for(const s of t.sig){ if(H.some(h=>h===s||h.includes(s)||s.includes(h))) hit++; }
+    return {t, score: hit / Math.max(4,t.sig.length*0.6)}; // normalised-ish
+  }).sort((a,b)=>b.score-a.score);
+  const top=scored[0], second=scored[1];
+  let tier='confident';
+  if(top.score<0.34) tier='unsure';
+  else if(second && (top.score-second.score)<0.16 && second.score>0.4) tier='close';
+  return {tier, top:top.t, second:second?second.t:null, scored};
+}
+
+/* ---------- plant mapping (for Into-EQ preview) ---------- */
+function classifyPlantType(name){const n=name.toLowerCase();
+  if(/\bpat\b|appliance test|prime test|pac\d/.test(n))return'pat_tester';
+  if(/megger|\bmit\s?\d|insulation/.test(n))return'megger';
+  if(/multifunction|multi function|insta?ltest|metrel|aegis/.test(n))return'multifunction_tester';
+  if(/micro ?ohm|ohm[em]+eter|ohmmeter/.test(n))return'micro_ohmmeter';
+  if(/ductor|\bmom\b/.test(n))return'ductor';
+  if(/torque/.test(n))return'torque_wrench';
+  if(/load recorder/.test(n))return'load_recorder';
+  if(/thermal|flir|e8xt/.test(n))return'thermal_imager';
+  if(/clamp/.test(n))return'clamp_meter'; if(/test kit/.test(n))return'test_kit';
+  if(/interface/.test(n))return'interface'; return null;}
+function mapPlant(rows){
+  const AS_OF='2026-05-30';
+  return rows.map(r=>{
+    const co=(r['Checked Out To']||'').trim(); let holder=null,coAt=null;
+    if(co && !/^not checked out$/i.test(co)){ const m=co.match(/^(.*?)\s+at\s+(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4})$/i);
+      if(m){holder=m[1].trim();coAt=auDate(m[2]);} else holder=co; }
+    const cond=(r['Condition Rating']||'').trim().toLowerCase();
+    const condMap={good:'good',average:'fair',fair:'fair',poor:'poor'};
+    return {
+      name:r['Name']||'(unnamed)',
+      type:classifyPlantType(r['Name']||''),
+      serial:r['Serial Number']||null,
+      location:r['Assigned To']||null,
+      condition:condMap[cond]||'unknown',
+      checked_out_to:holder, checked_out_at:coAt,
+      next_service_due:auDate(r['Next Service']),
+      date_issued:auDate(r['Date Issued']),
+      _overdue:(()=>{const d=auDate(r['Next Service']);return d&&d<AS_OF;})()
+    };
+  });
+}
+
+/* ---------- export templates (real downloadable CSV) ---------- */
+function toOutlook(rows){
+  const head=['First Name','Last Name','E-mail Address','Mobile Phone','Company'];
+  const out=[head];
+  rows.forEach(r=>{
+    const name=(r['Name']||r['Contact']||r['contact']||'').trim();
+    const [fn,...ln]=name.split(' ');
+    out.push([fn||'', ln.join(' '), r['Email']||r['email']||'', r['Mobile']||r['Phone']||r['phone']||'', r['Company']||r['company']||'']);
+  });
+  return out.map(r=>r.map(c=>`"${(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+}
+function toXero(rows){
+  const head=['*ContactName','EmailAddress','POAddressLine1','PhoneNumber'];
+  const out=[head];
+  rows.forEach(r=>{ out.push([r['Name']||r['Company']||r['Customer']||r['contact']||'', r['Email']||r['email']||'', r['Address']||r['address']||'', r['Phone']||r['phone']||r['Mobile']||'']); });
+  return out.map(r=>r.map(c=>`"${(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+}
+function download(name,text){
+  const b=new Blob([text],{type:'text/csv'}); const u=URL.createObjectURL(b);
+  const a=document.createElement('a'); a.href=u; a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(u),2000);
+}
+
+/* ---------- destinations ---------- */
+const DESTS=[
+  {k:'eq',label:'Into EQ'},{k:'xero',label:'Xero'},{k:'myob',label:'MYOB'},
+  {k:'outlook',label:'Outlook'},{k:'sharepoint',label:'SharePoint'},{k:'other',label:'Other…'}
+];
+
+/* ---------- sample data ---------- */
+const SAMPLES={
+plants:{name:'plants.csv',text:`"Name","Checked Out To","Next Service","Item Number","Assigned To","Condition Rating","Serial Number","Date Issued"
+"1000V Torque Wrench (Red handle)","Not checked out","26/11/2025","655A-100","Equinix","Good","088329","28/11/2023"
+"10kV Megger MIT1025","Not checked out","12/05/2026",,"Office","Good","102558008","12/05/2025"
+"Flir E8xt","ROYCE MILMLOW at 30/01/2023","19/05/2026","639100287",,,"639100287","08/03/2021"
+"FLUKE 1662 Multi Function Tester","Blake SCIBERRAS at 19/07/2023","19/05/2026",,,,"6272214","19/07/2023"
+"FLUKE 1664 FC Multifunction Tester","Todd WILSON at 11/07/2023","19/05/2026",,,,"4298005",
+"FLUKE 1664 FC Multifunction Tester with Proving unit","BENJAMEN RITCHIE at 10/07/2024","04/07/2026",,"Global","Average","4970131","24/11/2020"
+"Load Recorder","JONATHAN RYAN at 13/06/2024",,"LR-2",,"Good","17049006",
+"Load Recorder","JOHN MCKEE at 29/11/2023","11/07/2025","LR-4","Office","Good","23013001-W",
+"Megger low ohmeter","Not checked out","29/05/2026",,,,"101197534",
+"Metrel InstalTest XD MI 3155","ROYCE MILMLOW at 15/01/2021","04/06/2026",,,"Good","20151466","10/01/2021"
+"MOM 3 - 300 Amp Ductor","Not checked out","17/07/2026",,"Office","Good","2500221",
+"Seaward PAT Tester (PAC3760 DL)","David BOYD at 12/05/2023","19/05/2026",,,"Good","MTC645449","25/11/2021"
+"Seaward Prime Test Pro","Not checked out","19/05/2026",,"Global","Good","33N-1007",
+"Wera Click Torque 10-50nM torque wrench","Luke WHEELER at 14/11/2023","22/11/2024",,,"Good","XD18180","14/11/2023"
+"Milwaukee 12V torque wrench","Not checked out","01/07/2023",,"Equinix","Good",,
+"AEMC 6255 Micro Ohmeter","Not checked out","19/05/2026",,,"Good","144704UFDV",
+"Schneider ComPact NSX test kit","Not checked out","03/11/2023",,,"Good",,
+"Fluke 233","Not checked out","19/05/2026",,,,"55760034",
+"Fluke T5-1000 with clamp","Not checked out","13/12/2023",,,,"42180294WS",
+"AEGIS Multifunction CZ20500","Not checked out","19/05/2026",,,,"R180013109",
+"AEGIS Multifunction CZ20500","Not checked out","19/05/2026",,,,"R180013024",
+"Aegis Multifunction Tester CZ20500","Not checked out","19/05/2026",,,,"R180013060",
+"AEGIS Multifunction UT595-AU","Not checked out","06/12/2025",,,"Good","222743684","16/11/2023"
+"Derancourt 6118 Torque wrench","Not checked out",,,,"Good","99995001","29/01/2024"
+"FLUKE 1662 Multi Function Tester","Collin Toohey at 22/07/2024","19/06/2027",,,,"6154018","01/09/2023"
+"FLUKE 1664 FC Multifunction Tester","Wayne ROWE at 11/07/2023","11/07/2024",,"Global","Good","5073092",
+"FLUKE 1664 FC Multifunction Tester","Not checked out",,,,,"5221159",
+"FLUKE 1664 FC Multifunction Tester with proving unit and probe extenders","Not checked out","06/12/2025",,"Office","Good","4298005",
+"Load Recorder","Not checked out","11/07/2025","LR-5","Office","Good","22032016-W",
+"Load Recorder","JONATHAN RYAN at 13/06/2024",,"LR-1",,,"17049004",
+"Load Recorder","Not checked out",,"LR-3",,,"17049005",
+"Metrel low ohmeter","Not checked out","29/05/2026",,,,"101197999",
+"Schneider ComPact NSX Test Kit","Not checked out",,,,"Good","3N230530022","24/03/2023"
+"Schneider USB Interface - Masterpact ACB","Not checked out",,"LV485510SP",,,"NUMBER2","12/04/2023"
+"Schneider USB Interface - Masterpact ACB","ROYCE MILMLOW at 16/02/2022",,"LV485510SP","Equinix","Good",,"16/02/2022"
+"Seaward Portable Appliance Tester","Not checked out","26/05/2023",,,,"24B-0069",
+"Wera Click Torque 10-50nM torque wrench","Not checked out","06/12/2025",,,,"VE20810",
+"Wera Click Torque 10-50nM torque wrench","Not checked out","01/11/2022",,"Equinix","Good","VH21376","17/01/2022"
+"Wera Click Torque 10-50nM torque wrench","Not checked out","06/12/2025",,,,"VE20984"`},
+staff:{name:'staff-list.csv',text:`"Name","Email","Mobile","Role","Start Date","Company"
+"James Patel","james.patel@example.com.au","0412 345 678","Electrician","01/03/2022","SKS Technologies"
+"Sarah O'Brien","sarah.obrien@example.com.au","0413 555 111","Site Contact","15/06/2023","Northshore"
+"Liam Nguyen","","0414 222 333","Apprentice","12/02/2024","SKS Technologies"
+"Mia Reyes","mia.reyes@example","0466 777 888","Foreman","03/09/2021","SKS Technologies"
+"Tom Walker","tom.walker@example.com.au","12345","Client PM","11/01/2021","Equinix"
+"Dana Kelly","dana.kelly@example.com.au","0455 999 000","Electrician","07/07/2022","SKS Technologies"`},
+notes:{name:'site-notes.pdf',pdf:true,text:`Site walk — Bondi Junction, 28/05. Switchroom 2 humid, RCD board flagged. Spoke to building manager re access Tue AM. Two ACBs due for service, photos on phone. Follow up with Sarah re stage 3.`}
+};
+
+/* ---------- state ---------- */
+let CUR=null; // {name,header,rows,cls,dest}
+const $=s=>document.querySelector(s);
+
+function reset(){
+  CUR=null;
+  $('#input').classList.remove('hidden');
+  $('#work').classList.add('hidden');
+  $('#result').classList.add('hidden');
+  $('#detected').classList.add('hidden');
+  $('#reading').classList.add('hidden');
+  $('#file').value='';
+}
+
+function ingest(name,text,isPdf){
+  $('#input').classList.add('hidden');
+  $('#result').classList.add('hidden');
+  $('#work').classList.remove('hidden');
+  $('#work').classList.add('fade');
+  $('#fname').textContent=name;
+  $('#detected').classList.add('hidden');
+  $('#reading').classList.remove('hidden');
+  $('#readinglabel').textContent = isPdf ? 'Reading… (this one takes a moment)' : 'Reading '+name+'…';
+  const delay = isPdf ? 1100 : 650;
+  setTimeout(()=>{
+    if(isPdf){ // freeform → unsure
+      CUR={name,header:[],rows:[],cls:{tier:'unsure',top:null}};
+      $('#reading').classList.add('hidden'); renderDetect(); return;
+    }
+    const {header,rows}=parseCsv(text);
+    const cls=classify(header);
+    CUR={name,header,rows,cls,dest:null};
+    $('#reading').classList.add('hidden');
+    renderDetect();
+  },delay);
+}
+
+function renderDetect(){
+  const d=$('#detectline'); const c=CUR.cls; d.className='detect';
+  if(c.tier==='confident'){
+    d.innerHTML=`<span class="tick">✓</span><span>Looks like <b>${c.top.label}</b> — ${CUR.rows.length} ${c.top.key==='plant_item'?'items':'rows'}</span><span class="change" data-act="change">Change</span>`;
+  } else if(c.tier==='close'){
+    d.innerHTML=`<span class="tick">✓</span><span>This could be <b>${c.top.label}</b> or <b>${c.second.label}</b>.</span>
+      <span class="pick-inline"><button data-pick="${c.top.key}">${c.top.label}</button><button data-pick="${c.second.key}">${c.second.label}</button></span>`;
+  } else {
+    d.className='detect ask';
+    d.innerHTML=`<span class="tick">?</span><span>We couldn&rsquo;t place this one — what is it?</span>
+      <select class="typesel" id="typesel">${TYPES.map(t=>`<option value="${t.key}">${t.label}</option>`).join('')}</select>
+      <span class="change" data-pick-sel="1">Use this</span>`;
+  }
+  $('#detected').classList.remove('hidden');
+  $('#detected').classList.add('fade');
+  if(c.tier==='confident'){ showWhere(true); renderDests(); }
+  else { showWhere(false); }   // wait for the user to pick before asking where
+}
+
+function showWhere(on){
+  document.querySelector('.where').style.display = on ? '' : 'none';
+  document.querySelector('.go').style.display = on ? '' : 'none';
+}
+function chooseType(key){
+  const t=TYPES.find(x=>x.key===key); CUR.cls={tier:'confident',top:t};
+  renderDetect();
+}
+
+function renderDests(){
+  const wrap=$('#dests'); wrap.innerHTML='';
+  const def = CUR.cls.top ? CUR.cls.top.dest : 'eq';
+  DESTS.forEach(x=>{
+    const b=document.createElement('button'); b.className='dest'; b.dataset.dest=x.k;
+    b.innerHTML=`<span class="dt"></span>${x.label}`;
+    b.onclick=()=>selectDest(x.k);
+    wrap.appendChild(b);
+  });
+  selectDest(CUR.cls.tier==='confident' ? (def==='out'?'outlook':'eq') : 'eq');
+}
+
+function selectDest(k){
+  CUR.dest=k;
+  document.querySelectorAll('.dest').forEach(b=>b.classList.toggle('on',b.dataset.dest===k));
+  const btn=$('#gobtn'); btn.disabled=false;
+  btn.textContent = k==='eq' ? 'Save into EQ'
+    : k==='other' ? 'Match & download'
+    : 'Download for '+DESTS.find(d=>d.k===k).label;
+}
+
+function go(){
+  if(!CUR||!CUR.dest) return;
+  if(CUR.dest==='eq') saveIntoEq(); else exportOut();
+}
+
+/* light validation — surface rows that need a human eye. Never drops them. */
+function flagRows(rows){
+  return rows.map((r,i)=>{
+    const email=(r.Email||r.email||'').trim();
+    const phoneRaw=(r.Mobile||r.Phone||r.phone||'').trim();
+    const phone=phoneRaw.replace(/\s/g,'').replace(/^\+?61/,'0');
+    let why=null;
+    if(!email) why='no email on file';
+    else if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) why=`email looks off — &ldquo;${email}&rdquo;`;
+    else if(phoneRaw && !/^0?4\d{8}$/.test(phone)) why=`mobile not readable — &ldquo;${phoneRaw}&rdquo;`;
+    return why ? {name:(r.Name||r.name||('Row '+(i+1))), why} : null;
+  }).filter(Boolean);
+}
+
+function saveIntoEq(){
+  const t=CUR.cls.top; const n=CUR.rows.length;
+  const isPlant=t.key==='plant_item';
+  const place = isPlant?'Plant & equipment':(t.key==='staff'?'EQ Field':t.label);
+  const noun  = isPlant?'plant items':(t.key==='staff'?'staff':t.label.toLowerCase());
+  let extra='';
+  if(isPlant){
+    const items=mapPlant(CUR.rows);
+    const overdue=items.filter(i=>i._overdue).length;
+    extra=`<div class="preview"><div class="ph"><span>WHAT LANDS IN EQ · ${t.label}</span><span>${overdue} overdue calibration</span></div>
+      <table class="pv"><thead><tr><th>Item</th><th>Serial</th><th>Location</th><th>Next due</th><th>Status</th></tr></thead><tbody>
+      ${items.slice(0,6).map(i=>`<tr><td>${i.name}</td><td>${i.serial||'—'}</td><td>${i.location||'—'}</td><td>${i.next_service_due||'—'}</td>
+        <td>${i._overdue?'<span class="pill over">Overdue</span>':'<span class="pill ok">In cal</span>'}</td></tr>`).join('')}
+      </tbody></table></div>`;
+  }
+  const flags = isPlant ? [] : flagRows(CUR.rows);
+  $('#work').classList.add('hidden');
+  const R=$('#result'); R.classList.remove('hidden'); R.classList.add('fade');
+  R.innerHTML=`
+    <div class="head"><span class="tick">✓</span> Saved ${n} ${noun} into EQ</div>
+    <div class="sub">Filed from ${CUR.name} into your canonical layer — trace any row in <a>Audit log</a>.</div>
+    ${extra}
+    ${flags.length?`<div class="flagline" id="flagline"><span>⚠</span> ${flags.length} need a quick look — all ${n} saved, these are just flagged &rarr;</div><div id="reviewslot"></div>`:''}
+    <div class="actions" style="margin-top:22px">
+      <button class="btn primary" id="viewbtn">View in ${place} &rarr;</button>
+      <button class="btn ghost" id="againbtn">Bring in another</button>
+    </div>`;
+  $('#viewbtn').onclick=()=>{}; $('#againbtn').onclick=reset;
+  if(flags.length){
+    $('#flagline').onclick=()=>{
+      $('#reviewslot').innerHTML=`<div class="reviewbox"><div class="rh">${flags.length} rows to check — they&rsquo;re saved, just confirm</div>
+        ${flags.map(f=>`<div class="reviewrow"><span class="nm">${f.name}</span><span class="why">${f.why}</span>
+          <span class="act"><button class="mini">Fix</button><button class="mini">Looks fine</button></span></div>`).join('')}</div>`;
+      $('#flagline').style.display='none';
+    };
+  }
+}
+
+function exportOut(){
+  const label=DESTS.find(d=>d.k===CUR.dest).label;
+  let text,fname;
+  if(CUR.dest==='outlook'){ text=toOutlook(CUR.rows); fname='outlook-contacts.csv'; }
+  else if(CUR.dest==='xero'){ text=toXero(CUR.rows); fname='xero-contacts.csv'; }
+  else { text=toXero(CUR.rows); fname=CUR.dest+'-export.csv'; }
+  download(fname,text);
+  $('#work').classList.add('hidden');
+  const R=$('#result'); R.classList.remove('hidden'); R.classList.add('fade');
+  R.innerHTML=`
+    <div class="head"><span class="tick">✓</span> Your ${label} file is ready</div>
+    <div class="sub">${CUR.rows.length} rows, shaped for ${label}. Downloaded as <b>${fname}</b> — ready to paste/import.</div>
+    <div class="actions" style="margin-top:22px">
+      <button class="btn primary" id="dlagain">Download again</button>
+      <button class="btn ghost" id="againbtn">Start over</button>
+    </div>`;
+  $('#dlagain').onclick=()=>download(fname,text); $('#againbtn').onclick=reset;
+}
+
+/* ---------- wiring ---------- */
+const drop=$('#drop'), fileInput=$('#file');
+$('#pick').onclick=e=>{e.preventDefault();fileInput.click();};
+drop.onclick=e=>{ if(e.target.id!=='pick') fileInput.click(); };
+drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('drag');});
+drop.addEventListener('dragleave',()=>drop.classList.remove('drag'));
+drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('drag');
+  const f=e.dataTransfer.files[0]; if(!f)return; readFile(f);});
+fileInput.addEventListener('change',e=>{const f=e.target.files[0]; if(f)readFile(f);});
+function readFile(f){
+  const isPdf=/\.(pdf|png|jpe?g)$/i.test(f.name);
+  if(isPdf){ ingest(f.name,'',true); return; }
+  const r=new FileReader(); r.onload=()=>ingest(f.name,String(r.result),false); r.readAsText(f);
+}
+document.querySelectorAll('.sample').forEach(s=>s.onclick=()=>{
+  const d=SAMPLES[s.dataset.sample]; ingest(d.name,d.text||'',!!d.pdf);
+});
+$('#clear').onclick=reset;
+$('#gobtn').onclick=go;
+$('#detectline').addEventListener('click',e=>{
+  const pk=e.target.getAttribute('data-pick'); if(pk){ chooseType(pk); return; }
+  if(e.target.getAttribute('data-act')==='change'){ CUR.cls.tier='unsure'; CUR.cls.top=null; renderDetect(); return; }
+  if(e.target.getAttribute('data-pick-sel')){ chooseType($('#typesel').value); return; }
+});
+</script>
+</body>
+</html>
