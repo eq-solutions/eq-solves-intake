@@ -24,6 +24,7 @@ import {
   CUSTOMER_SCHEMA,
   CONTACT_SCHEMA,
   SITE_SCHEMA,
+  STAFF_SCHEMA,
 } from "../simpro-schemas.js";
 import type { RoleName } from "./roles.js";
 import {
@@ -47,6 +48,7 @@ const ROLE_REGISTRY: Record<RoleName, Record<string, unknown>> = {
   customer: CUSTOMER_SCHEMA,
   contact: CONTACT_SCHEMA,
   site: SITE_SCHEMA,
+  staff: STAFF_SCHEMA,
 };
 
 /** Canonical-field options offered for user-template column mapping. */
