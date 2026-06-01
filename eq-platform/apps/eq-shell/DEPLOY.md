@@ -5,8 +5,7 @@ Walks through the steps to deploy `@eq/shell`. Per Option C
 
 - `eq-demo-canonical` — proving ground. Local Vite points here. Bugs and
   schema iteration happen here, not on SKS.
-- `sks-canonical-eq` — SKS live canonical. Same migration SQL, but only
-  touched once demo is proven.
+- `sks-canonical` (`ehowgjardagevnrluult`) — SKS live canonical. Already provisioned with sql/001–036 applied.
 
 Each project pairs with its own Netlify site eventually. Everything that
 touches live Supabase / Netlify is **your** step (CLAUDE.md rule: never
@@ -17,11 +16,11 @@ you wire it up.
 
 ## Step 1 — Provision both Supabase projects
 
-Do this for `eq-demo-canonical` FIRST, then repeat for `sks-canonical-eq`.
+Do this for `eq-demo-canonical` FIRST, then repeat for `sks-canonical`.
 
 1. Go to https://supabase.com/dashboard → New project
 2. Settings:
-   - Project name: `eq-demo-canonical` (first time) or `sks-canonical-eq`
+   - Project name: `eq-demo-canonical` (first time) or `sks-canonical`
      (second time)
    - Region: `ap-southeast-2` (Sydney) for low latency
    - Database password: generate a strong one + store it in your password manager
@@ -104,7 +103,7 @@ One Netlify site per tenant. Suggested names mirror the existing
 EQ pattern from CLAUDE.md (`eq-solves-field` / `sks-nsw-labour`):
 
 - `eq-demo-shell.netlify.app` (or whatever) → pointing at `eq-demo-canonical`
-- `sks-shell.netlify.app` (or `sks.eq.solutions`) → pointing at `sks-canonical-eq`
+- `sks-shell.netlify.app` (or `sks.eq.solutions`) → pointing at `sks-canonical`
 
 For each:
 

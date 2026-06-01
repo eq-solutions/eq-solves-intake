@@ -1,7 +1,8 @@
 -- ============================================================
 -- Shell control plane — Worker profile tables
--- Target: eq-shell-control Supabase (hxwitoveffxhcgjvubbd)
+-- Target: eq-canonical-internal (zaapmfdkgedqupfjtchl)
 -- Idempotent: safe to re-run
+-- Applied: 2026-06-01
 -- ============================================================
 
 -- ── ENUMS ──────────────────────────────────────────────────

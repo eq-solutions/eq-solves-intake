@@ -235,7 +235,7 @@ function main() {
   console.log("");
   console.log("Next steps:");
   console.log("  1. Open https://supabase.com/dashboard");
-  console.log("  2. Pick your sks-canonical-eq project");
+  console.log("  2. Pick your target Supabase project (e.g. sks-canonical)");
   console.log("  3. SQL Editor → New query");
   console.log(`  4. Paste the contents of ${OUT_FILE}`);
   console.log("  5. Run");

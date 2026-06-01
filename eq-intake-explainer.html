@@ -864,7 +864,7 @@
         <div>
           <div class="sprint-objective">🏗️ Provision canonical Supabase + fix the 3 silent-drop bugs</div>
           <ul class="sprint-tasks">
-            <li>Create <code>sks-canonical-eq</code> Supabase project (MICRO tier, $10/mo)</li>
+            <li>Create <code>sks-canonical</code> Supabase project (MICRO tier, $10/mo)</li>
             <li>Run SQL migrations 001 → 012 against it in order</li>
             <li>Fix <code>validate.ts:185</code> — 100k row cap must emit <code>(rejected, reason: cap_exceeded)</code> not silently truncate</li>
             <li>Fix <code>commit-canonical.ts:337</code> — FK miss must always emit <code>(rejected, reason: fk_no_match)</code></li>
@@ -885,7 +885,7 @@
           <ul class="sprint-tasks">
             <li>Run Cards migration: copy <code>profiles</code> → canonical <code>staff</code>, <code>licences</code> → canonical <code>licences</code></li>
             <li>Copy Cards Storage bucket (licence photos) to canonical Storage, repoint signed URLs</li>
-            <li>Repoint Cards Supabase client to <code>sks-canonical-eq</code></li>
+            <li>Repoint Cards Supabase client to <code>sks-canonical</code></li>
             <li>End-to-end test: Cards → capture licence → lands in canonical <code>staff</code> row</li>
             <li>Tear down old Cards Supabase once verified stable for 7 days</li>
           </ul>
