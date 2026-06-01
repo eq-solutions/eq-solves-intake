@@ -48,9 +48,17 @@ export interface Asset {
    */
   criticality?: "critical" | "high" | "medium" | "low";
   /**
+   * Current physical/operational state of the asset. Distinct from criticality (which measures importance, not state of repair).
+   */
+  condition?: "good" | "fair" | "poor" | "needs_replacement" | "unknown";
+  /**
    * Reference to the service schedule template applied to this asset.
    */
   service_schedule_id?: string | null;
+  /**
+   * How often this asset is serviced. Free text — common values: '6-Monthly May/Nov', 'Annual', 'Quarterly', 'Monthly', or shorthand like 'M', 'Q', '6M', 'A'. Parsed into a formal service_schedule record at commit time when the schedule entity is the source of truth.
+   */
+  ppm_frequency?: string | null;
   last_service_date?: string | null;
   next_service_due?: string | null;
   /**
@@ -62,6 +70,16 @@ export interface Asset {
    */
   barcode?: string | null;
   active?: boolean;
+  /**
+   * Short denormalised summary of open issues against this asset. Convenience field for one-glance views — the structured per-defect records live in the asset_defect entity. Example: 'RCD board 2 to be replaced; door hinge bent'.
+   */
+  defects_summary?: string | null;
+  /**
+   * Customer-imposed asset taxonomy preserved verbatim. Used when a client requires their own classification scheme on their assets (e.g. data centre operator's Maximo IAM values, principal contractor's compliance taxonomy). Stays as free-form so client-specific structure isn't coerced into our canonical enums.
+   */
+  client_classification?: {
+    [k: string]: unknown;
+  } | null;
   notes?: string | null;
   imported_at?: string | null;
   imported_from?: string | null;

@@ -161,6 +161,8 @@ function errorSummary(e: import("@eq/validation").ValidationError): string {
       return `Ambiguous date on ${e.field} (strict mode)`;
     case "coerce_failed":
       return `Coercion failed on ${e.field}: ${e.reason}`;
+    case "cap_exceeded":
+      return `Cap exceeded on ${e.field}: ${e.reason}`;
     default:
       return `Validation issue: ${e.kind}`;
   }
