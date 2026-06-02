@@ -171,6 +171,32 @@
       "x-eq-coerce": "boolean",
       "default": true
     },
+    "holder_email": {
+      "type": ["string", "null"],
+      "format": "email",
+      "description": "Portable identity anchor for the licence holder — the email the credential is keyed to ACROSS tenants. The basis for an employee 'claiming' employer-asserted records when they onboard to Cards. staff_id is the tenant-local link; holder_email is the cross-tenant identity. Ownership of the credential follows the person (this email), not the employer that asserted it.",
+      "x-eq-source-aliases": ["email", "work_email", "personal_email", "holder_email"],
+      "maxLength": 200
+    },
+    "asserted_by": {
+      "type": "string",
+      "description": "Who asserted this record. employer = entered on the worker's behalf (e.g. an SKS training matrix import); employee = self-entered in Cards; rto = training-provider feed. Provenance travels with the record; ownership stays with the employee regardless of who asserted it.",
+      "enum": ["employer", "employee", "rto", "import", "unknown"],
+      "x-eq-source-aliases": ["asserted_by", "source_party"],
+      "default": "unknown"
+    },
+    "verification_status": {
+      "type": "string",
+      "description": "How strongly the record is evidenced. asserted = stated by an employer with no document; self_declared = the employee stated it; verified_document = a card/cert image or authoritative check backs it. A matrix import is 'asserted'.",
+      "enum": ["asserted", "self_declared", "verified_document"],
+      "default": "asserted"
+    },
+    "claim_status": {
+      "type": "string",
+      "description": "Whether the employee has claimed ownership. unclaimed = employer-asserted and the employee hasn't onboarded/linked in Cards yet; claimed = the employee has confirmed identity and the record is attached to their wallet. The Cards claim flow flips this; until then the asserting employer operates on it.",
+      "enum": ["unclaimed", "claimed"],
+      "default": "unclaimed"
+    },
     "imported_at": {
       "type": ["string", "null"],
       "format": "date-time",
