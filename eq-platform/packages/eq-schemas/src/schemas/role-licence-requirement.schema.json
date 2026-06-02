@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/role-licence-requirement/v1.json",
+  "title": "Role Licence Requirement",
+  "description": "Per-tenant baseline: which licence types a given role must hold. Owned by the NSW office (admin-editable). Drives gap/minimum-requirement alerts — a role member with no record for a mandatory type surfaces as a 'go collect' task. A gap means 'unknown/not captured', not 'definitely missing', so the alert prompts confirmation rather than asserting non-compliance.",
+  "type": "object",
+  "x-eq-entity": "role_licence_requirement",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "role_licence_requirements",
+  "required": ["role_licence_requirement_id", "tenant_id", "role", "licence_type"],
+  "properties": {
+    "role_licence_requirement_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Internal canonical ID. Generated on insert if not provided.",
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Owning tenant. Set automatically by context.",
+      "x-eq-system-managed": true
+    },
+    "role": {
+      "type": "string",
+      "description": "The role/title this requirement applies to, matching staff role/title (e.g. 'Elec/Comms Tech', 'Office').",
+      "x-eq-source-aliases": ["title", "position", "job_title"],
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "licence_type": {
+      "type": "string",
+      "description": "Canonical licence_type code required for this role (mirrors licence.licence_type and licence_type.code).",
+      "x-eq-source-aliases": ["type", "ticket", "requirement"],
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "mandatory": {
+      "type": "boolean",
+      "description": "True = a missing record is a compliance gap (alerted). False = recommended-only.",
+      "x-eq-coerce": "boolean",
+      "default": true
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "description": "Free-form admin notes (why required, ref to policy, etc.).",
+      "maxLength": 2000
+    }
+  }
+}
