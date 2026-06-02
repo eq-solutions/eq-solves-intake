@@ -8,7 +8,7 @@
   "x-eq-module": "cards",
   "x-eq-version": "1.0.0",
   "x-eq-table": "licences",
-  "required": ["licence_id", "tenant_id", "staff_id", "licence_type", "licence_number", "active"],
+  "required": ["licence_id", "tenant_id", "staff_id", "licence_type", "active"],
   "properties": {
     "licence_id": {
       "type": "string",
@@ -54,7 +54,19 @@
         "electrical_licence",
         "medicare",
         "asbestos_awareness",
-        "traffic_control"
+        "traffic_control",
+        "open_cabling",
+        "ewp_scissor_lift",
+        "ewp_boom_lift_lt11",
+        "ewp_vertical_lift_lt11",
+        "boom_lift_hrwl",
+        "dogging_hrwl",
+        "rail_industry_worker",
+        "low_voltage_rescue",
+        "hv_switching",
+        "hv_operator",
+        "manual_handling",
+        "silica_awareness"
       ],
       "x-eq-enum-aliases": {
         "white_card": ["white card", "construction induction", "ci", "wc"],
@@ -69,16 +81,27 @@
         "electrical_licence": ["electrical license", "el", "sparky"],
         "medicare": ["medicare card", "medi"],
         "asbestos_awareness": ["asbestos", "aaa"],
-        "traffic_control": ["traffic", "tc"]
+        "traffic_control": ["traffic", "tc"],
+        "open_cabling": ["open cabling", "acma cabling", "cabling registration", "oc"],
+        "ewp_scissor_lift": ["sl", "scissor lift"],
+        "ewp_boom_lift_lt11": ["bl under 11m", "boom lift under 11m"],
+        "ewp_vertical_lift_lt11": ["vl under 11m", "vertical lift under 11m"],
+        "boom_lift_hrwl": ["hrl bl 11m", "boom lift 11m", "wp", "boom hrwl"],
+        "dogging_hrwl": ["hrl dogging", "dogging", "dg"],
+        "rail_industry_worker": ["riw", "rail industry worker"],
+        "low_voltage_rescue": ["lvr", "low voltage rescue"],
+        "hv_switching": ["hv switching", "high voltage switching"],
+        "hv_operator": ["hv operators", "hv operator", "high voltage operator"],
+        "manual_handling": ["manual handling"],
+        "silica_awareness": ["silica awareness", "crystalline silica", "silica"]
       },
       "minLength": 1,
       "maxLength": 64
     },
     "licence_number": {
-      "type": "string",
-      "description": "The number printed on the card. Required.",
+      "type": ["string", "null"],
+      "description": "The number printed on the card. Optional: training-register / matrix imports often record only that a ticket is held plus its expiry, with no card number. Null = number pending enrichment (see metadata.number_status).",
       "x-eq-source-aliases": ["number", "no", "card_number", "ticket_number", "cert_number", "ref"],
-      "minLength": 1,
       "maxLength": 64
     },
     "issuing_authority": {
