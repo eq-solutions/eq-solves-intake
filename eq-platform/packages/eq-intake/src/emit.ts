@@ -223,6 +223,108 @@ export function buildCanonicalRecords(
   };
 }
 
+/** A row for the Field TENANT licences table (org-scoped, carries review_status). */
+export interface TenantLicence {
+  org_id: string;
+  person_id: null;
+  holder_email: string;
+  licence_type: string;
+  licence_number: null;
+  state: string | null;
+  expiry_date: string | null;
+  asserted_by: "employer";
+  verification_status: "asserted";
+  claim_status: "unclaimed";
+  review_status: "auto_approved" | "pending_review";
+  active: boolean;
+  imported_from: string;
+  imported_at: string;
+  notes: string | null;
+}
+
+export interface TenantEmitOptions {
+  orgId: string;
+  importedFrom: string;
+  importedAt: string;
+  defaultState?: string;
+}
+
+export interface TenantEmitResult {
+  licences: TenantLicence[];
+  upsert_key: string[];
+  summary: { auto_approved: number; pending_review: number; licences: number; skipped_unmapped: number; collapsed_duplicates: number };
+}
+
+/**
+ * Build rows for the Field TENANT licences table — the review queue.
+ *
+ * Unlike buildCanonicalRecords (which withholds confirm/unresolved from the
+ * source-of-record), this writes EVERY matched person so the tenant admin can
+ * review them in Field: auto-matches arrive `auto_approved`; confirm/unresolved
+ * arrive `pending_review`. Approved rows later flow to canonical. Pure — no I/O.
+ */
+export function buildTenantRecords(proposal: MatrixIngestProposal, opts: TenantEmitOptions): TenantEmitResult {
+  const defaultState = opts.defaultState ?? "NSW";
+  const matchByIndex = new Map<number, PersonMatch>();
+  for (const m of [...proposal.people.auto, ...proposal.people.confirm, ...proposal.people.unresolved]) {
+    matchByIndex.set(m.source_index, m);
+  }
+
+  const seen = new Map<string, TenantLicence>();
+  let skipped_unmapped = 0;
+  let collapsed = 0;
+
+  for (const pl of proposal.proposed_licences) {
+    const match = matchByIndex.get(pl.source_index);
+    if (!match || !match.email) continue; // no identity anchor → not a tenant row yet
+    if (pl.licence_type === null) {
+      skipped_unmapped++;
+      continue;
+    }
+    const review_status = match.status === "auto" ? "auto_approved" : "pending_review";
+    const rec: TenantLicence = {
+      org_id: opts.orgId,
+      person_id: null,
+      holder_email: match.email,
+      licence_type: pl.licence_type,
+      licence_number: null,
+      state: STATE_LICENSED.has(pl.licence_type) ? defaultState : null,
+      expiry_date: pl.expiry_date,
+      asserted_by: "employer",
+      verification_status: "asserted",
+      claim_status: "unclaimed",
+      review_status,
+      active: true,
+      imported_from: opts.importedFrom,
+      imported_at: opts.importedAt,
+      notes: pl.state === "expired" ? "Imported as Expired (no date on file)" : null,
+    };
+    const key = `${rec.org_id}::${rec.holder_email.toLowerCase()}::${rec.licence_type}`;
+    if (seen.has(key)) {
+      collapsed++;
+      const prev = seen.get(key)!;
+      // prefer the one that needs review (so a dup never silently auto-approves), then one with an expiry
+      if (prev.review_status === "auto_approved" && rec.review_status === "pending_review") seen.set(key, rec);
+      else if (prev.expiry_date == null && rec.expiry_date != null) seen.set(key, rec);
+      continue;
+    }
+    seen.set(key, rec);
+  }
+
+  const licences = [...seen.values()];
+  return {
+    licences,
+    upsert_key: ["org_id", "holder_email", "licence_type"],
+    summary: {
+      auto_approved: licences.filter((l) => l.review_status === "auto_approved").length,
+      pending_review: licences.filter((l) => l.review_status === "pending_review").length,
+      licences: licences.length,
+      skipped_unmapped,
+      collapsed_duplicates: collapsed,
+    },
+  };
+}
+
 /** Convenience: which buckets still need an explicit approval decision before emit. */
 export function pendingApprovals(proposal: MatrixIngestProposal): {
   needsDecision: Array<{ source_index: number; name: string; status: MatchStatus; reason: string }>;

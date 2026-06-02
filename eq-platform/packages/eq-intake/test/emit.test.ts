@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from "vitest";
 import { ingestLicenceMatrix, type StaffRef } from "../src/matrix.js";
-import { buildCanonicalRecords, pendingApprovals } from "../src/emit.js";
+import { buildCanonicalRecords, buildTenantRecords, pendingApprovals } from "../src/emit.js";
 import type { ParsedSheet } from "../src/readers/csv.js";
 
 const META = { encoding: "utf8", delimiter: ",", totalRows: 0, emptyRowsSkipped: 0, malformedRows: 0, malformed: [], bomDetected: false };
@@ -113,6 +113,39 @@ describe("buildCanonicalRecords — dedupe & skips", () => {
   it("uses a holder-keyed upsert key for idempotency", () => {
     const r = buildCanonicalRecords(proposal(), [], OPTS);
     expect(r.upsert_key).toEqual(["tenant_id", "holder_email", "licence_type"]);
+  });
+});
+
+describe("buildTenantRecords — review queue", () => {
+  const TOPTS = { orgId: "org-sks", importedFrom: "matrix.xlsx", importedAt: "2026-06-02T00:00:00.000Z" };
+
+  it("auto-matches arrive auto_approved; confirm/unresolved arrive pending_review", () => {
+    const r = buildTenantRecords(proposal(), TOPTS);
+    const james = r.licences.filter((l) => l.holder_email === "james@x.com.au");
+    const matt = r.licences.filter((l) => l.holder_email === "matt@x.com.au");
+    expect(james.every((l) => l.review_status === "auto_approved")).toBe(true);
+    expect(matt.length).toBeGreaterThan(0);
+    expect(matt.every((l) => l.review_status === "pending_review")).toBe(true); // confirm → review
+    expect(r.summary.auto_approved).toBeGreaterThan(0);
+    expect(r.summary.pending_review).toBeGreaterThan(0);
+  });
+
+  it("is org-scoped and stamps the ownership model", () => {
+    const r = buildTenantRecords(proposal(), TOPTS);
+    expect(r.upsert_key).toEqual(["org_id", "holder_email", "licence_type"]);
+    for (const l of r.licences) {
+      expect(l.org_id).toBe("org-sks");
+      expect(l.asserted_by).toBe("employer");
+      expect(l.licence_number).toBeNull();
+      expect(l.person_id).toBeNull();
+    }
+  });
+
+  it("excludes the no-email unresolved person and the unmapped column", () => {
+    const r = buildTenantRecords(proposal(), TOPTS);
+    expect(r.licences.some((l) => l.licence_type === null)).toBe(false);
+    expect(r.licences.some((l) => l.holder_email === "")).toBe(false);
+    expect(r.summary.skipped_unmapped).toBeGreaterThanOrEqual(1);
   });
 });
 

@@ -80,13 +80,16 @@ export type {
   MapMethod,
 } from "./matrix.js";
 
-export { buildCanonicalRecords, pendingApprovals } from "./emit.js";
+export { buildCanonicalRecords, buildTenantRecords, pendingApprovals } from "./emit.js";
 export type {
   ApprovalDecision,
   EmitOptions,
   EmitResult,
   CanonicalLicence,
   CanonicalGrant,
+  TenantLicence,
+  TenantEmitOptions,
+  TenantEmitResult,
 } from "./emit.js";
 
 export { applyCanonicalRecords } from "./apply.js";
