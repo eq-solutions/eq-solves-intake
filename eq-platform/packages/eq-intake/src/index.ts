@@ -88,3 +88,6 @@ export type {
   CanonicalLicence,
   CanonicalGrant,
 } from "./emit.js";
+
+export { applyCanonicalRecords } from "./apply.js";
+export type { UpsertClient, ApplyReport, ApplyOptions } from "./apply.js";
