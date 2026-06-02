@@ -79,3 +79,12 @@ export type {
   StaffRef,
   MapMethod,
 } from "./matrix.js";
+
+export { buildCanonicalRecords, pendingApprovals } from "./emit.js";
+export type {
+  ApprovalDecision,
+  EmitOptions,
+  EmitResult,
+  CanonicalLicence,
+  CanonicalGrant,
+} from "./emit.js";
