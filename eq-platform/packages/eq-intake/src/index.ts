@@ -59,3 +59,23 @@ export type {
   ParseFileMeta,
   FileFormat,
 } from "./parse-file.js";
+
+export {
+  ingestLicenceMatrix,
+  mapLicenceColumn,
+  classifyCell,
+  parseDayFirst,
+  nameScore,
+  editDistance,
+} from "./matrix.js";
+export type {
+  MatrixIngestProposal,
+  MatrixIngestOptions,
+  ProposedLicence,
+  ColumnMapping,
+  PersonMatch,
+  MatchStatus,
+  CellState,
+  StaffRef,
+  MapMethod,
+} from "./matrix.js";
