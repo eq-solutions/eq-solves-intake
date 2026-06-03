@@ -16,6 +16,11 @@ key.txt
 **/.env.local
 **/.env.*
 
+# credential/secret dumps that don't match the .env* patterns above
+supabase-env.txt
+*-env.txt
+*-secrets.txt
+
 # Dependencies + build output
 node_modules/
 **/node_modules/
