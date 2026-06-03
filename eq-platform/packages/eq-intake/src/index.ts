@@ -59,38 +59,3 @@ export type {
   ParseFileMeta,
   FileFormat,
 } from "./parse-file.js";
-
-export {
-  ingestLicenceMatrix,
-  mapLicenceColumn,
-  classifyCell,
-  parseDayFirst,
-  nameScore,
-  editDistance,
-} from "./matrix.js";
-export type {
-  MatrixIngestProposal,
-  MatrixIngestOptions,
-  ProposedLicence,
-  ColumnMapping,
-  PersonMatch,
-  MatchStatus,
-  CellState,
-  StaffRef,
-  MapMethod,
-} from "./matrix.js";
-
-export { buildCanonicalRecords, buildTenantRecords, pendingApprovals } from "./emit.js";
-export type {
-  ApprovalDecision,
-  EmitOptions,
-  EmitResult,
-  CanonicalLicence,
-  CanonicalGrant,
-  TenantLicence,
-  TenantEmitOptions,
-  TenantEmitResult,
-} from "./emit.js";
-
-export { applyCanonicalRecords } from "./apply.js";
-export type { UpsertClient, ApplyReport, ApplyOptions } from "./apply.js";
