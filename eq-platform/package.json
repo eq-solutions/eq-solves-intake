@@ -23,6 +23,7 @@
     "migrate:dry": "node ../scripts/apply-migrations.mjs --dry-run"
   },
   "devDependencies": {
+    "@fontsource/plus-jakarta-sans": "^5.2.8",
     "tsx": "4.19.2",
     "typescript": "5.6.3",
     "vitest": "2.1.5"
