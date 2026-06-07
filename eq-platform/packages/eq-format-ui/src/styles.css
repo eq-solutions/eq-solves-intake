@@ -1,20 +1,12 @@
-/* @eq/format-ui — EQ brand tokens via CSS custom properties.
-   Vars mirror @eq-solutions/tokens; update when tokens cut a new release. */
-:root {
-  --eq-sky:  #3DA8D8;
-  --eq-deep: #2986B4;
-  --eq-ice:  #EAF5FB;
-  --eq-ink:  #1A1A2E;
-  --eq-grey: #666666;
-  --eq-border: #c8d3e0;
-  --eq-surface: #f6f8fb;
-  --eq-error:   #B91C1C;
-  --eq-warning: #B45309;
-  --eq-success: #15803D;
-  --eq-error-bg: #FEF2F2;
-}
-
+/* @eq/format-ui — sourced from @eq-solutions/tokens v1.3.2 */
+@import '@eq-solutions/tokens/tokens.css';
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+/* Local semantic aliases not in the base token set */
+:root {
+  --eq-surface: var(--eq-gray-50, #f6f8fb);
+  --eq-border:  #c8d3e0;
+}
 
 * { box-sizing: border-box; }
 body {
