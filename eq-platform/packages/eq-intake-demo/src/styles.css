@@ -1939,6 +1939,259 @@ button.eq-primary:hover {
   color: #166534;
 }
 
+/* ===== Mapping preview panel (.eq-mapping-panel) ===== */
+
+.eq-mapping-panel {
+  margin-bottom: 12px;
+}
+
+.eq-mapping-panel > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--eq-deep);
+  user-select: none;
+  list-style: none; /* hide browser triangle in some engines */
+}
+
+.eq-mapping-panel > summary::-webkit-details-marker { display: none; }
+
+.eq-mapping-panel__hint {
+  font-weight: 400;
+  opacity: 0.7;
+  margin-left: 4px;
+}
+
+.eq-mapping-panel__body {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.eq-mapping-panel__entity {
+  border: 1px solid var(--eq-line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.eq-mapping-panel__entity-header {
+  padding: 6px 10px;
+  background: var(--eq-ice);
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.eq-mapping-panel__entity-name {
+  color: var(--eq-ink);
+}
+
+.eq-mapping-panel__entity-sheet {
+  color: var(--eq-deep);
+  margin-left: 6px;
+}
+
+.eq-mapping-panel__match-count {
+  font-weight: 400;
+  color: var(--eq-deep);
+}
+
+.eq-mapping-panel__match-count--warn {
+  color: var(--eq-warn);
+}
+
+.eq-mapping-panel__table-wrap {
+  overflow-x: auto;
+}
+
+.eq-mapping-panel__table {
+  width: 100%;
+  font-size: 12px;
+  border-collapse: collapse;
+}
+
+.eq-mapping-panel__table th {
+  padding: 4px 10px;
+  text-align: left;
+  font-weight: 500;
+  border-bottom: 1px solid var(--eq-line);
+  background: var(--eq-page);
+  color: var(--eq-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.eq-mapping-panel__table td {
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--eq-line);
+}
+
+.eq-mapping-panel__table tr:last-child td {
+  border-bottom: none;
+}
+
+.eq-mapping-panel__col-source {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--eq-ink);
+}
+
+.eq-mapping-panel__col-field {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--eq-deep);
+}
+
+.eq-mapping-panel__col-unmatched {
+  font-size: 12px;
+  color: var(--eq-warn);
+  opacity: 0.85;
+  font-style: italic;
+}
+
+/* ===== Rows disclosure (.eq-rows-disclosure) ===== */
+
+.eq-rows-disclosure {
+  margin-top: 12px;
+}
+
+.eq-rows-disclosure > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  /* color is set inline — it's dynamic (accentColor prop) */
+  user-select: none;
+  list-style: none;
+}
+
+.eq-rows-disclosure > summary::-webkit-details-marker { display: none; }
+
+.eq-rows-disclosure__count {
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+.eq-rows-disclosure__hint {
+  font-size: 12px;
+  margin: 6px 0 8px;
+  /* color set inline via hintColor prop */
+}
+
+.eq-rows-disclosure__download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  background: var(--eq-paper);
+  color: var(--eq-ink);
+  border: 1px solid var(--eq-line);
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 8px;
+  font-family: inherit;
+}
+
+.eq-rows-disclosure__download:hover {
+  background: var(--eq-ice);
+  border-color: var(--eq-sky);
+}
+
+.eq-rows-disclosure__body {
+  margin-top: 8px;
+}
+
+.eq-rows-disclosure__filter {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  font-size: 12px;
+  border: 1px solid var(--eq-line);
+  border-radius: 6px;
+  font-family: inherit;
+  background: var(--eq-paper);
+  color: var(--eq-ink);
+  margin-bottom: 6px;
+}
+
+.eq-rows-disclosure__filter:focus {
+  outline: none;
+  border-color: var(--eq-sky);
+}
+
+.eq-rows-disclosure__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--eq-line);
+  border-radius: 8px;
+}
+
+.eq-rows-disclosure__table {
+  width: 100%;
+  font-size: 12px;
+  border-collapse: collapse;
+}
+
+.eq-rows-disclosure__table thead tr {
+  background: var(--eq-ice);
+}
+
+.eq-rows-disclosure__table th {
+  padding: 5px 10px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--eq-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--eq-line);
+}
+
+.eq-rows-disclosure__table th.eq-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.eq-rows-disclosure__table th.eq-sortable:hover {
+  color: var(--eq-deep);
+}
+
+.eq-rows-disclosure__table td {
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--eq-line);
+}
+
+.eq-rows-disclosure__table tr:last-child td {
+  border-bottom: none;
+}
+
+.eq-rows-disclosure__table td.eq-monospace {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+.eq-rows-disclosure__table td.eq-nowrap {
+  white-space: nowrap;
+}
+
+.eq-rows-disclosure__empty {
+  padding: 10px;
+  color: var(--eq-muted);
+  text-align: center;
+  font-size: 13px;
+}
+
+.eq-rows-disclosure__showing {
+  font-size: 11px;
+  color: var(--eq-muted);
+  margin-top: 4px;
+}
+
 /* =========================================================================
  * Mobile rules (≤ 600px). The boys are on phones; the bookkeeper on a
  * laptop. Target: 360px Chrome dev-tools width works without horizontal
@@ -2185,6 +2438,81 @@ button.eq-primary:hover {
   .eq-commit-log {
     max-height: 160px;
     font-size: 11px;
+  }
+
+  /* ---- Intake module — new one-screen UI ---- */
+
+  /* Drop zone: less vertical padding on mobile */
+  .eq-intake-dropzone {
+    padding: 28px 16px;
+  }
+
+  .eq-intake-dropzone--compact {
+    padding: 10px 14px;
+  }
+
+  /* Destination pills — wrap to two columns then single column */
+  .eq-intake-dest__row {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .eq-dest-pill {
+    flex: 0 0 auto;
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+
+  /* File slot — truncate long filenames properly */
+  .eq-intake-slot__name {
+    max-width: 160px;
+  }
+
+  /* Slots list — reduce gap on mobile */
+  .eq-intake-slots {
+    gap: 6px;
+  }
+
+  /* Preview table — allow horizontal scroll, don't force-shrink text */
+  .eq-intake-preview__wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .eq-intake-preview__table {
+    min-width: 480px;
+  }
+
+  /* Mapping panel table — same scroll treatment */
+  .eq-mapping-panel__table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .eq-mapping-panel__table {
+    min-width: 320px;
+  }
+
+  /* Rows disclosure table — scroll on narrow screens */
+  .eq-rows-disclosure__table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .eq-rows-disclosure__table {
+    min-width: 360px;
+  }
+
+  /* Commit result — reduce horizontal padding */
+  .eq-commit-result {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  /* Notice — smaller padding */
+  .eq-intake-notice {
+    font-size: 12px;
+    padding: 8px 10px;
   }
 }
 
