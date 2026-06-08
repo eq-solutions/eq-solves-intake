@@ -88,7 +88,7 @@ BEGIN
     'assets_no_site', (
       SELECT json_agg(json_build_object(
         'id',         a.asset_id::text,
-        'label',      COALESCE(a.asset_name, a.asset_type, 'Unknown asset'),
+        'label',      COALESCE(a.name, a.asset_type, 'Unknown asset'),
         'external_id', a.external_id,
         'bad_site_id', a.site_id::text
       ))
@@ -102,13 +102,16 @@ BEGIN
     ),
     'contacts_no_parent', (
       SELECT json_agg(json_build_object(
-        'id',     c.contact_id::text,
-        'label',  COALESCE(c.full_name, c.email, 'Unknown contact')
+        'id',    c.contact_id::text,
+        'label', COALESCE(
+                   NULLIF(TRIM(COALESCE(c.first_name,'') || ' ' || COALESCE(c.last_name,'')), ''),
+                   c.email,
+                   'Unknown contact'
+                 )
       ))
       FROM app_data.contacts c
       WHERE c.tenant_id = v_tenant_id
         AND c.customer_id IS NULL
-        AND c.site_id IS NULL
     ),
     'licences_no_staff', (
       SELECT json_agg(json_build_object(
@@ -127,7 +130,7 @@ BEGIN
     'sites_no_customer', (
       SELECT json_agg(json_build_object(
         'id',              s.site_id::text,
-        'label',           COALESCE(s.site_name, 'Unknown site'),
+        'label',           COALESCE(s.name, 'Unknown site'),
         'bad_customer_id', s.customer_id::text
       ))
       FROM app_data.sites s
@@ -151,7 +154,7 @@ BEGIN
       'contacts_no_parent_count', (
         SELECT COUNT(*) FROM app_data.contacts c
         WHERE c.tenant_id = v_tenant_id
-          AND c.customer_id IS NULL AND c.site_id IS NULL
+          AND c.customer_id IS NULL
       ),
       'licences_no_staff_count', (
         SELECT COUNT(*) FROM app_data.licences l
@@ -219,19 +222,21 @@ DECLARE
     'customers', 'sites', 'contacts', 'staff', 'licences', 'assets'
   ];
   v_allowed_fields text[] := ARRAY[
-    -- customers
-    'phone', 'email', 'abn', 'acn', 'company_name',
+    -- customers (actual column names)
+    'primary_phone', 'mobile_phone', 'alt_phone', 'email', 'abn', 'acn',
+    'company_name', 'state', 'suburb', 'postcode', 'country',
     -- sites
-    'site_name', 'address_line_1', 'address_line_2', 'suburb', 'state',
-    'postcode', 'country',
+    'name', 'address_line_1', 'address_line_2', 'suburb', 'state',
+    'postcode', 'country', 'site_contact_phone', 'site_contact_email',
     -- contacts
-    'full_name', 'email', 'phone',
+    'first_name', 'last_name', 'work_phone', 'mobile_phone', 'email',
     -- staff
     'first_name', 'last_name', 'email', 'phone', 'employment_type',
+    'address_state', 'address_suburb', 'address_postcode',
     -- licences
-    'licence_number', 'licence_type', 'issuing_state',
+    'licence_number', 'licence_type', 'state',
     -- assets
-    'asset_name', 'asset_type', 'make', 'model', 'serial_number'
+    'name', 'asset_type', 'make', 'model', 'serial_number'
   ];
 BEGIN
   v_tenant_id := (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid;

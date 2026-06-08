@@ -60,14 +60,15 @@ const ENTITY_TABLES: Record<TidyEntity, string> = {
   asset:    'assets',
 };
 
-// Fields used to build a human-readable row label for display
+// Fields used to build a human-readable row label for display.
+// Uses actual DB column names (not schema aliases).
 const ROW_LABEL_FIELDS: Record<TidyEntity, string[]> = {
-  customer: ['company_name', 'trading_name', 'email'],
-  site:     ['site_name', 'suburb'],
-  contact:  ['full_name', 'email'],
+  customer: ['company_name', 'email'],
+  site:     ['name', 'suburb'],
+  contact:  ['first_name', 'last_name', 'email'],
   staff:    ['first_name', 'last_name', 'email'],
   licence:  ['licence_type', 'licence_number'],
-  asset:    ['asset_name', 'asset_type', 'serial_number'],
+  asset:    ['name', 'asset_type', 'serial_number'],
 };
 
 // Primary key column name per entity table
@@ -85,6 +86,13 @@ const PK_FIELD: Record<TidyEntity, string> = {
 // ---------------------------------------------------------------------------
 
 function rowLabel(row: Record<string, unknown>, entity: TidyEntity): string {
+  // For entities with split name fields, try combining first+last
+  if (entity === 'contact' || entity === 'staff') {
+    const first = stringify(row['first_name']).trim();
+    const last  = stringify(row['last_name']).trim();
+    const full  = `${first} ${last}`.trim();
+    if (full) return full;
+  }
   const candidates = ROW_LABEL_FIELDS[entity];
   for (const field of candidates) {
     const v = row[field];
@@ -104,8 +112,8 @@ function stringify(value: unknown): string {
  * Crude heuristic — good enough for display bucketing.
  */
 function inferFixType(field: string): TidyFixType {
-  if (field === 'phone')        return 'phone';
-  if (field === 'state')        return 'au_state';
+  if (field.includes('phone'))  return 'phone';
+  if (field === 'state' || field.includes('_state')) return 'au_state';
   if (field === 'email')        return 'email';
   if (field === 'abn' || field === 'acn') return 'abn';
   if (field.includes('date') || field.includes('_at') || field.includes('_on'))
