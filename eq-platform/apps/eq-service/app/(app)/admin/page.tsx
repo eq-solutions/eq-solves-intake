@@ -16,7 +16,7 @@
  */
 import Link from 'next/link'
 import { Breadcrumb } from '@/components/ui/Breadcrumb'
-import { Users, Settings, Image, FileText, Archive, ScrollText, Upload, Download } from 'lucide-react'
+import { Users, Settings, Image, FileText, Archive, ScrollText, Upload, Download, Sparkles } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -75,6 +75,12 @@ const ADMIN_CARDS: AdminCard[] = [
     href: '/admin/backup',
     description: 'Download a workspace snapshot, or preview a backup file.',
     icon: Download,
+  },
+  {
+    label: 'Tidy Our Data',
+    href: '/admin/tidy',
+    description: 'Auto-fix phones, states, emails and ABNs. Surface gaps and broken links.',
+    icon: Sparkles,
   },
 ]
 
