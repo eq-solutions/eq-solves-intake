@@ -14,7 +14,7 @@
  * override via the onDestinationChange prop.
  */
 
-import { useMemo, useState, type CSSProperties, type JSX } from "react";
+import { useMemo, useState, type JSX } from "react";
 import { type ParsedSheet } from "@eq/intake";
 import { useIntakeBundle, roleLabel, ROLE_REGISTRY, type IntakeBundle } from "../shared/intake-bundle.js";
 import { IntakeDropZone } from "../shared/IntakeDropZone.js";
@@ -34,23 +34,6 @@ import {
   renderToCsv,
   type DestinationTemplate,
 } from "../rollup/template.js";
-
-// ---------------------------------------------------------------------------
-// Design tokens
-// ---------------------------------------------------------------------------
-const SKY  = "#3DA8D8";
-const DEEP = "#2986B4";
-const ICE  = "#EAF5FB";
-const INK  = "#1A1A2E";
-
-const spinnerStyle: CSSProperties = {
-  width: 14, height: 14, borderRadius: 999,
-  border: `2px solid rgba(255,255,255,0.4)`,
-  borderTopColor: "white",
-  animation: "eq-spin 0.7s linear infinite",
-  flexShrink: 0,
-  display: "inline-block",
-};
 
 // ---------------------------------------------------------------------------
 // Props / constants
@@ -86,26 +69,23 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
     [props.onDestinationChange],
   );
 
-  const bundle  = useIntakeBundle();
+  const bundle   = useIntakeBundle();
   const [destId, setDestId] = useState<string>(INTO_EQ_ID);
 
-  const exportDest  = useMemo(() => QUICK_DESTINATIONS.find((d) => `${QUICK_PREFIX}${d.id}` === destId), [destId]);
+  const exportDest   = useMemo(() => QUICK_DESTINATIONS.find((d) => `${QUICK_PREFIX}${d.id}` === destId), [destId]);
   const joinTemplate = useMemo(() => BUILTIN_TEMPLATES.find((t) => `${TEMPLATE_PREFIX}${t.id}` === destId), [destId]);
   const isCanonical  = destId === INTO_EQ_ID;
 
   const hasRecognisedFiles = bundle.slots.some((s) => s.role !== "unknown" && !s.error);
 
   return (
-    <section
-      className="eq-intake-module"
-      style={{ padding: "24px 0", fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: INK }}
-    >
+    <section className="eq-intake-module">
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4, color: INK }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4, color: "var(--eq-ink)", margin: "0 0 4px" }}>
           Bring a file in
         </h2>
-        <p style={{ fontSize: 14, color: INK, opacity: 0.55, lineHeight: 1.5 }}>
+        <p style={{ fontSize: 14, color: "var(--eq-muted)", lineHeight: 1.5, margin: 0 }}>
           Drop a SimPRO export — we'll work out what it is, then you choose where it goes.
           One drop, no retyping.
         </p>
@@ -123,7 +103,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
             onChange={(id) => { setDestId(id); onDestinationChange(id, "suggested"); }}
           />
 
-          <div style={{ marginTop: 20 }}>
+          <div className="eq-intake-action">
             {isCanonical ? (
               <CommitView
                 bundle={bundle}
@@ -137,25 +117,12 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
             )}
           </div>
 
-          {/* Start over */}
-          <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid #EEF2F7" }}>
+          <div className="eq-intake-footer">
             <button
               type="button"
               onClick={() => bundle.reset()}
               disabled={bundle.busy}
-              style={{
-                padding: "8px 14px",
-                fontSize: 13, fontWeight: 500,
-                background: "transparent",
-                color: INK, opacity: 0.4,
-                border: "1px solid #E5E7EB",
-                borderRadius: 8,
-                cursor: bundle.busy ? "not-allowed" : "pointer",
-                transition: "opacity 0.15s",
-                fontFamily: "inherit",
-              }}
-              onMouseEnter={(e) => { (e.target as HTMLButtonElement).style.opacity = "0.8"; }}
-              onMouseLeave={(e) => { (e.target as HTMLButtonElement).style.opacity = "0.4"; }}
+              style={{ fontSize: 13, padding: "6px 12px", color: "var(--eq-muted)", background: "transparent", border: "1px solid var(--eq-line)", borderRadius: 8 }}
             >
               Start over
             </button>
@@ -167,15 +134,14 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
 }
 
 // ============================================================================
-// DESTINATION PICKER
-// Replaces the <select> with visual destination pills/cards.
+// DESTINATION PICKER — visual pills replacing the old <select>
 // ============================================================================
 
 interface DestOption {
   id: string;
   label: string;
-  description: string;
   shortLabel?: string;
+  description: string;
   needsRoles: RoleName[];
   group: "eq" | "quick" | "join";
 }
@@ -205,6 +171,8 @@ const TEMPLATE_OPTIONS: DestOption[] = BUILTIN_TEMPLATES.map((t) => ({
   group: "join" as const,
 }));
 
+const ALL_OPTIONS: DestOption[] = [INTO_EQ_OPTION, ...QUICK_OPTIONS, ...TEMPLATE_OPTIONS];
+
 function destAvailable(opt: DestOption, bundle: IntakeBundle): boolean {
   if (opt.needsRoles.length === 0) return bundle.availableRoles.size > 0;
   return opt.needsRoles.every((r) => bundle.availableRoles.has(r));
@@ -223,76 +191,52 @@ function DestinationPicker({
   bundle: IntakeBundle;
   onChange: (id: string) => void;
 }): JSX.Element {
-  const selected = [...[INTO_EQ_OPTION], ...QUICK_OPTIONS, ...TEMPLATE_OPTIONS].find((o) => o.id === destId) ?? INTO_EQ_OPTION;
-  const missing = missingRoles(selected, bundle);
+  const selected = ALL_OPTIONS.find((o) => o.id === destId) ?? INTO_EQ_OPTION;
+  const missing  = missingRoles(selected, bundle);
 
-  const quickAvailable = QUICK_OPTIONS.filter((o) => destAvailable(o, bundle));
+  const quickAvailable   = QUICK_OPTIONS.filter((o) => destAvailable(o, bundle));
   const quickUnavailable = QUICK_OPTIONS.filter((o) => !destAvailable(o, bundle));
-  const joinAvailable = TEMPLATE_OPTIONS.filter((o) => destAvailable(o, bundle));
+  const joinAvailable    = TEMPLATE_OPTIONS.filter((o) => destAvailable(o, bundle));
 
   return (
-    <div>
-      {/* Section label */}
-      <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: INK, opacity: 0.4, marginBottom: 10 }}>
-        Where's it going?
+    <div className="eq-intake-dest">
+      <div className="eq-intake-dest__label">Where's it going?</div>
+
+      {/* Row 1: Into EQ + quick exports */}
+      <div className="eq-intake-dest__row">
+        <DestPill opt={INTO_EQ_OPTION} isSelected={destId === INTO_EQ_ID} available primary onClick={() => onChange(INTO_EQ_ID)} />
+
+        {(quickAvailable.length > 0 || quickUnavailable.length > 0) && (
+          <span className="eq-intake-dest__divider">or export as</span>
+        )}
+
+        {quickAvailable.map((o) => (
+          <DestPill key={o.id} opt={o} isSelected={destId === o.id} available onClick={() => onChange(o.id)} />
+        ))}
+        {quickUnavailable.map((o) => (
+          <DestPill key={o.id} opt={o} isSelected={false} available={false} onClick={() => {}} />
+        ))}
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {/* Row 1: Into EQ (primary) + quick exports */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-          {/* Into EQ — primary pill */}
-          <DestPill
-            opt={INTO_EQ_OPTION}
-            isSelected={destId === INTO_EQ_ID}
-            available={destAvailable(INTO_EQ_OPTION, bundle)}
-            primary
-            onClick={() => onChange(INTO_EQ_ID)}
-          />
-
-          {/* Divider */}
-          {(quickAvailable.length > 0 || quickUnavailable.length > 0) && (
-            <span style={{ fontSize: 11, color: INK, opacity: 0.2, padding: "0 2px" }}>or export as</span>
-          )}
-
-          {/* Available quick exports */}
-          {quickAvailable.map((o) => (
+      {/* Row 2: Join templates (only if available) */}
+      {joinAvailable.length > 0 && (
+        <div className="eq-intake-dest__row" style={{ marginTop: 6 }}>
+          <span className="eq-intake-dest__divider">or join files for</span>
+          {joinAvailable.map((o) => (
             <DestPill key={o.id} opt={o} isSelected={destId === o.id} available onClick={() => onChange(o.id)} />
           ))}
-
-          {/* Unavailable quick exports — greyed out with tooltip */}
-          {quickUnavailable.map((o) => (
-            <DestPill key={o.id} opt={o} isSelected={false} available={false} onClick={() => {}} />
-          ))}
-        </div>
-
-        {/* Row 2: Join templates (only if any available) */}
-        {joinAvailable.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-            <span style={{ fontSize: 11, color: INK, opacity: 0.2, paddingRight: 2 }}>or join files for</span>
-            {joinAvailable.map((o) => (
-              <DestPill key={o.id} opt={o} isSelected={destId === o.id} available onClick={() => onChange(o.id)} />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Selected destination description + missing-file warning */}
-      {selected && (
-        <div style={{ marginTop: 10, display: "flex", alignItems: "flex-start", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13, color: INK, opacity: 0.6, flex: 1, minWidth: 180 }}>
-            {selected.description}
-          </span>
-          {missing.length > 0 && (
-            <span style={{
-              fontSize: 12, fontWeight: 600, color: "#B45309",
-              background: "#FFFBEB", padding: "2px 10px", borderRadius: 999,
-              whiteSpace: "nowrap",
-            }}>
-              Drop {missing.map(roleLabel).join(" + ")} file{missing.length > 1 ? "s" : ""} first
-            </span>
-          )}
         </div>
       )}
+
+      {/* Description + missing hint */}
+      <div className="eq-intake-dest__footer">
+        <span className="eq-intake-dest__desc">{selected.description}</span>
+        {missing.length > 0 && (
+          <span className="eq-intake-dest__missing">
+            Drop {missing.map(roleLabel).join(" + ")} file{missing.length > 1 ? "s" : ""} first
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -312,63 +256,22 @@ function DestPill({
 }): JSX.Element {
   const label = opt.shortLabel ?? opt.label;
 
-  const base: CSSProperties = {
-    display: "inline-flex", alignItems: "center",
-    padding: primary ? "7px 14px" : "5px 12px",
-    borderRadius: 8,
-    fontSize: primary ? 14 : 13,
-    fontWeight: isSelected ? 600 : 500,
-    cursor: available ? "pointer" : "default",
-    border: "1px solid transparent",
-    transition: "all 0.12s",
-    fontFamily: "inherit",
-    whiteSpace: "nowrap",
-    lineHeight: 1,
-    opacity: available ? 1 : 0.35,
-  };
+  let cls = "eq-dest-pill";
+  if (primary)    cls += " eq-dest-pill--primary";
+  if (!available) cls += " eq-dest-pill--disabled";
 
-  if (isSelected && primary) {
-    return (
-      <button type="button" onClick={onClick} style={{ ...base, background: DEEP, color: "white", borderColor: DEEP }}>
-        {label}
-      </button>
-    );
-  }
-  if (isSelected) {
-    return (
-      <button type="button" onClick={onClick} style={{ ...base, background: ICE, color: DEEP, borderColor: SKY }}>
-        {label}
-      </button>
-    );
-  }
-  if (primary) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        style={{ ...base, background: "white", color: DEEP, borderColor: "#B8D9EE" }}
-        onMouseEnter={(e) => { if (available) { (e.currentTarget as HTMLButtonElement).style.background = ICE; } }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "white"; }}
-      >
-        {label}
-      </button>
-    );
-  }
+  if (isSelected && primary) cls += " eq-dest-pill--active-primary";
+  else if (isSelected)       cls += " eq-dest-pill--active";
+
   return (
-    <button
-      type="button"
-      onClick={available ? onClick : undefined}
-      style={{ ...base, background: "#F8FAFC", color: INK, borderColor: "#E5E7EB" }}
-      onMouseEnter={(e) => { if (available) { (e.currentTarget as HTMLButtonElement).style.background = ICE; (e.currentTarget as HTMLButtonElement).style.borderColor = "#B8D9EE"; } }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#F8FAFC"; (e.currentTarget as HTMLButtonElement).style.borderColor = "#E5E7EB"; }}
-    >
+    <button type="button" className={cls} onClick={available ? onClick : undefined}>
       {label}
     </button>
   );
 }
 
 // ============================================================================
-// PREVIEW TABLE — shared between ExportView and TemplateExportView
+// PREVIEW TABLE — shared by ExportView + TemplateExportView
 // ============================================================================
 function PreviewTable({
   headers,
@@ -382,28 +285,22 @@ function PreviewTable({
   destLabel: string;
 }): JSX.Element {
   return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 12, color: INK, opacity: 0.5, marginBottom: 6 }}>
+    <div className="eq-intake-preview">
+      <p className="eq-intake-preview__hint">
         Preview — first {rows.length} of {totalRows.toLocaleString()} rows → {destLabel}
-      </div>
-      <div style={{ overflowX: "auto", border: "1px solid #EEF2F7", borderRadius: 10 }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+      </p>
+      <div className="eq-intake-preview__wrap">
+        <table className="eq-intake-preview__table">
           <thead>
-            <tr style={{ background: "#F8FAFC" }}>
-              {headers.map((h) => (
-                <th key={h} style={{ padding: "6px 10px", textAlign: "left", whiteSpace: "nowrap", fontWeight: 600, color: DEEP, borderBottom: "1px solid #EEF2F7" }}>
-                  {h}
-                </th>
-              ))}
+            <tr>
+              {headers.map((h) => <th key={h}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
             {rows.map((row, i) => (
-              <tr key={i} style={{ borderBottom: i < rows.length - 1 ? "1px solid #F4F6F8" : undefined }}>
+              <tr key={i}>
                 {headers.map((h) => (
-                  <td key={h} style={{ padding: "5px 10px", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: INK }} title={String(row[h] ?? "")}>
-                    {String(row[h] ?? "")}
-                  </td>
+                  <td key={h} title={String(row[h] ?? "")}>{String(row[h] ?? "")}</td>
                 ))}
               </tr>
             ))}
@@ -415,7 +312,7 @@ function PreviewTable({
 }
 
 // ============================================================================
-// EXPORT VIEW — reshape-out preview + download
+// EXPORT VIEW
 // ============================================================================
 function ExportView({ bundle, dest }: { bundle: IntakeBundle; dest: QuickDestination }): JSX.Element {
   const [error, setError] = useState<string | null>(null);
@@ -445,12 +342,7 @@ function ExportView({ bundle, dest }: { bundle: IntakeBundle; dest: QuickDestina
       return out;
     });
     const csv = encodeCsv(headers, rows);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = dest.filename;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    triggerDownload(csv, dest.filename);
     setDownloaded({ filename: dest.filename, rowCount: rows.length });
   };
 
@@ -464,24 +356,17 @@ function ExportView({ bundle, dest }: { bundle: IntakeBundle; dest: QuickDestina
           destLabel={dest.label}
         />
       )}
-
-      {error && <ErrorBanner message={error} />}
-
-      {downloaded ? (
-        <SuccessBanner>
-          Downloaded <strong>{downloaded.filename}</strong> — {downloaded.rowCount} row{downloaded.rowCount === 1 ? "" : "s"}.
-        </SuccessBanner>
-      ) : (
-        <PrimaryButton onClick={download} disabled={!matched}>
-          Download {dest.label}
-        </PrimaryButton>
-      )}
+      {error && <Notice kind="err">{error}</Notice>}
+      {downloaded
+        ? <Notice kind="ok">Downloaded <strong>{downloaded.filename}</strong> — {downloaded.rowCount} row{downloaded.rowCount === 1 ? "" : "s"}.</Notice>
+        : <PrimaryButton onClick={download} disabled={!matched}>Download {dest.label}</PrimaryButton>
+      }
     </div>
   );
 }
 
 // ============================================================================
-// TEMPLATE EXPORT VIEW — multi-file JOIN templates
+// TEMPLATE EXPORT VIEW
 // ============================================================================
 function TemplateExportView({ bundle, template }: { bundle: IntakeBundle; template: DestinationTemplate }): JSX.Element {
   const [error, setError] = useState<string | null>(null);
@@ -496,61 +381,39 @@ function TemplateExportView({ bundle, template }: { bundle: IntakeBundle; templa
     return map;
   }, [bundle.slots]);
 
-  const missing = template.requiredRoles.filter((r) => !byRole[r]);
+  const missing  = template.requiredRoles.filter((r) => !byRole[r]);
   const filename = `${template.id}.csv`;
-
-  const result = useMemo(() => {
-    if (missing.length > 0) return null;
-    return renderTemplate(template, byRole);
-  }, [template, byRole, missing.length]);
-
-  const previewRows = result ? result.rows.slice(0, 5) : null;
+  const result   = useMemo(() => (missing.length > 0 ? null : renderTemplate(template, byRole)), [template, byRole, missing.length]);
   const destLabel = template.destinationLabel ?? "CSV";
 
   const download = () => {
     setError(null);
-    if (!result) {
-      setError(`This needs ${missing.map(roleLabel).join(" + ")}. Drop the missing file(s) above first.`);
-      return;
-    }
-    const csv = renderToCsv(result);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    if (!result) { setError(`Needs ${missing.map(roleLabel).join(" + ")}. Drop the missing file(s) above first.`); return; }
+    triggerDownload(renderToCsv(result), filename);
     setDownloaded({ filename, rowCount: result.rows.length });
   };
 
   return (
     <div>
-      {result && previewRows && previewRows.length > 0 && !downloaded && (
+      {result && result.rows.length > 0 && !downloaded && (
         <PreviewTable
           headers={result.headers}
-          rows={previewRows}
+          rows={result.rows.slice(0, 5)}
           totalRows={result.rows.length}
           destLabel={destLabel}
         />
       )}
-
-      {error && <ErrorBanner message={error} />}
-
-      {downloaded ? (
-        <SuccessBanner>
-          Downloaded <strong>{downloaded.filename}</strong> — {downloaded.rowCount} row{downloaded.rowCount === 1 ? "" : "s"}.
-        </SuccessBanner>
-      ) : (
-        <PrimaryButton onClick={download} disabled={!result}>
-          Download {destLabel}
-        </PrimaryButton>
-      )}
+      {error && <Notice kind="err">{error}</Notice>}
+      {downloaded
+        ? <Notice kind="ok">Downloaded <strong>{downloaded.filename}</strong> — {downloaded.rowCount} row{downloaded.rowCount === 1 ? "" : "s"}.</Notice>
+        : <PrimaryButton onClick={download} disabled={!result}>Download {destLabel}</PrimaryButton>
+      }
     </div>
   );
 }
 
 // ============================================================================
-// COMMIT VIEW — Into EQ (canonical commit)
+// COMMIT VIEW
 // ============================================================================
 type CommitBundle = {
   customer?: ParsedSheet;
@@ -571,26 +434,26 @@ function CommitView({ bundle, supabase, tenantId }: { bundle: IntakeBundle; supa
     if (!supabase) return;
     setError(null); setResult(null);
 
-    const commitBundle: CommitBundle = {};
+    const cb: CommitBundle = {};
     for (const slot of bundle.slots) {
       if (slot.role === "unknown" || !slot.sheet) continue;
       const key = slot.role as keyof CommitBundle;
-      if (commitBundle[key]) { setError(`Two files look like ${slot.role}s. Remove one before saving.`); return; }
-      commitBundle[key] = slot.sheet;
+      if (cb[key]) { setError(`Two files look like ${slot.role}s. Remove one before saving.`); return; }
+      cb[key] = slot.sheet;
     }
-    if (!commitBundle.customer && !commitBundle.site && !commitBundle.contact && !commitBundle.staff && !commitBundle.licence) {
-      setError("Drop at least one file we recognise — a customer, site, contact, staff, or licence list.");
+    if (!cb.customer && !cb.site && !cb.contact && !cb.staff && !cb.licence) {
+      setError("Drop at least one recognised file — customers, sites, contacts, staff, or licences.");
       return;
     }
 
     setBusy(true); setProgressMsg(null);
     try {
-      const commitResult = await commitBundleToCanonical({
-        supabase, bundle: commitBundle, tenantId,
+      const r = await commitBundleToCanonical({
+        supabase, bundle: cb, tenantId,
         sourceFilename: bundle.slots.filter((s) => s.role !== "unknown").map((s) => s.file.name).join("+"),
         onProgress: (msg) => setProgressMsg(msg),
       });
-      setResult(commitResult); setProgressMsg(null);
+      setResult(r); setProgressMsg(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -601,21 +464,20 @@ function CommitView({ bundle, supabase, tenantId }: { bundle: IntakeBundle; supa
   return (
     <div>
       {!enabled && (
-        <div style={{ padding: "10px 14px", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, fontSize: 13, color: "#78350F", marginBottom: 16 }}>
+        <Notice kind="warn">
           EQ isn't connected yet — ask whoever set this up to fill in the connection details. Saving stays inactive until then.
-        </div>
+        </Notice>
       )}
 
       {progressMsg && (
-        <div style={{ padding: "10px 14px", background: ICE, borderRadius: 8, fontSize: 13, color: DEEP, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ ...spinnerStyle, borderColor: `${DEEP}33`, borderTopColor: DEEP }} />
+        <div className="eq-intake-progress">
+          <span className="eq-intake-spinner eq-intake-spinner--dark" />
           {progressMsg}
         </div>
       )}
 
-      {error && <ErrorBanner message={error} />}
+      {error && <Notice kind="err">{error}</Notice>}
 
-      {/* Pre-commit mapping preview */}
       {!result && bundle.slots.some((s) => s.role !== "unknown" && s.sheet) && (
         <div style={{ marginBottom: 16 }}>
           <MappingPreviewPanel slots={bundle.slots} registry={ROLE_REGISTRY} />
@@ -633,17 +495,16 @@ function CommitView({ bundle, supabase, tenantId }: { bundle: IntakeBundle; supa
       {result?.perEntity.some((r) => r.flaggedRows.length > 0) && (
         <RowsDisclosure
           label="Show rows that saved but need checking"
-          hint="These rows are in EQ, but something caught our eye. Review each one before relying on it."
-          accentColor="#d97706"
+          hint="These rows are in EQ, but something caught our eye."
+          accentColor="var(--eq-warn)"
           hintColor="#78350f"
           perEntity={result.perEntity.map((r) => ({ entity: r.entity, rows: r.flaggedRows }))}
         />
       )}
-
       {result?.perEntity.some((r) => r.rejectedRows.length > 0) && (
         <RowsDisclosure
           label="Show rows that couldn't save — and why"
-          accentColor={INK}
+          accentColor="var(--eq-ink)"
           showDownload
           downloadFilename="eq-rejected-rows.csv"
           perEntity={result.perEntity.map((r) => ({ entity: r.entity, rows: r.rejectedRows }))}
@@ -659,39 +520,28 @@ function CommitSummary({ result }: { result: CommitResult }): JSX.Element {
   const rejected = result.perEntity.reduce((n, r) => n + r.rejectedCount, 0);
   const hasFatal = result.perEntity.some((r) => r.fatalError);
 
-  const bg      = hasFatal ? "#FEF2F2" : rejected > 0 ? "#FFFBEB" : "#F0FDF4";
-  const border  = hasFatal ? "#FECACA" : rejected > 0 ? "#FDE68A" : "#BBF7D0";
+  const variant = hasFatal || rejected > 0 ? (hasFatal ? "err" : "warn") : "ok";
   const icon    = hasFatal ? "✗" : rejected > 0 ? "⚠" : "✓";
-  const iconBg  = hasFatal ? "#FEE2E2" : rejected > 0 ? "#FEF3C7" : "#D1FAE5";
-  const iconClr = hasFatal ? "#DC2626" : rejected > 0 ? "#D97706" : "#059669";
 
   return (
-    <div role="status" aria-live="polite" style={{ marginTop: 4, padding: "14px 16px", background: bg, border: `1px solid ${border}`, borderRadius: 10, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-      <div style={{ width: 32, height: 32, borderRadius: 8, background: iconBg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, color: iconClr, flexShrink: 0, fontWeight: 700 }}>
-        {icon}
-      </div>
-      <div style={{ flex: 1, minWidth: 140 }}>
-        <div style={{ fontWeight: 700, fontSize: 15, color: INK }}>
+    <div className={`eq-commit-result eq-commit-result--${variant}`} role="status" aria-live="polite">
+      <div className="eq-commit-result__icon">{icon}</div>
+      <div className="eq-commit-result__body">
+        <div className="eq-commit-result__title">
           {saved.toLocaleString()} record{saved === 1 ? "" : "s"} saved
         </div>
-        <div style={{ display: "flex", gap: 10, marginTop: 2, flexWrap: "wrap" }}>
-          {flagged > 0 && (
-            <span style={{ fontSize: 12, color: "#D97706" }}>
-              {flagged.toLocaleString()} need{flagged === 1 ? "s" : ""} checking
-            </span>
-          )}
-          {rejected > 0 && (
-            <span style={{ fontSize: 12, color: "#DC2626" }}>
-              {rejected.toLocaleString()} couldn't save
-            </span>
-          )}
-        </div>
+        {(flagged > 0 || rejected > 0) && (
+          <div className="eq-commit-result__sub">
+            {flagged  > 0 && <span className="eq-commit-result__sub-warn">{flagged.toLocaleString()} need{flagged === 1 ? "s" : ""} checking</span>}
+            {rejected > 0 && <span className="eq-commit-result__sub-err">{rejected.toLocaleString()} couldn't save</span>}
+          </div>
+        )}
       </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+      <div className="eq-commit-result__chips">
         {result.perEntity
           .filter((r) => r.committedCount > 0)
           .map((r) => (
-            <span key={r.entity} style={{ padding: "3px 10px", borderRadius: 999, background: DEEP, color: "white", fontSize: 12, fontWeight: 600 }}>
+            <span key={r.entity} className="eq-commit-result__chip">
               {r.committedCount} {entityLabel(r.entity).toLowerCase()}
             </span>
           ))}
@@ -701,9 +551,8 @@ function CommitSummary({ result }: { result: CommitResult }): JSX.Element {
 }
 
 // ============================================================================
-// SHARED SMALL COMPONENTS
+// SHARED PRIMITIVES
 // ============================================================================
-
 function PrimaryButton({
   onClick,
   disabled = false,
@@ -715,44 +564,36 @@ function PrimaryButton({
   loading?: boolean;
   children: React.ReactNode;
 }): JSX.Element {
-  const active = !disabled && !loading;
   return (
     <button
       type="button"
-      onClick={active ? onClick : undefined}
+      className="eq-primary"
+      onClick={(!disabled && !loading) ? onClick : undefined}
       disabled={disabled || loading}
-      style={{
-        display: "inline-flex", alignItems: "center", gap: 8,
-        padding: "10px 20px",
-        background: active ? DEEP : "#B8CFE0",
-        color: "white",
-        border: "none",
-        borderRadius: 8,
-        fontWeight: 600,
-        fontSize: 14,
-        cursor: active ? "pointer" : "not-allowed",
-        transition: "background 0.12s",
-        fontFamily: "inherit",
-      }}
+      style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 600, padding: "10px 20px", borderRadius: 8 }}
     >
-      {loading && <span style={spinnerStyle} />}
+      {loading && <span className="eq-intake-spinner" />}
       {children}
     </button>
   );
 }
 
-function ErrorBanner({ message }: { message: string }): JSX.Element {
+function Notice({ kind, children }: { kind: "ok" | "warn" | "err"; children: React.ReactNode }): JSX.Element {
   return (
-    <div role="alert" style={{ padding: "10px 14px", background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, color: "#DC2626", fontSize: 13, marginBottom: 16 }}>
-      {message}
+    <div className={`eq-intake-notice eq-intake-notice--${kind}`} role={kind === "err" ? "alert" : undefined}>
+      {children}
     </div>
   );
 }
 
-function SuccessBanner({ children }: { children: React.ReactNode }): JSX.Element {
-  return (
-    <div style={{ padding: "10px 14px", background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 8, fontSize: 13, color: "#166534" }}>
-      ✓ {children}
-    </div>
-  );
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function triggerDownload(csv: string, filename: string): void {
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
