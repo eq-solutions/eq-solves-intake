@@ -122,8 +122,8 @@ export function RowsDisclosure({
             padding: "5px 12px",
             fontSize: 12,
             background: "white",
-            color: "#1A1A2E",
-            border: "1px solid #EAF5FB",
+            color: "var(--eq-ink)",
+            border: "1px solid var(--eq-ice)",
             borderRadius: 4,
             cursor: "pointer",
             marginBottom: 8,
@@ -144,16 +144,16 @@ export function RowsDisclosure({
             boxSizing: "border-box",
             padding: "5px 8px",
             fontSize: 12,
-            border: "1px solid #EAF5FB",
+            border: "1px solid var(--eq-ice)",
             borderRadius: 4,
             fontFamily: "inherit",
             marginBottom: 6,
           }}
         />
-        <div style={{ overflowX: "auto", border: "1px solid #EAF5FB", borderRadius: 4 }}>
+        <div style={{ overflowX: "auto", border: "1px solid var(--eq-ice)", borderRadius: 4 }}>
           <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ background: "#EAF5FB" }}>
+              <tr style={{ background: "var(--eq-ice)" }}>
                 <th
                   style={{ padding: "4px 8px", textAlign: "left", whiteSpace: "nowrap", cursor: "pointer", userSelect: "none" }}
                   onClick={() => setSortAsc((a) => !a)}
@@ -167,7 +167,7 @@ export function RowsDisclosure({
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={3} style={{ padding: "8px", color: "#1A1A2E", opacity: 0.5, textAlign: "center" }}>
+                  <td colSpan={3} style={{ padding: "8px", color: "var(--eq-ink)", opacity: 0.5, textAlign: "center" }}>
                     No rows match
                   </td>
                 </tr>
@@ -184,7 +184,7 @@ export function RowsDisclosure({
           </table>
         </div>
         {filtered.length < allRows.length && (
-          <div style={{ fontSize: 11, color: "#1A1A2E", opacity: 0.5, marginTop: 4 }}>
+          <div style={{ fontSize: 11, color: "var(--eq-ink)", opacity: 0.5, marginTop: 4 }}>
             Showing {filtered.length} of {allRows.length} rows
           </div>
         )}

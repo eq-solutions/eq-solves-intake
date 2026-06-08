@@ -34,8 +34,8 @@ export function IntakeDropZone({ bundle }: { bundle: IntakeBundle }): JSX.Elemen
         onDragLeave={() => setDragOver(false)}
         onClick={() => inputRef.current?.click()}
         style={{
-          border: `2px dashed ${dragOver ? "#3DA8D8" : "#EAF5FB"}`,
-          background: dragOver ? "#EAF5FB" : "white",
+          border: `2px dashed ${dragOver ? "var(--eq-sky)" : "var(--eq-ice)"}`,
+          background: dragOver ? "var(--eq-ice)" : "white",
           padding: 28,
           borderRadius: 4,
           textAlign: "center",
@@ -86,11 +86,11 @@ export function IntakeDropZone({ bundle }: { bundle: IntakeBundle }): JSX.Elemen
               <span style={{ flex: 1 }}>
                 <strong>{slot.file.name}</strong>
                 {slot.sheet?.sheetName && slot.sheet.sheetName !== "Sheet1" && (
-                  <span style={{ color: "#2986B4", fontSize: 11, marginLeft: 6 }}>
+                  <span style={{ color: "var(--eq-deep)", fontSize: 11, marginLeft: 6 }}>
                     [{slot.sheet.sheetName}]
                   </span>
                 )}{" "}
-                <span style={{ color: "#1A1A2E", opacity: 0.6 }}>
+                <span style={{ color: "var(--eq-ink)", opacity: 0.6 }}>
                   {slot.role === "unknown"
                     ? "— couldn't tell what this is"
                     : `— looks like ${roleLabel(slot.role)}`}
@@ -119,8 +119,8 @@ export function IntakeDropZone({ bundle }: { bundle: IntakeBundle }): JSX.Elemen
                   fontSize: 12,
                   flexShrink: 0,
                   background: "white",
-                  color: "#1A1A2E",
-                  border: "1px solid #EAF5FB",
+                  color: "var(--eq-ink)",
+                  border: "1px solid var(--eq-ice)",
                   borderRadius: 4,
                   cursor: busy ? "not-allowed" : "pointer",
                 }}

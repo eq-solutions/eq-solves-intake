@@ -116,11 +116,11 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
       style={{
         padding: "24px 0",
         fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
-        color: "#1A1A2E",
+        color: "var(--eq-ink)",
       }}
     >
       <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 6 }}>Bring a file in</h2>
-      <p style={{ fontSize: 14, color: "#1A1A2E", opacity: 0.7, marginBottom: 16 }}>
+      <p style={{ fontSize: 14, color: "var(--eq-ink)", opacity: 0.7, marginBottom: 16 }}>
         Drop a SimPRO export — we'll work out what it is, then you choose where
         it goes. One drop, no retyping.
       </p>
@@ -158,8 +158,8 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
               marginTop: 16,
               padding: "10px 18px",
               background: "white",
-              color: "#1A1A2E",
-              border: "1px solid #EAF5FB",
+              color: "var(--eq-ink)",
+              border: "1px solid var(--eq-ice)",
               borderRadius: 4,
               cursor: bundle.busy ? "not-allowed" : "pointer",
               fontSize: 14,
@@ -256,7 +256,7 @@ function DestinationPicker({
       style={{
         marginBottom: 16,
         padding: 12,
-        background: "#EAF5FB",
+        background: "var(--eq-ice)",
         borderRadius: 4,
         display: "flex",
         alignItems: "center",
@@ -274,7 +274,7 @@ function DestinationPicker({
             fontSize: 14,
             padding: "6px 10px",
             borderRadius: 4,
-            border: "1px solid #2986B4",
+            border: "1px solid var(--eq-deep)",
             background: "white",
           }}
         >
@@ -300,7 +300,7 @@ function DestinationPicker({
           </optgroup>
         </select>
       </label>
-      <span style={{ fontSize: 13, color: "#1A1A2E", opacity: 0.7, flex: 1, minWidth: 200 }}>
+      <span style={{ fontSize: 13, color: "var(--eq-ink)", opacity: 0.7, flex: 1, minWidth: 200 }}>
         {selected.description}
       </span>
       {!available && missing.length > 0 && (
@@ -367,16 +367,16 @@ function ExportView({
     <div>
       {previewRows && previewRows.length > 0 && !downloaded && (
         <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 12, color: "#1A1A2E", opacity: 0.6, marginBottom: 6 }}>
+          <div style={{ fontSize: 12, color: "var(--eq-ink)", opacity: 0.6, marginBottom: 6 }}>
             Preview — first {previewRows.length} of{" "}
             {matched!.sheet!.rows.length.toLocaleString()} rows → {dest.label}
           </div>
-          <div style={{ overflowX: "auto", border: "1px solid #EAF5FB", borderRadius: 4 }}>
+          <div style={{ overflowX: "auto", border: "1px solid var(--eq-ice)", borderRadius: 4 }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
-                <tr style={{ background: "#EAF5FB" }}>
+                <tr style={{ background: "var(--eq-ice)" }}>
                   {dest.columns.map((c) => (
-                    <th key={c.name} style={{ padding: "4px 8px", textAlign: "left", whiteSpace: "nowrap", fontWeight: 600, color: "#2986B4" }}>
+                    <th key={c.name} style={{ padding: "4px 8px", textAlign: "left", whiteSpace: "nowrap", fontWeight: 600, color: "var(--eq-deep)" }}>
                       {c.name}
                     </th>
                   ))}
@@ -414,7 +414,7 @@ function ExportView({
         disabled={!matched}
         style={{
           padding: "10px 18px",
-          background: matched ? "#3DA8D8" : "#BFD4DF",
+          background: matched ? "var(--eq-sky)" : "#BFD4DF",
           color: "white",
           border: "none",
           borderRadius: 4,
@@ -427,7 +427,7 @@ function ExportView({
       </button>
 
       {downloaded && (
-        <div style={{ marginTop: 16, padding: 12, background: "#EAF5FB", border: "1px solid #2986B4", borderRadius: 4, fontSize: 14, color: "#1A1A2E" }}>
+        <div style={{ marginTop: 16, padding: 12, background: "var(--eq-ice)", border: "1px solid var(--eq-deep)", borderRadius: 4, fontSize: 14, color: "var(--eq-ink)" }}>
           ✓ Downloaded <strong>{downloaded.filename}</strong> — {downloaded.rowCount}{" "}
           row{downloaded.rowCount === 1 ? "" : "s"}.
         </div>
@@ -503,16 +503,16 @@ function TemplateExportView({
     <div>
       {result && previewRows && previewRows.length > 0 && !downloaded && (
         <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 12, color: "#1A1A2E", opacity: 0.6, marginBottom: 6 }}>
+          <div style={{ fontSize: 12, color: "var(--eq-ink)", opacity: 0.6, marginBottom: 6 }}>
             Preview — first {previewRows.length} of{" "}
             {result.rows.length.toLocaleString()} rows → {destLabel}
           </div>
-          <div style={{ overflowX: "auto", border: "1px solid #EAF5FB", borderRadius: 4 }}>
+          <div style={{ overflowX: "auto", border: "1px solid var(--eq-ice)", borderRadius: 4 }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
-                <tr style={{ background: "#EAF5FB" }}>
+                <tr style={{ background: "var(--eq-ice)" }}>
                   {result.headers.map((h) => (
-                    <th key={h} style={{ padding: "4px 8px", textAlign: "left", whiteSpace: "nowrap", fontWeight: 600, color: "#2986B4" }}>
+                    <th key={h} style={{ padding: "4px 8px", textAlign: "left", whiteSpace: "nowrap", fontWeight: 600, color: "var(--eq-deep)" }}>
                       {h}
                     </th>
                   ))}
@@ -550,7 +550,7 @@ function TemplateExportView({
         disabled={!result}
         style={{
           padding: "10px 18px",
-          background: result ? "#3DA8D8" : "#BFD4DF",
+          background: result ? "var(--eq-sky)" : "#BFD4DF",
           color: "white",
           border: "none",
           borderRadius: 4,
@@ -563,7 +563,7 @@ function TemplateExportView({
       </button>
 
       {downloaded && (
-        <div style={{ marginTop: 16, padding: 12, background: "#EAF5FB", border: "1px solid #2986B4", borderRadius: 4, fontSize: 14, color: "#1A1A2E" }}>
+        <div style={{ marginTop: 16, padding: 12, background: "var(--eq-ice)", border: "1px solid var(--eq-deep)", borderRadius: 4, fontSize: 14, color: "var(--eq-ink)" }}>
           ✓ Downloaded <strong>{downloaded.filename}</strong> — {downloaded.rowCount}{" "}
           row{downloaded.rowCount === 1 ? "" : "s"}.
         </div>
@@ -651,14 +651,14 @@ function CommitView({
   return (
     <div>
       {!enabled && (
-        <div style={{ padding: 12, background: "#EAF5FB", border: "1px solid #2986B4", borderRadius: 4, fontSize: 13, marginBottom: 16 }}>
+        <div style={{ padding: 12, background: "var(--eq-ice)", border: "1px solid var(--eq-deep)", borderRadius: 4, fontSize: 13, marginBottom: 16 }}>
           EQ isn't connected yet — ask whoever set this up to fill in the
           connection details. Saving stays inactive until then.
         </div>
       )}
 
       {progressMsg && (
-        <div style={{ padding: "8px 12px", background: "#EAF5FB", borderRadius: 4, fontSize: 13, color: "#2986B4", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ padding: "8px 12px", background: "var(--eq-ice)", borderRadius: 4, fontSize: 13, color: "var(--eq-deep)", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
           <span className="eq-spinner__dot" style={{ width: 10, height: 10, flexShrink: 0 }} />
           {progressMsg}
         </div>
@@ -681,7 +681,7 @@ function CommitView({
         disabled={!enabled || busy}
         style={{
           padding: "10px 18px",
-          background: enabled && !busy ? "#3DA8D8" : "#BFD4DF",
+          background: enabled && !busy ? "var(--eq-sky)" : "#BFD4DF",
           color: "white",
           border: "none",
           borderRadius: 4,
@@ -719,7 +719,7 @@ function CommitView({
       {result?.perEntity.some((r) => r.rejectedRows.length > 0) && (
         <RowsDisclosure
           label="Show rows that couldn't save — and why"
-          accentColor="#1A1A2E"
+          accentColor="var(--eq-ink)"
           showDownload
           downloadFilename="eq-rejected-rows.csv"
           perEntity={result.perEntity.map((r) => ({
@@ -744,8 +744,8 @@ function CommitSummary({ result }: { result: CommitResult }): JSX.Element {
   const rejected = result.perEntity.reduce((n, r) => n + r.rejectedCount, 0);
   const hasFatal = result.perEntity.some((r) => r.fatalError);
 
-  const bg = hasFatal ? "#FBEAEA" : rejected > 0 ? "#FFF8EC" : "#EAF5FB";
-  const border = hasFatal ? "#B33A3A" : rejected > 0 ? "#d97706" : "#2986B4";
+  const bg = hasFatal ? "#FBEAEA" : rejected > 0 ? "#FFF8EC" : "var(--eq-ice)";
+  const border = hasFatal ? "#B33A3A" : rejected > 0 ? "#d97706" : "var(--eq-deep)";
   const icon = hasFatal ? "✗" : rejected > 0 ? "⚠" : "✓";
   const iconColor = border;
 
@@ -757,7 +757,7 @@ function CommitSummary({ result }: { result: CommitResult }): JSX.Element {
     >
       <span style={{ fontSize: 20, color: iconColor, flexShrink: 0 }}>{icon}</span>
       <div style={{ flex: 1, minWidth: 160 }}>
-        <span style={{ fontWeight: 600, fontSize: 14, color: "#1A1A2E" }}>
+        <span style={{ fontWeight: 600, fontSize: 14, color: "var(--eq-ink)" }}>
           {saved.toLocaleString()} record{saved === 1 ? "" : "s"} saved
         </span>
         {flagged > 0 && (
@@ -776,7 +776,7 @@ function CommitSummary({ result }: { result: CommitResult }): JSX.Element {
         .map((r) => (
           <span
             key={r.entity}
-            style={{ padding: "2px 8px", borderRadius: 100, background: "#2986B4", color: "white", fontSize: 12, fontWeight: 500, whiteSpace: "nowrap" }}
+            style={{ padding: "2px 8px", borderRadius: 100, background: "var(--eq-deep)", color: "white", fontSize: 12, fontWeight: 500, whiteSpace: "nowrap" }}
           >
             {r.committedCount} {entityLabel(r.entity).toLowerCase()}
           </span>

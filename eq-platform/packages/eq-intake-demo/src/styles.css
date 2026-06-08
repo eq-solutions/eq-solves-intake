@@ -5,16 +5,13 @@
  * No gradients, no shadows. Plus Jakarta Sans, brand palette.
  */
 
+@import "@eq-solutions/tokens/tokens.css";
 @import '@fontsource/plus-jakarta-sans/400.css';
 @import '@fontsource/plus-jakarta-sans/500.css';
 @import '@fontsource/plus-jakarta-sans/600.css';
 @import '@fontsource/plus-jakarta-sans/700.css';
 
 :root {
-  --eq-sky: #3da8d8;
-  --eq-deep: #2986b4;
-  --eq-ice: #eaf5fb;
-  --eq-ink: #1a1a2e;
   --eq-paper: #ffffff;
   --eq-page: #f6f8fb;
   --eq-line: #e4e8ee;

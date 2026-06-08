@@ -32,7 +32,7 @@ export function MappingPreviewPanel({ slots, registry }: MappingPreviewPanelProp
           cursor: "pointer",
           fontSize: 13,
           fontWeight: 500,
-          color: "#2986B4",
+          color: "var(--eq-deep)",
           userSelect: "none",
         }}
       >
@@ -59,7 +59,7 @@ export function MappingPreviewPanel({ slots, registry }: MappingPreviewPanelProp
               key={idx}
               style={{
                 marginBottom: 12,
-                border: "1px solid #EAF5FB",
+                border: "1px solid var(--eq-ice)",
                 borderRadius: 4,
                 overflow: "hidden",
               }}
@@ -67,7 +67,7 @@ export function MappingPreviewPanel({ slots, registry }: MappingPreviewPanelProp
               <div
                 style={{
                   padding: "6px 10px",
-                  background: "#EAF5FB",
+                  background: "var(--eq-ice)",
                   fontSize: 12,
                   fontWeight: 600,
                   display: "flex",
@@ -78,12 +78,12 @@ export function MappingPreviewPanel({ slots, registry }: MappingPreviewPanelProp
                 <span>
                   {slot.file.name}
                   {slot.sheet.sheetName && slot.sheet.sheetName !== "Sheet1" && (
-                    <span style={{ color: "#2986B4", marginLeft: 6 }}>[{slot.sheet.sheetName}]</span>
+                    <span style={{ color: "var(--eq-deep)", marginLeft: 6 }}>[{slot.sheet.sheetName}]</span>
                   )}
                   {" — "}
                   {entityLabel(slot.role)}
                 </span>
-                <span style={{ fontWeight: 400, color: unmappedCount > 0 ? "#d97706" : "#2986B4" }}>
+                <span style={{ fontWeight: 400, color: unmappedCount > 0 ? "#d97706" : "var(--eq-deep)" }}>
                   {mapped}/{total} columns matched
                   {unmappedCount > 0 ? ` · ${unmappedCount} unmatched` : ""}
                 </span>
@@ -92,10 +92,10 @@ export function MappingPreviewPanel({ slots, registry }: MappingPreviewPanelProp
                 <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: "#F8FCFE" }}>
-                      <th style={{ padding: "4px 8px", textAlign: "left", fontWeight: 500, borderBottom: "1px solid #EAF5FB" }}>
+                      <th style={{ padding: "4px 8px", textAlign: "left", fontWeight: 500, borderBottom: "1px solid var(--eq-ice)" }}>
                         Your column
                       </th>
-                      <th style={{ padding: "4px 8px", textAlign: "left", fontWeight: 500, borderBottom: "1px solid #EAF5FB" }}>
+                      <th style={{ padding: "4px 8px", textAlign: "left", fontWeight: 500, borderBottom: "1px solid var(--eq-ice)" }}>
                         EQ field
                       </th>
                     </tr>
@@ -111,7 +111,7 @@ export function MappingPreviewPanel({ slots, registry }: MappingPreviewPanelProp
                           <td
                             style={{
                               padding: "3px 8px",
-                              color: canonicalField ? "#2986B4" : "#d97706",
+                              color: canonicalField ? "var(--eq-deep)" : "#d97706",
                               fontFamily: canonicalField ? "monospace" : "inherit",
                               fontSize: canonicalField ? 11 : 12,
                             }}
