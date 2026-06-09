@@ -79,3 +79,10 @@ export type {
   OrphanCheckOpts,
   OrphanCheckResult,
 } from "./tidy-types.js";
+
+// ── Quality Guardian ───────────────────────────────────────────────────────
+export { runLicenceExpiryCheck } from "./licence-expiry-check.js";
+export type { LicenceExpiryAlertSummary } from "./licence-expiry-check.js";
+
+export { computeHealthScores } from "./health-score.js";
+export type { HealthScore } from "./health-score.js";
