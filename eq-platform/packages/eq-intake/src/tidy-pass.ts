@@ -195,7 +195,10 @@ async function scanEntity(
       allowNonCurrentSchema: true,
       // Disable FK lookups — we're only checking field normalisation here,
       // not relational integrity (orphan-check handles that separately).
-      fkLookup: async () => [],
+      fkLookup: {
+        list:  async () => [],
+        byId:  async () => null,
+      },
     });
   } catch (e) {
     throw new Error(
