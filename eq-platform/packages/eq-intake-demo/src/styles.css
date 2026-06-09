@@ -2516,6 +2516,386 @@ button.eq-primary:hover {
   }
 }
 
+/* =========================================================================
+ * Reconcile module
+ *
+ * Colour semantics (no hardcoded hex — all EQ vars or named vars below):
+ *   matched    — green  (--eq-ok tint)
+ *   conflict   — orange (--eq-warn tint) with --eq-deep 10% background
+ *   new        — sky    (--eq-sky tint)
+ *   canonical  — neutral (--eq-muted tint)
+ *
+ * --eq-sky-10  : var(--eq-sky) at 10% opacity — used for new rows
+ * --eq-deep-10 : var(--eq-deep) at 10% opacity — used for conflict rows
+ * These are defined below as rgba approximations using the palette values.
+ * ========================================================================= */
+:root {
+  /* 10% opacity approximations of the EQ palette blues */
+  --eq-sky-10: #e8f5fc;   /* #3DA8D8 at ~10% on white */
+  --eq-deep-10: #e0eef7;  /* #2986B4 at ~10% on white */
+}
+
+.eq-reconcile {
+  padding: 24px 0;
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+  color: var(--eq-ink);
+}
+
+.eq-reconcile__title {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+
+.eq-reconcile__subtitle {
+  font-size: 14px;
+  color: var(--eq-muted);
+  margin: 0 0 20px;
+}
+
+.eq-reconcile__dropzone {
+  margin-bottom: 20px;
+}
+
+.eq-reconcile__error {
+  padding: 12px 16px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  color: var(--eq-err);
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+.eq-reconcile__done {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: #e6f4ea;
+  border: 1px solid var(--eq-ok);
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--eq-ink);
+  flex-wrap: wrap;
+}
+
+.eq-reconcile__done-icon {
+  font-size: 20px;
+  color: var(--eq-ok);
+}
+
+/* Summary badge strip */
+.eq-reconcile__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 12px 16px;
+  background: var(--eq-paper);
+  border: 1px solid var(--eq-line);
+  border-radius: 8px;
+}
+
+.eq-reconcile__badge {
+  padding: 4px 12px;
+  border-radius: 99px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.eq-reconcile__badge--matched {
+  background: #e6f4ea;
+  color: var(--eq-ok);
+}
+
+.eq-reconcile__badge--conflict {
+  background: #fef3c7;
+  color: var(--eq-warn);
+}
+
+.eq-reconcile__badge--new {
+  background: var(--eq-sky-10);
+  color: var(--eq-deep);
+}
+
+.eq-reconcile__badge--canonical {
+  background: var(--eq-page);
+  color: var(--eq-muted);
+}
+
+.eq-reconcile__match-key {
+  font-size: 12px;
+  color: var(--eq-muted);
+  margin-left: auto;
+}
+
+/* Section blocks */
+.eq-reconcile__section {
+  background: var(--eq-paper);
+  border: 1px solid var(--eq-line);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+
+.eq-reconcile__section h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--eq-ink);
+}
+
+.eq-reconcile__section p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--eq-muted);
+}
+
+.eq-reconcile__section--new {
+  background: var(--eq-sky-10);
+  border-color: var(--eq-sky);
+}
+
+.eq-reconcile__section--new h3 {
+  color: var(--eq-deep);
+}
+
+.eq-reconcile__section--canonical {
+  background: var(--eq-page);
+  border-color: var(--eq-line);
+}
+
+.eq-reconcile__section--canonical h3 {
+  color: var(--eq-muted);
+}
+
+.eq-reconcile__section--matched {
+  background: #e6f4ea;
+  border-color: #a7d9b2;
+}
+
+.eq-reconcile__section--matched h3 {
+  color: var(--eq-ok);
+}
+
+.eq-reconcile__section-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.eq-reconcile__section-header h3 {
+  margin: 0;
+}
+
+.eq-reconcile__section-hint {
+  font-size: 12px;
+  color: var(--eq-muted);
+}
+
+/* Bulk action bar */
+.eq-reconcile__bulk-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--eq-muted);
+}
+
+.eq-reconcile__bulk-actions button {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+/* Conflict rows */
+.eq-reconcile__conflict-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.eq-reconcile__conflict-row {
+  background: var(--eq-deep-10);
+  border: 1px solid var(--eq-line);
+  border-left: 3px solid var(--eq-warn);
+  border-radius: 6px;
+  padding: 10px 14px;
+}
+
+.eq-reconcile__conflict-row--resolved {
+  opacity: 0.75;
+  border-left-color: var(--eq-muted);
+}
+
+.eq-reconcile__conflict-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.eq-reconcile__expand-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.eq-reconcile__conflict-count {
+  font-size: 11px;
+  color: var(--eq-muted);
+  font-weight: 400;
+}
+
+.eq-reconcile__resolution-buttons {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.eq-reconcile__resolution-buttons button {
+  font-size: 11px;
+  padding: 3px 9px;
+}
+
+.eq-reconcile__resolution-buttons button[aria-pressed="true"] {
+  background: var(--eq-sky);
+  color: white;
+  border-color: var(--eq-sky);
+}
+
+/* Field diff table inside a conflict row */
+.eq-reconcile__diff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 10px;
+}
+
+.eq-reconcile__diff-table th,
+.eq-reconcile__diff-table td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--eq-line);
+  vertical-align: top;
+}
+
+.eq-reconcile__diff-table th {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--eq-muted);
+  background: var(--eq-page);
+  font-weight: 600;
+}
+
+.eq-reconcile__diff-source {
+  color: var(--eq-warn);
+}
+
+.eq-reconcile__diff-canonical {
+  color: var(--eq-deep);
+}
+
+/* New-row chips */
+.eq-reconcile__new-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.eq-reconcile__new-chip {
+  padding: 3px 10px;
+  background: var(--eq-sky-10);
+  border: 1px solid var(--eq-sky);
+  border-radius: 99px;
+  font-size: 12px;
+  color: var(--eq-deep);
+}
+
+/* Action footer */
+.eq-reconcile__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 20px;
+}
+
+.eq-reconcile__no-supabase {
+  font-size: 13px;
+  color: var(--eq-muted);
+}
+
+/* Review wrapper */
+.eq-reconcile__review {
+  padding: 0;
+}
+
+/* =========================================================================
+ * Reconcile mobile rules
+ * ========================================================================= */
+@media (max-width: 600px) {
+  .eq-reconcile__conflict-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .eq-reconcile__summary {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .eq-reconcile__match-key {
+    margin-left: 0;
+  }
+
+  .eq-reconcile__diff-table,
+  .eq-reconcile__diff-table thead,
+  .eq-reconcile__diff-table tbody,
+  .eq-reconcile__diff-table tr,
+  .eq-reconcile__diff-table th,
+  .eq-reconcile__diff-table td {
+    display: block;
+  }
+
+  .eq-reconcile__diff-table thead {
+    display: none;
+  }
+
+  .eq-reconcile__diff-table tr {
+    border: 1px solid var(--eq-line);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    background: var(--eq-paper);
+  }
+
+  .eq-reconcile__diff-table td {
+    padding: 3px 0;
+    border-bottom: none;
+  }
+
+  .eq-reconcile__diff-table td:nth-child(1)::before { content: "Field: "; color: var(--eq-muted); font-size: 11px; }
+  .eq-reconcile__diff-table td:nth-child(2)::before { content: "Source: "; color: var(--eq-warn); font-size: 11px; }
+  .eq-reconcile__diff-table td:nth-child(3)::before { content: "Canonical: "; color: var(--eq-deep); font-size: 11px; }
+
+  .eq-reconcile__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
 /* Tighter rules for very narrow phones (≤ 380px). 360px Chrome dev-tools
  * (iPhone SE / Galaxy S range) must avoid horizontal scroll. */
 @media (max-width: 380px) {
