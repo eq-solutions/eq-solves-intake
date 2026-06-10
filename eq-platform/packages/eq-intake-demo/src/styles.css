@@ -2646,6 +2646,33 @@ button.eq-primary:hover {
     padding: 8px 10px;
   }
 
+  /* ---- IntakeModule tabs — full width on mobile ---- */
+  .eq-intake-tabs {
+    gap: 0;
+  }
+
+  .eq-intake-tab {
+    flex: 1;
+    text-align: center;
+    font-size: 13px;
+    padding: 10px 12px;
+  }
+
+  /* FreeformIntakeInput: textarea full width, button full width below */
+  .eq-freeform-intake .eq-freeform {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .eq-freeform-intake__textarea {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .eq-freeform-intake .eq-intake-btn-primary {
+    width: 100%;
+  }
+
   /* ---- New sprint classes — mobile overrides ---- */
 
   /* Destination-picker row: stack vertically on narrow screens */
@@ -3143,6 +3170,110 @@ button.eq-primary:hover {
     flex-direction: column;
     align-items: stretch;
   }
+}
+
+/* ===== IntakeModule — top-level mode tabs (Import / Reconcile) ===== */
+.eq-intake-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid var(--eq-line);
+}
+
+.eq-intake-tab {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 10px 18px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--eq-muted);
+  cursor: pointer;
+  border-radius: 0;
+  margin-bottom: -2px;
+  transition: color 0.1s, border-color 0.1s;
+}
+
+.eq-intake-tab:hover {
+  color: var(--eq-ink);
+  background: transparent;
+  border-color: transparent;
+}
+
+.eq-intake-tab--active {
+  color: var(--eq-deep);
+  border-bottom-color: var(--eq-sky);
+  font-weight: 600;
+}
+
+.eq-intake-tab--active:hover {
+  color: var(--eq-deep);
+  border-bottom-color: var(--eq-sky);
+}
+
+/* ===== FreeformIntakeInput ===== */
+.eq-freeform-intake {
+  margin-top: 16px;
+}
+
+.eq-freeform-intake__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--eq-muted);
+  margin: 0 0 8px;
+}
+
+.eq-freeform-intake__textarea {
+  flex: 1;
+  min-width: 220px;
+  min-height: 80px;
+  padding: 8px 10px;
+  border: 1px solid var(--eq-line);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+  background: var(--eq-paper);
+  color: var(--eq-ink);
+}
+
+.eq-freeform-intake__textarea:focus {
+  outline: none;
+  border-color: var(--eq-sky);
+}
+
+.eq-freeform-intake__notice {
+  font-size: 12px;
+  color: var(--eq-muted);
+  margin: 6px 0 0;
+  font-style: italic;
+}
+
+.eq-freeform-intake__result {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--eq-ice);
+  border: 1px solid var(--eq-deep);
+  border-radius: 4px;
+}
+
+.eq-freeform-intake__result-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--eq-muted);
+  margin: 0 0 6px;
+}
+
+.eq-freeform-intake__result-body {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--eq-ink);
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* ===== IntakeModule — one-screen layout ===== */
