@@ -111,16 +111,9 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
   const isCanonical = destId === INTO_EQ_ID;
 
   return (
-    <section
-      className="eq-intake-module"
-      style={{
-        padding: "24px 0",
-        fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
-        color: "var(--eq-ink)",
-      }}
-    >
-      <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 6 }}>Bring a file in</h2>
-      <p style={{ fontSize: 14, color: "var(--eq-ink)", opacity: 0.7, marginBottom: 16 }}>
+    <section className="eq-intake-module">
+      <h2>Bring a file in</h2>
+      <p>
         Drop a SimPRO export — we'll work out what it is, then you choose where
         it goes. One drop, no retyping.
       </p>
@@ -154,16 +147,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
             type="button"
             onClick={() => bundle.reset()}
             disabled={bundle.busy}
-            style={{
-              marginTop: 16,
-              padding: "10px 18px",
-              background: "white",
-              color: "var(--eq-ink)",
-              border: "1px solid var(--eq-ice)",
-              borderRadius: 4,
-              cursor: bundle.busy ? "not-allowed" : "pointer",
-              fontSize: 14,
-            }}
+            className="eq-intake-btn-ghost"
           >
             Start over
           </button>
@@ -252,31 +236,13 @@ function DestinationPicker({
   const missing = missingRoles(selected, bundle);
 
   return (
-    <div
-      style={{
-        marginBottom: 16,
-        padding: 12,
-        background: "var(--eq-ice)",
-        borderRadius: 4,
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        flexWrap: "wrap",
-      }}
-    >
-      <label style={{ fontSize: 14, fontWeight: 500 }}>
+    <div className="eq-intake-dest-picker">
+      <label className="eq-intake-dest-picker__label">
         Where's it going?{" "}
         <select
           value={selected.id}
           onChange={(e) => onChange(e.target.value)}
-          style={{
-            fontFamily: "inherit",
-            fontSize: 14,
-            padding: "6px 10px",
-            borderRadius: 4,
-            border: "1px solid var(--eq-deep)",
-            background: "white",
-          }}
+          className="eq-intake-dest-picker__select"
         >
           <option value={INTO_EQ_OPTION.id}>
             {INTO_EQ_OPTION.label}
@@ -300,11 +266,11 @@ function DestinationPicker({
           </optgroup>
         </select>
       </label>
-      <span style={{ fontSize: 13, color: "var(--eq-ink)", opacity: 0.7, flex: 1, minWidth: 200 }}>
+      <span className="eq-intake-dest-picker__desc">
         {selected.description}
       </span>
       {!available && missing.length > 0 && (
-        <span style={{ fontSize: 13, color: "#d97706", fontWeight: 500 }}>
+        <span className="eq-intake-dest-picker__warn">
           Drop {missing.map(roleLabel).join(" + ")}{" "}
           {missing.length === 1 ? "file" : "files"} above first.
         </span>
@@ -366,29 +332,26 @@ function ExportView({
   return (
     <div>
       {previewRows && previewRows.length > 0 && !downloaded && (
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 12, color: "var(--eq-ink)", opacity: 0.6, marginBottom: 6 }}>
+        <div className="eq-intake-preview">
+          <div className="eq-intake-preview__hint">
             Preview — first {previewRows.length} of{" "}
             {matched!.sheet!.rows.length.toLocaleString()} rows → {dest.label}
           </div>
-          <div style={{ overflowX: "auto", border: "1px solid var(--eq-ice)", borderRadius: 4 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <div className="eq-intake-preview__table-wrap">
+            <table className="eq-intake-preview__table">
               <thead>
-                <tr style={{ background: "var(--eq-ice)" }}>
+                <tr>
                   {dest.columns.map((c) => (
-                    <th key={c.name} style={{ padding: "4px 8px", textAlign: "left", whiteSpace: "nowrap", fontWeight: 600, color: "var(--eq-deep)" }}>
-                      {c.name}
-                    </th>
+                    <th key={c.name}>{c.name}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {previewRows.map((row, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid #F4F4F8" }}>
+                  <tr key={i}>
                     {dest.columns.map((c) => (
                       <td
                         key={c.name}
-                        style={{ padding: "4px 8px", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                         title={String(row[c.name] ?? "")}
                       >
                         {String(row[c.name] ?? "")}
@@ -403,7 +366,7 @@ function ExportView({
       )}
 
       {error && (
-        <div role="alert" style={{ padding: 12, background: "#FBEAEA", border: "1px solid #B33A3A", borderRadius: 4, color: "#B33A3A", fontSize: 13, marginBottom: 16 }}>
+        <div role="alert" className="eq-intake-alert">
           {error}
         </div>
       )}
@@ -412,22 +375,13 @@ function ExportView({
         type="button"
         onClick={download}
         disabled={!matched}
-        style={{
-          padding: "10px 18px",
-          background: matched ? "var(--eq-sky)" : "#BFD4DF",
-          color: "white",
-          border: "none",
-          borderRadius: 4,
-          fontWeight: 500,
-          cursor: matched ? "pointer" : "not-allowed",
-          fontSize: 14,
-        }}
+        className="eq-intake-btn-primary"
       >
         Download {dest.label}
       </button>
 
       {downloaded && (
-        <div style={{ marginTop: 16, padding: 12, background: "var(--eq-ice)", border: "1px solid var(--eq-deep)", borderRadius: 4, fontSize: 14, color: "var(--eq-ink)" }}>
+        <div className="eq-intake-success">
           ✓ Downloaded <strong>{downloaded.filename}</strong> — {downloaded.rowCount}{" "}
           row{downloaded.rowCount === 1 ? "" : "s"}.
         </div>
@@ -502,29 +456,26 @@ function TemplateExportView({
   return (
     <div>
       {result && previewRows && previewRows.length > 0 && !downloaded && (
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 12, color: "var(--eq-ink)", opacity: 0.6, marginBottom: 6 }}>
+        <div className="eq-intake-preview">
+          <div className="eq-intake-preview__hint">
             Preview — first {previewRows.length} of{" "}
             {result.rows.length.toLocaleString()} rows → {destLabel}
           </div>
-          <div style={{ overflowX: "auto", border: "1px solid var(--eq-ice)", borderRadius: 4 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <div className="eq-intake-preview__table-wrap">
+            <table className="eq-intake-preview__table">
               <thead>
-                <tr style={{ background: "var(--eq-ice)" }}>
+                <tr>
                   {result.headers.map((h) => (
-                    <th key={h} style={{ padding: "4px 8px", textAlign: "left", whiteSpace: "nowrap", fontWeight: 600, color: "var(--eq-deep)" }}>
-                      {h}
-                    </th>
+                    <th key={h}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {previewRows.map((row, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid #F4F4F8" }}>
+                  <tr key={i}>
                     {result.headers.map((h) => (
                       <td
                         key={h}
-                        style={{ padding: "4px 8px", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                         title={row[h] ?? ""}
                       >
                         {row[h] ?? ""}
@@ -539,7 +490,7 @@ function TemplateExportView({
       )}
 
       {error && (
-        <div role="alert" style={{ padding: 12, background: "#FBEAEA", border: "1px solid #B33A3A", borderRadius: 4, color: "#B33A3A", fontSize: 13, marginBottom: 16 }}>
+        <div role="alert" className="eq-intake-alert">
           {error}
         </div>
       )}
@@ -548,22 +499,13 @@ function TemplateExportView({
         type="button"
         onClick={download}
         disabled={!result}
-        style={{
-          padding: "10px 18px",
-          background: result ? "var(--eq-sky)" : "#BFD4DF",
-          color: "white",
-          border: "none",
-          borderRadius: 4,
-          fontWeight: 500,
-          cursor: result ? "pointer" : "not-allowed",
-          fontSize: 14,
-        }}
+        className="eq-intake-btn-primary"
       >
         Download {destLabel}
       </button>
 
       {downloaded && (
-        <div style={{ marginTop: 16, padding: 12, background: "var(--eq-ice)", border: "1px solid var(--eq-deep)", borderRadius: 4, fontSize: 14, color: "var(--eq-ink)" }}>
+        <div className="eq-intake-success">
           ✓ Downloaded <strong>{downloaded.filename}</strong> — {downloaded.rowCount}{" "}
           row{downloaded.rowCount === 1 ? "" : "s"}.
         </div>
@@ -651,21 +593,21 @@ function CommitView({
   return (
     <div>
       {!enabled && (
-        <div style={{ padding: 12, background: "var(--eq-ice)", border: "1px solid var(--eq-deep)", borderRadius: 4, fontSize: 13, marginBottom: 16 }}>
+        <div className="eq-intake-info-strip">
           EQ isn't connected yet — ask whoever set this up to fill in the
           connection details. Saving stays inactive until then.
         </div>
       )}
 
       {progressMsg && (
-        <div style={{ padding: "8px 12px", background: "var(--eq-ice)", borderRadius: 4, fontSize: 13, color: "var(--eq-deep)", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="eq-intake-progress">
           <span className="eq-spinner__dot" style={{ width: 10, height: 10, flexShrink: 0 }} />
           {progressMsg}
         </div>
       )}
 
       {error && (
-        <div role="alert" style={{ padding: 12, background: "#FBEAEA", border: "1px solid #B33A3A", borderRadius: 4, color: "#B33A3A", fontSize: 13, marginBottom: 16 }}>
+        <div role="alert" className="eq-intake-alert">
           {error}
         </div>
       )}
@@ -679,19 +621,10 @@ function CommitView({
         type="button"
         onClick={commit}
         disabled={!enabled || busy}
-        style={{
-          padding: "10px 18px",
-          background: enabled && !busy ? "var(--eq-sky)" : "#BFD4DF",
-          color: "white",
-          border: "none",
-          borderRadius: 4,
-          fontWeight: 500,
-          cursor: enabled && !busy ? "pointer" : "not-allowed",
-          fontSize: 14,
-        }}
+        className="eq-intake-btn-primary"
       >
         {busy ? (
-          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span className="eq-intake-btn-spinner">
             <span className="eq-spinner__dot" style={{ width: 10, height: 10 }} />
             Saving…
           </span>
@@ -707,8 +640,8 @@ function CommitView({
         <RowsDisclosure
           label="Show rows that saved but need checking"
           hint="These rows are in EQ, but something caught our eye. Review each one before relying on it."
-          accentColor="#d97706"
-          hintColor="#78350f"
+          accentColor="var(--eq-warn)"
+          hintColor="var(--eq-ink)"
           perEntity={result.perEntity.map((r) => ({
             entity: r.entity,
             rows: r.flaggedRows,
@@ -744,29 +677,28 @@ function CommitSummary({ result }: { result: CommitResult }): JSX.Element {
   const rejected = result.perEntity.reduce((n, r) => n + r.rejectedCount, 0);
   const hasFatal = result.perEntity.some((r) => r.fatalError);
 
-  const bg = hasFatal ? "#FBEAEA" : rejected > 0 ? "#FFF8EC" : "var(--eq-ice)";
-  const border = hasFatal ? "#B33A3A" : rejected > 0 ? "#d97706" : "var(--eq-deep)";
+  const status = hasFatal ? "error" : rejected > 0 ? "warn" : "ok";
   const icon = hasFatal ? "✗" : rejected > 0 ? "⚠" : "✓";
-  const iconColor = border;
 
   return (
     <div
       role="status"
       aria-live="polite"
-      style={{ marginTop: 16, padding: "12px 16px", background: bg, border: `1px solid ${border}`, borderRadius: 4, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}
+      className="eq-intake-summary"
+      data-status={status}
     >
-      <span style={{ fontSize: 20, color: iconColor, flexShrink: 0 }}>{icon}</span>
-      <div style={{ flex: 1, minWidth: 160 }}>
-        <span style={{ fontWeight: 600, fontSize: 14, color: "var(--eq-ink)" }}>
+      <span className="eq-intake-summary__icon" data-status={status}>{icon}</span>
+      <div className="eq-intake-summary__body">
+        <span className="eq-intake-summary__saved">
           {saved.toLocaleString()} record{saved === 1 ? "" : "s"} saved
         </span>
         {flagged > 0 && (
-          <span style={{ marginLeft: 12, fontSize: 13, color: "#d97706" }}>
+          <span className="eq-intake-summary__flagged">
             {flagged.toLocaleString()} need{flagged === 1 ? "s" : ""} checking
           </span>
         )}
         {rejected > 0 && (
-          <span style={{ marginLeft: 12, fontSize: 13, color: "#B33A3A" }}>
+          <span className="eq-intake-summary__rejected">
             {rejected.toLocaleString()} couldn't save
           </span>
         )}
@@ -776,7 +708,7 @@ function CommitSummary({ result }: { result: CommitResult }): JSX.Element {
         .map((r) => (
           <span
             key={r.entity}
-            style={{ padding: "2px 8px", borderRadius: 100, background: "var(--eq-deep)", color: "white", fontSize: 12, fontWeight: 500, whiteSpace: "nowrap" }}
+            className="eq-intake-summary__chip"
           >
             {r.committedCount} {entityLabel(r.entity).toLowerCase()}
           </span>
