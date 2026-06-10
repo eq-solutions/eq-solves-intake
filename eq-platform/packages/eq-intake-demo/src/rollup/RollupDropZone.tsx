@@ -138,23 +138,40 @@ export function RollupDropZone(): JSX.Element {
             continue;
           }
           // One slot per sheet so multi-tab workbooks work end-to-end.
-          for (const sheet of parsed.sheets) {
-            const classification = await classifySheet({
-              schemas: ROLE_REGISTRY,
-              sheet,
-            });
-            const role =
-              classification.entity === "customer" ||
-              classification.entity === "contact" ||
-              classification.entity === "site"
-                ? (classification.entity as RoleName)
-                : "unknown";
-            next.push({
-              file,
-              role,
-              sheet,
-              confidence: classification.confidence,
-            });
+          for (let sheetIdx = 0; sheetIdx < parsed.sheets.length; sheetIdx++) {
+            const sheet = parsed.sheets[sheetIdx]!;
+            // Use sheetName if available, otherwise fall back to a 1-based index label.
+            const sheetLabel =
+              sheet.sheetName && sheet.sheetName.trim()
+                ? `"${sheet.sheetName}"`
+                : `Sheet ${sheetIdx + 1}`;
+            try {
+              const classification = await classifySheet({
+                schemas: ROLE_REGISTRY,
+                sheet,
+              });
+              const role =
+                classification.entity === "customer" ||
+                classification.entity === "contact" ||
+                classification.entity === "site"
+                  ? (classification.entity as RoleName)
+                  : "unknown";
+              next.push({
+                file,
+                role,
+                sheet,
+                confidence: classification.confidence,
+              });
+            } catch (sheetErr) {
+              // One bad sheet doesn't block the rest — surface a named error slot.
+              const reason =
+                sheetErr instanceof Error ? sheetErr.message : String(sheetErr);
+              next.push({
+                file,
+                role: "unknown",
+                error: `Could not read ${sheetLabel}: ${reason}`,
+              });
+            }
           }
         } catch (e) {
           next.push({
