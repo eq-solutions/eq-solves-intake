@@ -31,7 +31,7 @@ export interface FreeformIntakeInputProps {
 
 export function FreeformIntakeInput({
   ai,
-  placeholder = "Describe what you'd like to import — e.g. "Add 5 new customers from Adelaide with site addresses"",
+  placeholder = "Describe what you'd like to import — e.g. \"Add 5 new customers from Adelaide with site addresses\"",
   onResult,
 }: FreeformIntakeInputProps): JSX.Element {
   const [text, setText] = useState("");
