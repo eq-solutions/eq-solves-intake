@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@fontsource/plus-jakarta-sans':
+        specifier: ^5.2.8
+        version: 5.2.8
       tsx:
         specifier: 4.19.2
         version: 4.19.2
@@ -227,6 +230,9 @@ importers:
 
   packages/eq-format-ui:
     dependencies:
+      '@eq-solutions/tokens':
+        specifier: github:eq-solutions/eq-design-tokens#v1.3.2
+        version: https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/7ad0b3556344ecf5db678da0916bb049545fb259
       '@eq/ai':
         specifier: workspace:*
         version: link:../eq-ai
@@ -289,6 +295,9 @@ importers:
 
   packages/eq-intake-demo:
     dependencies:
+      '@eq-solutions/tokens':
+        specifier: github:eq-solutions/eq-design-tokens#v1.3.2
+        version: https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/7ad0b3556344ecf5db678da0916bb049545fb259
       '@eq/ai':
         specifier: workspace:*
         version: link:../eq-ai
@@ -552,6 +561,11 @@ packages:
 
   '@emnapi/wasi-threads@1.2.1':
     resolution: {integrity: sha512-uTII7OYF+/Mes/MrcIOYp5yOtSMLBWSIoLPpcgwipoiKbli6k322tcoFsxoIIxPDqW01SQGAgko4EzZi2BNv2w==}
+
+  '@eq-solutions/tokens@https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/7ad0b3556344ecf5db678da0916bb049545fb259':
+    resolution: {tarball: https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/7ad0b3556344ecf5db678da0916bb049545fb259}
+    version: 1.3.2
+    engines: {node: '>=18'}
 
   '@esbuild/aix-ppc64@0.21.5':
     resolution: {integrity: sha512-1SDgH6ZSPTlggy1yI6+Dbkiz8xzpHJEVAlF/AM1tHPLsf5STom9rwtjE4hKAF20FfXXNTFqEYXyJNWh1GiZedQ==}
@@ -1037,6 +1051,9 @@ packages:
 
   '@fast-csv/parse@4.3.6':
     resolution: {integrity: sha512-uRsLYksqpbDmWaSmzvJcuApSEe38+6NQZBUsuAyMZKqHxH0g1wcJgsKUvN3WC8tewaqFjBMMGrkHmC+T7k8LvA==}
+
+  '@fontsource/plus-jakarta-sans@5.2.8':
+    resolution: {integrity: sha512-P5qE49fqdeD+7DXH1KBxmMPlB17LTz1zvBhFH0tFzfnYTKVJVyb0pR6plh0ZGXxcB+Oayb54FZZw3V42/DawTw==}
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -5215,6 +5232,8 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
+  '@eq-solutions/tokens@https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/7ad0b3556344ecf5db678da0916bb049545fb259': {}
+
   '@esbuild/aix-ppc64@0.21.5':
     optional: true
 
@@ -5497,6 +5516,8 @@ snapshots:
       lodash.isnil: 4.0.0
       lodash.isundefined: 3.0.1
       lodash.uniq: 4.5.0
+
+  '@fontsource/plus-jakarta-sans@5.2.8': {}
 
   '@humanfs/core@0.19.2':
     dependencies:
