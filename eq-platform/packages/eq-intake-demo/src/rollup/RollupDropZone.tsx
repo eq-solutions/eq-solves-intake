@@ -350,7 +350,7 @@ export function RollupDropZone(): JSX.Element {
                 <td>
                   {s.confidence != null ? `${Math.round(s.confidence * 100)}%` : "—"}
                   {s.confidence != null && s.confidence < 0.7 && s.role !== "unknown" && (
-                    <span style={{ display: "block", color: "#d97706", fontSize: 11, fontWeight: 500, marginTop: 2 }}>
+                    <span className="eq-rollup__confidence-warn">
                       Low — check the role
                     </span>
                   )}
@@ -412,25 +412,11 @@ export function RollupDropZone(): JSX.Element {
       ) : null}
 
       {hasAnyData ? (
-        <div
-          style={{
-            padding: "10px 14px",
-            margin: "8px 0",
-            background: "#fef3c7",
-            border: "1px solid #fcd34d",
-            borderLeft: "4px solid #d97706",
-            borderRadius: 6,
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            flexWrap: "wrap",
-            fontSize: 13,
-          }}
-        >
-          <span style={{ fontWeight: 500, color: "#78350f" }}>
+        <div className="eq-rollup__orphan-warning">
+          <span className="eq-rollup__orphan-label">
             Orphan sites/contacts
           </span>
-          <span style={{ color: "#92400e", flex: 1, minWidth: 220 }}>
+          <span className="eq-rollup__orphan-desc">
             Sites or contacts whose Customer ID doesn't match anything in the customers file.
           </span>
           <select
@@ -438,15 +424,7 @@ export function RollupDropZone(): JSX.Element {
             onChange={(e) =>
               setOrphanStrategy(e.target.value as "drop" | "include-as-pseudo-customer")
             }
-            style={{
-              fontFamily: "inherit",
-              fontSize: 13,
-              padding: "5px 8px",
-              border: "1px solid #fcd34d",
-              borderRadius: 4,
-              background: "white",
-              color: "var(--eq-ink)",
-            }}
+            className="eq-rollup__orphan-select"
           >
             <option value="include-as-pseudo-customer">
               Include as pseudo-customer rows (recommended)
