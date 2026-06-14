@@ -1,15 +1,37 @@
-import { useState, useEffect, useCallback, type JSX } from "react";
-import { fetchCanonicalRows } from "@eq/intake";
-import type { CanonicalFetchClient } from "@eq/intake";
+import { useState, useEffect, useCallback, useMemo, type JSX } from "react";
+import {
+  fetchCanonicalRows,
+  runTidyPass,
+  commitTidyFixes,
+} from "@eq/intake";
+import type {
+  CanonicalFetchClient,
+  TidyFix,
+  GapItem,
+  ReviewFlag,
+  TidyReport,
+  TidyCommitResult,
+  TidyEntity,
+} from "@eq/intake";
+import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
+import { Table, type TableColumn } from "@eq-solutions/ui/Table";
 
 export interface EntityDrillDownProps {
   entity: string;
-  supabase?: CanonicalFetchClient | null;
+  /** Full Supabase client — used for row fetching, tidy pass, and fix commits. */
+  supabase?: SupabaseLikeClient | null;
+  tenantId?: string;
+  /** Which filter tab to open on mount. Defaults to "all". */
+  initialMode?: FilterMode;
   onBack?: () => void;
   onBulkFix?: (csvBlob: Blob, filename: string) => void;
 }
 
 type Row = Record<string, unknown>;
+type DrillRow = Row & { _dupeField?: string; _dupeKey?: string };
+type FilterMode = "all" | "gaps" | "duplicates" | "tidy";
+
+const DEFAULT_TENANT_ID = "00000000-0000-4000-8000-000000000001";
 
 const GAP_FIELDS: Record<string, string[]> = {
   staff: ["email", "phone"],
@@ -17,6 +39,26 @@ const GAP_FIELDS: Record<string, string[]> = {
   contacts: ["email", "phone"],
   customers: ["email", "phone", "abn"],
   assets: ["asset_type", "serial_number", "site_id"],
+  licences: ["expiry_date", "licence_number", "licence_type"],
+};
+
+const DUPE_KEYS: Record<string, string[]> = {
+  staff: ["email"],
+  sites: ["site_name"],
+  contacts: ["email"],
+  customers: ["abn", "company_name"],
+  assets: ["serial_number"],
+  // licences: licence_number legitimately repeats across different staff/states
+};
+
+// Entity string used in the UI → TidyEntity used by the tidy pass engine.
+const ENTITY_TO_TIDY: Partial<Record<string, TidyEntity>> = {
+  customers: "customer",
+  sites: "site",
+  contacts: "contact",
+  staff: "staff",
+  assets: "asset",
+  licences: "licence",
 };
 
 const DISPLAY_COLUMNS: Record<string, string[]> = {
@@ -25,6 +67,7 @@ const DISPLAY_COLUMNS: Record<string, string[]> = {
   contacts: ["full_name", "email", "phone"],
   customers: ["company_name", "email", "phone", "abn"],
   assets: ["asset_name", "asset_type", "serial_number"],
+  licences: ["licence_number", "licence_type", "expiry_date", "staff_id"],
 };
 
 const COLUMN_LABELS: Record<string, string> = {
@@ -43,6 +86,10 @@ const COLUMN_LABELS: Record<string, string> = {
   asset_name: "Asset Name",
   asset_type: "Asset Type",
   serial_number: "Serial Number",
+  licence_number: "Licence No.",
+  licence_type: "Type",
+  expiry_date: "Expiry",
+  staff_id: "Staff",
 };
 
 function isBlank(value: unknown): boolean {
@@ -69,7 +116,7 @@ function buildCsvContent(rows: Row[], columns: string[]): string {
         const str = String(val).replace(/"/g, '""');
         return `"${str}"`;
       })
-      .join(",")
+      .join(","),
   );
   return [header, ...body].join("\r\n");
 }
@@ -83,28 +130,53 @@ function todayString(): string {
 }
 
 interface EditState {
-  rowIndex: number;
+  rowId: string;
   field: string;
-  value: string;
 }
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 export function EntityDrillDown({
   entity,
   supabase,
+  tenantId,
+  initialMode,
   onBack,
   onBulkFix,
 }: EntityDrillDownProps): JSX.Element {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showGapsOnly, setShowGapsOnly] = useState(false);
+  const [refreshCounter, setRefreshCounter] = useState(0);
+
+  // Honour initialMode only if the entity supports that mode (e.g. "tidy"
+  // needs a tidy entity mapping; fall back to "all" if not).
+  const resolvedInitialMode: FilterMode =
+    initialMode === "tidy" && !ENTITY_TO_TIDY[entity]
+      ? "all"
+      : (initialMode ?? "all");
+
+  const [filterMode, setFilterMode] = useState<FilterMode>(resolvedInitialMode);
   const [editState, setEditState] = useState<EditState | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [hasLocalEdits, setHasLocalEdits] = useState(false);
 
+  // Tidy pass state
+  const [tidyReport, setTidyReport] = useState<TidyReport | null>(null);
+  const [tidyLoading, setTidyLoading] = useState(false);
+  const [tidyError, setTidyError] = useState<string | null>(null);
+  const [tidyProgress, setTidyProgress] = useState("");
+  const [selectedFixKeys, setSelectedFixKeys] = useState<Set<string>>(new Set());
+  const [committing, setCommitting] = useState(false);
+  const [commitResult, setCommitResult] = useState<TidyCommitResult | null>(null);
+
   const gapFields = GAP_FIELDS[entity] ?? [];
   const displayColumns = DISPLAY_COLUMNS[entity] ?? [];
+  const dupeKeys = DUPE_KEYS[entity] ?? [];
+  const tidyEntity = ENTITY_TO_TIDY[entity] ?? null;
+  const resolvedTenantId = tenantId ?? DEFAULT_TENANT_ID;
 
+  // ── Fetch canonical rows ────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
 
@@ -119,38 +191,301 @@ export function EntityDrillDown({
       }
 
       try {
-        const data = await fetchCanonicalRows(supabase, entity);
-        if (!cancelled) {
-          setRows(data);
-        }
+        const data = await fetchCanonicalRows(supabase as unknown as CanonicalFetchClient, entity);
+        if (!cancelled) setRows(data);
       } catch (err: unknown) {
-        if (!cancelled) {
-          setError(
-            err instanceof Error ? err.message : "Failed to load records."
-          );
-        }
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : "Failed to load records.");
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     }
 
     load();
+    return () => {
+      cancelled = true;
+    };
+  }, [entity, supabase, refreshCounter]);
+
+  // ── Tidy pass ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (filterMode !== "tidy" || !supabase || !tidyEntity) return;
+
+    let cancelled = false;
+    setTidyLoading(true);
+    setTidyError(null);
+    setTidyReport(null);
+    setSelectedFixKeys(new Set());
+    setCommitResult(null);
+    setTidyProgress("Scanning records…");
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    runTidyPass({
+      supabase: supabase as any,
+      tenantId: resolvedTenantId,
+      entities: [tidyEntity],
+      onProgress: (msg) => {
+        if (!cancelled) setTidyProgress(msg);
+      },
+    })
+      .then((report) => {
+        if (cancelled) return;
+        setTidyReport(report);
+        // Pre-select all auto-fixes
+        setSelectedFixKeys(
+          new Set(report.auto_fixes.map((f) => `${f.row_id}:${f.field}`)),
+        );
+      })
+      .catch((err: unknown) => {
+        if (!cancelled)
+          setTidyError(err instanceof Error ? err.message : "Tidy pass failed.");
+      })
+      .finally(() => {
+        if (!cancelled) setTidyLoading(false);
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [entity, supabase]);
+  }, [filterMode, supabase, tidyEntity, resolvedTenantId]);
 
-  const visibleRows = showGapsOnly
-    ? rows.filter((r) => rowHasGap(r, gapFields))
-    : rows;
+  // Reset tidy state when leaving tidy mode
+  useEffect(() => {
+    if (filterMode !== "tidy") {
+      setTidyReport(null);
+      setTidyError(null);
+      setCommitResult(null);
+    }
+  }, [filterMode]);
 
+  // ── Duplicate detection ────────────────────────────────────────────────
+  const duplicateRows = useMemo<DrillRow[]>(() => {
+    if (dupeKeys.length === 0) return [];
+
+    const seenIds = new Set<string>();
+    const allGroups: DrillRow[][] = [];
+
+    for (const keyField of dupeKeys) {
+      const byValue = new Map<string, Row[]>();
+      for (const row of rows) {
+        const val = row[keyField];
+        if (val === null || val === undefined || String(val).trim() === "") continue;
+        const normalized = String(val).trim().toLowerCase();
+        if (!byValue.has(normalized)) byValue.set(normalized, []);
+        byValue.get(normalized)!.push(row);
+      }
+      for (const group of byValue.values()) {
+        if (group.length < 2) continue;
+        const fresh = group.filter((r) => !seenIds.has(String(r.id ?? "")));
+        if (fresh.length < 2) continue;
+        fresh.forEach((r) => seenIds.add(String(r.id ?? "")));
+        allGroups.push(
+          fresh.map((r) => ({
+            ...r,
+            _dupeField: keyField,
+            _dupeKey: String(r[keyField]),
+          })),
+        );
+      }
+    }
+
+    return allGroups.flat();
+  }, [rows, dupeKeys]);
+
+  const dupeGroupIndex = useMemo<Map<string, number>>(() => {
+    if (filterMode !== "duplicates") return new Map();
+    const m = new Map<string, number>();
+    let idx = 0;
+    for (const row of duplicateRows) {
+      const key = `${row._dupeField}:${row._dupeKey}`;
+      if (!m.has(key)) m.set(key, idx++);
+    }
+    return m;
+  }, [duplicateRows, filterMode]);
+
+  const displayRows = useMemo<DrillRow[]>(() => {
+    if (filterMode === "gaps") return rows.filter((r) => rowHasGap(r, gapFields));
+    if (filterMode === "duplicates") return duplicateRows;
+    return rows;
+  }, [rows, filterMode, gapFields, duplicateRows]);
+
+  const gapCount = useMemo(
+    () => rows.filter((r) => rowHasGap(r, gapFields)).length,
+    [rows, gapFields],
+  );
+  const totalCount = rows.length;
+  const dupeCount = duplicateRows.length;
+
+  // ── Edit handlers (by row ID) ──────────────────────────────────────────
+  const startEdit = useCallback(
+    (rowId: string, field: string) => {
+      const targetRow = rows.find((r) => String(r.id ?? "") === rowId);
+      const current = targetRow?.[field];
+      setEditState({ rowId, field });
+      setEditDraft(current === null || current === undefined ? "" : String(current));
+    },
+    [rows],
+  );
+
+  const commitEdit = useCallback(() => {
+    if (!editState) return;
+    const { rowId, field } = editState;
+    setRows((prev) =>
+      prev.map((r) =>
+        String(r.id ?? "") === rowId ? { ...r, [field]: editDraft } : r,
+      ),
+    );
+    setHasLocalEdits(true);
+    setEditState(null);
+    setEditDraft("");
+  }, [editState, editDraft]);
+
+  const cancelEdit = useCallback(() => {
+    setEditState(null);
+    setEditDraft("");
+  }, []);
+
+  // ── Tidy fix commit ────────────────────────────────────────────────────
+  const handleApplyFixes = useCallback(async () => {
+    if (!supabase || !tidyReport || selectedFixKeys.size === 0 || committing) return;
+
+    const fixes = tidyReport.auto_fixes.filter((f) =>
+      selectedFixKeys.has(`${f.row_id}:${f.field}`),
+    );
+
+    setCommitting(true);
+    setCommitResult(null);
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await commitTidyFixes({
+        supabase: supabase as any,
+        tenantId: resolvedTenantId,
+        fixes,
+      });
+      setCommitResult(result);
+      if (result.applied > 0) {
+        // Refresh main rows and re-run tidy on next entry
+        setRefreshCounter((c) => c + 1);
+        setTidyReport(null);
+      }
+    } catch (err: unknown) {
+      setTidyError(err instanceof Error ? err.message : "Failed to apply fixes.");
+    } finally {
+      setCommitting(false);
+    }
+  }, [supabase, tidyReport, selectedFixKeys, committing, resolvedTenantId]);
+
+  // ── Column definitions ────────────────────────────────────────────────
+  const columns = useMemo<TableColumn<DrillRow>[]>(() => {
+    const cols: TableColumn<DrillRow>[] = displayColumns.map((col) => {
+      const isGapField = gapFields.includes(col);
+      return {
+        key: col,
+        header: COLUMN_LABELS[col] ?? col,
+        sortAccessor: (row: DrillRow) => {
+          const v = row[col];
+          return typeof v === "string" || typeof v === "number" ? v : null;
+        },
+        filterable: "text" as const,
+        render: (row: DrillRow) => {
+          const rowId = String(row.id ?? "");
+          const isEditing = editState?.rowId === rowId && editState?.field === col;
+          const blank = isGapField && isBlank(row[col]);
+
+          if (isEditing) {
+            return (
+              <span className="eq-drill__inline-edit">
+                <input
+                  className="eq-drill__inline-input"
+                  value={editDraft}
+                  onChange={(e) => setEditDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitEdit();
+                    if (e.key === "Escape") cancelEdit();
+                  }}
+                  autoFocus
+                  aria-label={`Edit ${COLUMN_LABELS[col] ?? col}`}
+                />
+                <button className="eq-drill__inline-save" onClick={commitEdit} type="button">
+                  Save
+                </button>
+                <button className="eq-drill__inline-cancel" onClick={cancelEdit} type="button">
+                  Cancel
+                </button>
+              </span>
+            );
+          }
+
+          const cellClass = [
+            "eq-drill__cell-value",
+            blank ? "eq-drill__cell-value--gap" : "",
+            isGapField && !blank ? "eq-drill__cell-value--filled" : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
+
+          return (
+            <span
+              className={cellClass}
+              onClick={
+                isGapField && !isEditing
+                  ? (e) => {
+                      e.stopPropagation();
+                      startEdit(rowId, col);
+                    }
+                  : undefined
+              }
+              title={isGapField && !isEditing ? "Click to edit" : undefined}
+            >
+              {isBlank(row[col]) ? (
+                <span className="eq-drill__cell-empty">—</span>
+              ) : (
+                String(row[col])
+              )}
+            </span>
+          );
+        },
+      };
+    });
+
+    if (filterMode === "duplicates") {
+      cols.push({
+        key: "_dupeKey",
+        header: "Matched on",
+        // no sortAccessor = not sortable
+        render: (row: DrillRow) =>
+          row._dupeField ? (
+            <span className="eq-drill__dupe-badge">
+              {COLUMN_LABELS[row._dupeField] ?? row._dupeField}
+            </span>
+          ) : null,
+      });
+    }
+
+    return cols;
+  }, [
+    displayColumns,
+    gapFields,
+    filterMode,
+    editState,
+    editDraft,
+    commitEdit,
+    cancelEdit,
+    startEdit,
+  ]);
+
+  // ── CSV download ──────────────────────────────────────────────────────
   const handleDownloadCsv = useCallback(() => {
-    const csv = buildCsvContent(visibleRows, displayColumns);
+    const csv = buildCsvContent(displayRows, displayColumns);
+    const suffix =
+      filterMode === "gaps"
+        ? "-gaps"
+        : filterMode === "duplicates"
+          ? "-dupes"
+          : "";
+    const filename = `${entity}${suffix}-${todayString()}.csv`;
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const filename = `${entity}-${todayString()}.csv`;
 
     if (onBulkFix) {
       onBulkFix(blob, filename);
@@ -162,219 +497,447 @@ export function EntityDrillDown({
       a.click();
       URL.revokeObjectURL(url);
     }
-  }, [visibleRows, displayColumns, entity, onBulkFix]);
+  }, [displayRows, displayColumns, entity, filterMode, onBulkFix]);
 
-  const startEdit = useCallback(
-    (rowIndex: number, field: string) => {
-      const current = visibleRows[rowIndex][field];
-      setEditState({ rowIndex, field });
-      setEditDraft(current === null || current === undefined ? "" : String(current));
-    },
-    [visibleRows]
-  );
-
-  const commitEdit = useCallback(() => {
-    if (!editState) return;
-
-    const { rowIndex, field } = editState;
-    const targetRow = visibleRows[rowIndex];
-
-    setRows((prev) =>
-      prev.map((r) => {
-        if (r === targetRow) {
-          return { ...r, [field]: editDraft };
-        }
-        return r;
-      })
-    );
-
-    setHasLocalEdits(true);
-    setEditState(null);
-    setEditDraft("");
-  }, [editState, editDraft, visibleRows]);
-
-  const cancelEdit = useCallback(() => {
-    setEditState(null);
-    setEditDraft("");
-  }, []);
+  // ── Render ────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
-      <div className="eq-drill eq-drill--loading">
-        <p className="eq-drill__loading-text">Loading…</p>
+      <div className="eq-drill">
+        <Table<DrillRow>
+          columns={displayColumns.map((col) => ({
+            key: col,
+            header: COLUMN_LABELS[col] ?? col,
+          }))}
+          rows={[]}
+          loading={true}
+          loadingRows={8}
+        />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="eq-drill eq-drill--error">
+      <div className="eq-drill">
         {onBack && (
-          <button className="eq-drill__back-btn" onClick={onBack} type="button">
+          <button className="eq-drill__back" onClick={onBack} type="button">
             ← Back
           </button>
         )}
-        <div className="eq-drill__error-alert" role="alert">
+        <div className="eq-drill__error" role="alert">
           <strong>Error:</strong> {error}
         </div>
       </div>
     );
   }
 
-  const totalCount = rows.length;
-  const gapCount = rows.filter((r) => rowHasGap(r, gapFields)).length;
+  const emptyMsg =
+    filterMode === "gaps"
+      ? `No gaps found — all ${formatLabel(entity).toLowerCase()} records are complete.`
+      : filterMode === "duplicates"
+        ? `No duplicates detected in ${formatLabel(entity).toLowerCase()}.`
+        : `No ${entity} records found — import some via the Import tab.`;
 
   return (
     <div className="eq-drill">
       <div className="eq-drill__header">
         <div className="eq-drill__header-left">
           {onBack && (
-            <button
-              className="eq-drill__back-btn"
-              onClick={onBack}
-              type="button"
-            >
+            <button className="eq-drill__back" onClick={onBack} type="button">
               ← Back
             </button>
           )}
           <h2 className="eq-drill__title">
-            {formatLabel(entity)} — {totalCount} record
+            {formatLabel(entity)} — {totalCount.toLocaleString()} record
             {totalCount !== 1 ? "s" : ""}
             {gapCount > 0 && (
               <span className="eq-drill__gap-badge">{gapCount} with gaps</span>
             )}
+            {dupeCount > 0 && (
+              <span className="eq-drill__dupe-count-badge">
+                {dupeCount} possible dupes
+              </span>
+            )}
           </h2>
         </div>
-        <div className="eq-drill__header-actions">
-          <div className="eq-drill__filter-toggle" role="group" aria-label="Filter rows">
+        <div className="eq-drill__actions">
+          <div className="eq-drill__filter" role="group" aria-label="Filter rows">
             <button
-              className={`eq-drill__filter-btn${!showGapsOnly ? " eq-drill__filter-btn--active" : ""}`}
-              onClick={() => setShowGapsOnly(false)}
+              className={`eq-drill__filter-btn${filterMode === "all" ? " eq-drill__filter-btn--active" : ""}`}
+              onClick={() => setFilterMode("all")}
               type="button"
-              aria-pressed={!showGapsOnly}
+              aria-pressed={filterMode === "all"}
             >
               All
             </button>
             <button
-              className={`eq-drill__filter-btn${showGapsOnly ? " eq-drill__filter-btn--active" : ""}`}
-              onClick={() => setShowGapsOnly(true)}
+              className={`eq-drill__filter-btn${filterMode === "gaps" ? " eq-drill__filter-btn--active" : ""}`}
+              onClick={() => setFilterMode("gaps")}
               type="button"
-              aria-pressed={showGapsOnly}
+              aria-pressed={filterMode === "gaps"}
             >
-              Gaps only
+              Gaps
             </button>
+            {dupeKeys.length > 0 && (
+              <button
+                className={`eq-drill__filter-btn${filterMode === "duplicates" ? " eq-drill__filter-btn--active" : ""}`}
+                onClick={() => setFilterMode("duplicates")}
+                type="button"
+                aria-pressed={filterMode === "duplicates"}
+              >
+                Dupes{dupeCount > 0 ? ` (${dupeCount})` : ""}
+              </button>
+            )}
+            {tidyEntity && (
+              <button
+                className={`eq-drill__filter-btn${filterMode === "tidy" ? " eq-drill__filter-btn--active" : ""}`}
+                onClick={() => setFilterMode("tidy")}
+                type="button"
+                aria-pressed={filterMode === "tidy"}
+              >
+                Tidy
+              </button>
+            )}
           </div>
-          <button
-            className="eq-drill__download-btn"
-            onClick={handleDownloadCsv}
-            type="button"
-            disabled={visibleRows.length === 0}
-          >
-            Download as CSV
-          </button>
+          {filterMode !== "tidy" && (
+            <button
+              className="eq-drill__download"
+              onClick={handleDownloadCsv}
+              type="button"
+              disabled={displayRows.length === 0}
+            >
+              Download CSV
+            </button>
+          )}
         </div>
       </div>
 
-      {hasLocalEdits && (
-        <div className="eq-drill__local-edits-notice" role="status">
-          Changes are local only — use Download to export and re-import via
-          Reconcile.
+      {hasLocalEdits && filterMode !== "tidy" && (
+        <div className="eq-drill__edit-notice" role="status">
+          Changes are local only — use Download to export and re-import via Reconcile.
         </div>
       )}
 
-      {visibleRows.length === 0 ? (
-        <div className="eq-drill__empty">
-          {showGapsOnly ? (
-            <p>No gaps found — all {formatLabel(entity).toLowerCase()} records are complete.</p>
-          ) : (
-            <p>
-              No {entity} records found — import some via the Import tab.
-            </p>
-          )}
-        </div>
+      {filterMode === "tidy" ? (
+        <TidyPanel
+          loading={tidyLoading}
+          progress={tidyProgress}
+          error={tidyError}
+          report={tidyReport}
+          selectedFixKeys={selectedFixKeys}
+          onSelectionChange={setSelectedFixKeys}
+          onApply={handleApplyFixes}
+          committing={committing}
+          commitResult={commitResult}
+          entityLabel={formatLabel(entity)}
+        />
       ) : (
-        <div className="eq-drill__table-wrap">
-          <table className="eq-drill__table">
-            <thead>
-              <tr className="eq-drill__head-row">
-                {displayColumns.map((col) => (
-                  <th key={col} className="eq-drill__th" scope="col">
-                    {COLUMN_LABELS[col] ?? col}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {visibleRows.map((row, rowIndex) => (
-                <tr key={rowIndex} className="eq-drill__row">
-                  {displayColumns.map((col) => {
-                    const isGapField = gapFields.includes(col);
-                    const blank = isGapField && isBlank(row[col]);
-                    const isEditing =
-                      editState?.rowIndex === rowIndex &&
-                      editState?.field === col;
+        <Table<DrillRow>
+          columns={columns}
+          rows={displayRows}
+          getRowId={(row) => {
+            const id = row["id"];
+            return id !== null && id !== undefined ? String(id) : "";
+          }}
+          emptyMessage={emptyMsg}
+          rowStyle={
+            filterMode === "duplicates"
+              ? (row) => {
+                  const key = `${row._dupeField}:${row._dupeKey}`;
+                  const idx = dupeGroupIndex.get(key) ?? 0;
+                  return idx % 2 === 1
+                    ? { backgroundColor: "var(--eq-ice)" }
+                    : undefined;
+                }
+              : undefined
+          }
+          className="eq-drill__data-table"
+        />
+      )}
+    </div>
+  );
+}
 
-                    let cellClass = "eq-drill__cell";
-                    if (blank) cellClass += " eq-drill__cell--gap";
-                    if (isGapField && !blank) cellClass += " eq-drill__cell--filled";
+// ── TidyPanel ─────────────────────────────────────────────────────────────────
 
-                    return (
-                      <td
-                        key={col}
-                        className={cellClass}
-                        onClick={
-                          isGapField && !isEditing
-                            ? () => startEdit(rowIndex, col)
-                            : undefined
-                        }
-                        title={
-                          isGapField && !isEditing ? "Click to edit" : undefined
-                        }
-                      >
-                        {isEditing ? (
-                          <span className="eq-drill__inline-edit">
-                            <input
-                              className="eq-drill__inline-input"
-                              value={editDraft}
-                              onChange={(e) => setEditDraft(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") commitEdit();
-                                if (e.key === "Escape") cancelEdit();
-                              }}
-                              autoFocus
-                              aria-label={`Edit ${COLUMN_LABELS[col] ?? col}`}
-                            />
-                            <button
-                              className="eq-drill__inline-save"
-                              onClick={commitEdit}
-                              type="button"
-                            >
-                              Save
-                            </button>
-                            <button
-                              className="eq-drill__inline-cancel"
-                              onClick={cancelEdit}
-                              type="button"
-                            >
-                              Cancel
-                            </button>
-                          </span>
-                        ) : (
-                          <span className="eq-drill__cell-value">
-                            {isBlank(row[col]) ? (
-                              <span className="eq-drill__cell-empty">—</span>
-                            ) : (
-                              String(row[col])
-                            )}
-                          </span>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+interface TidyPanelProps {
+  loading: boolean;
+  progress: string;
+  error: string | null;
+  report: TidyReport | null;
+  selectedFixKeys: Set<string>;
+  onSelectionChange: (ids: Set<string>) => void;
+  onApply: () => void;
+  committing: boolean;
+  commitResult: TidyCommitResult | null;
+  entityLabel: string;
+}
+
+const FIX_TYPE_LABELS: Record<string, string> = {
+  phone: "Phone",
+  au_state: "State",
+  email: "Email",
+  abn: "ABN",
+  date: "Date",
+  string: "Text",
+  boolean: "Boolean",
+  other: "Other",
+};
+
+const GAP_TYPE_LABELS: Record<string, string> = {
+  required_missing: "Missing",
+  format_invalid: "Invalid format",
+  fk_no_match: "Broken link",
+};
+
+const FLAG_TYPE_LABELS: Record<string, string> = {
+  phone_kept_raw: "Phone kept raw",
+  date_ambiguous: "Date ambiguous",
+  value_unusual: "Unusual value",
+  cross_field_warning: "Cross-field",
+};
+
+function TidyPanel({
+  loading,
+  progress,
+  error,
+  report,
+  selectedFixKeys,
+  onSelectionChange,
+  onApply,
+  committing,
+  commitResult,
+  entityLabel,
+}: TidyPanelProps): JSX.Element {
+  if (loading) {
+    return (
+      <div className="eq-tidy">
+        <div className="eq-tidy__loading">
+          <span className="eq-health-spinner" aria-hidden="true" />
+          <span>{progress || "Scanning…"}</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="eq-tidy">
+        <div className="eq-drill__error" role="alert">
+          <strong>Tidy pass error:</strong> {error}
+        </div>
+      </div>
+    );
+  }
+
+  if (!report) return <div className="eq-tidy" />;
+
+  const { auto_fixes, gaps, review_flags, summary } = report;
+
+  const fixColumns: TableColumn<TidyFix>[] = [
+    {
+      key: "row_label",
+      header: "Record",
+      sortAccessor: (f) => f.row_label,
+      filterable: "text",
+    },
+    {
+      key: "field",
+      header: "Field",
+      sortAccessor: (f) => f.field,
+    },
+    {
+      key: "old_value",
+      header: "Current",
+      render: (f) => <span className="eq-tidy__old-value">{f.old_value}</span>,
+    },
+    {
+      key: "new_value",
+      header: "Normalised",
+      render: (f) => <span className="eq-tidy__new-value">{f.new_value}</span>,
+    },
+    {
+      key: "fix_type",
+      header: "Type",
+      sortable: false,
+      render: (f) => (
+        <span className="eq-tidy__fix-badge">
+          {FIX_TYPE_LABELS[f.fix_type] ?? f.fix_type}
+        </span>
+      ),
+    },
+  ];
+
+  const gapColumns: TableColumn<GapItem>[] = [
+    {
+      key: "row_label",
+      header: "Record",
+      sortAccessor: (g) => g.row_label,
+      filterable: "text",
+    },
+    {
+      key: "field",
+      header: "Field",
+      sortAccessor: (g) => g.field,
+    },
+    {
+      key: "message",
+      header: "Issue",
+      render: (g) => <span>{g.message}</span>,
+    },
+    {
+      key: "gap_type",
+      header: "Type",
+      sortable: false,
+      render: (g) => (
+        <span className={`eq-tidy__gap-badge eq-tidy__gap-badge--${g.gap_type}`}>
+          {GAP_TYPE_LABELS[g.gap_type] ?? g.gap_type}
+        </span>
+      ),
+    },
+  ];
+
+  const flagColumns: TableColumn<ReviewFlag>[] = [
+    {
+      key: "row_label",
+      header: "Record",
+      sortAccessor: (r) => r.row_label,
+      filterable: "text",
+    },
+    {
+      key: "field",
+      header: "Field",
+      sortAccessor: (r) => r.field,
+    },
+    {
+      key: "message",
+      header: "Note",
+      render: (r) => <span>{r.message}</span>,
+    },
+    {
+      key: "flag_type",
+      header: "Flag",
+      sortable: false,
+      render: (r) => (
+        <span className="eq-tidy__flag-badge">
+          {FLAG_TYPE_LABELS[r.flag_type] ?? r.flag_type}
+        </span>
+      ),
+    },
+  ];
+
+  const allClean =
+    auto_fixes.length === 0 && gaps.length === 0 && review_flags.length === 0;
+
+  return (
+    <div className="eq-tidy">
+      {/* Summary strip */}
+      <div className="eq-tidy__summary">
+        <span className="eq-tidy__summary-label">
+          {summary.total_rows_scanned.toLocaleString()} {entityLabel.toLowerCase()} scanned
+        </span>
+        {auto_fixes.length > 0 && (
+          <span className="eq-tidy__count eq-tidy__count--fix">
+            {auto_fixes.length} auto-fixable
+          </span>
+        )}
+        {gaps.length > 0 && (
+          <span className="eq-tidy__count eq-tidy__count--gap">
+            {gaps.length} gap{gaps.length !== 1 ? "s" : ""}
+          </span>
+        )}
+        {review_flags.length > 0 && (
+          <span className="eq-tidy__count eq-tidy__count--flag">
+            {review_flags.length} need review
+          </span>
+        )}
+        {allClean && (
+          <span className="eq-tidy__count eq-tidy__count--ok">All clean</span>
+        )}
+      </div>
+
+      {/* Auto-fixes */}
+      {auto_fixes.length > 0 && (
+        <div className="eq-tidy__section">
+          <div className="eq-tidy__section-header">
+            <h3 className="eq-tidy__section-title">Auto-fixes</h3>
+            <p className="eq-tidy__section-hint">
+              These values can be normalised automatically. Select the ones to apply.
+            </p>
+          </div>
+
+          <Table<TidyFix>
+            columns={fixColumns}
+            rows={auto_fixes}
+            getRowId={(f) => `${f.row_id}:${f.field}`}
+            selectable
+            selectedIds={selectedFixKeys}
+            onSelectionChange={onSelectionChange}
+            emptyMessage="No auto-fixes found."
+            className="eq-tidy__table"
+          />
+
+          <div className="eq-tidy__apply-bar">
+            {commitResult && (
+              <span
+                className={`eq-tidy__commit-result${commitResult.errors.length > 0 ? " eq-tidy__commit-result--warn" : " eq-tidy__commit-result--ok"}`}
+              >
+                {commitResult.applied > 0 && `${commitResult.applied} applied`}
+                {commitResult.skipped > 0 && ` · ${commitResult.skipped} skipped`}
+                {commitResult.errors.length > 0 &&
+                  ` · ${commitResult.errors.length} error${commitResult.errors.length !== 1 ? "s" : ""}`}
+              </span>
+            )}
+            <button
+              className="eq-intake-btn-primary"
+              type="button"
+              onClick={onApply}
+              disabled={selectedFixKeys.size === 0 || committing}
+            >
+              {committing
+                ? "Applying…"
+                : `Apply ${selectedFixKeys.size} fix${selectedFixKeys.size !== 1 ? "es" : ""}`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Format gaps */}
+      {gaps.length > 0 && (
+        <div className="eq-tidy__section">
+          <div className="eq-tidy__section-header">
+            <h3 className="eq-tidy__section-title">Data gaps</h3>
+            <p className="eq-tidy__section-hint">
+              Missing required fields or invalid formats. Use Download → Reconcile to fix in bulk.
+            </p>
+          </div>
+          <Table<GapItem>
+            columns={gapColumns}
+            rows={gaps}
+            getRowId={(g) => `${g.row_id}:${g.field}`}
+            emptyMessage="No gaps."
+            className="eq-tidy__table"
+          />
+        </div>
+      )}
+
+      {/* Review flags */}
+      {review_flags.length > 0 && (
+        <div className="eq-tidy__section">
+          <div className="eq-tidy__section-header">
+            <h3 className="eq-tidy__section-title">Needs review</h3>
+            <p className="eq-tidy__section-hint">
+              These could not be auto-fixed — a human should check them.
+            </p>
+          </div>
+          <Table<ReviewFlag>
+            columns={flagColumns}
+            rows={review_flags}
+            getRowId={(r) => `${r.row_id}:${r.field}`}
+            emptyMessage="Nothing to review."
+            className="eq-tidy__table"
+          />
         </div>
       )}
     </div>

@@ -166,6 +166,8 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
           <EntityDrillDown
             entity={drillEntity}
             supabase={props.supabase}
+            tenantId={props.tenantId}
+            initialMode="tidy"
             onBack={() => setDrillEntity(null)}
           />
         ) : (
