@@ -1,5 +1,5 @@
 import { useState, useEffect, type JSX } from "react";
-import { computeHealthScores, runLicenceExpiryCheck } from "@eq/intake";
+import { computeHealthScores, runLicenceExpiryCheck, runOrphanCheck } from "@eq/intake";
 import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
 
 // ---------------------------------------------------------------------------
@@ -29,6 +29,14 @@ interface LicenceExpiryAlertSummary {
   critical: number;
   warning: number;
   info: number;
+}
+
+interface OrphanSummary {
+  assets_no_site_count: number;
+  contacts_no_parent_count: number;
+  licences_no_staff_count: number;
+  sites_no_customer_count: number;
+  total: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -102,6 +110,43 @@ function HealthCard({
   );
 }
 
+function OrphanStrip({ summary }: { summary: OrphanSummary }): JSX.Element {
+  if (summary.total === 0) {
+    return (
+      <div className="eq-health-orphan eq-health-orphan--ok">
+        <span className="eq-health-licence__badge eq-health-licence__badge--ok">
+          No broken links
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="eq-health-orphan">
+      {summary.assets_no_site_count > 0 && (
+        <span className="eq-health-licence__badge eq-health-licence__badge--warning">
+          {summary.assets_no_site_count} asset{summary.assets_no_site_count !== 1 ? "s" : ""} missing site
+        </span>
+      )}
+      {summary.contacts_no_parent_count > 0 && (
+        <span className="eq-health-licence__badge eq-health-licence__badge--warning">
+          {summary.contacts_no_parent_count} contact{summary.contacts_no_parent_count !== 1 ? "s" : ""} unlinked
+        </span>
+      )}
+      {summary.licences_no_staff_count > 0 && (
+        <span className="eq-health-licence__badge eq-health-licence__badge--warning">
+          {summary.licences_no_staff_count} licence{summary.licences_no_staff_count !== 1 ? "s" : ""} missing staff
+        </span>
+      )}
+      {summary.sites_no_customer_count > 0 && (
+        <span className="eq-health-licence__badge eq-health-licence__badge--warning">
+          {summary.sites_no_customer_count} site{summary.sites_no_customer_count !== 1 ? "s" : ""} missing customer
+        </span>
+      )}
+    </div>
+  );
+}
+
 function LicenceStrip({
   summary,
 }: {
@@ -149,6 +194,7 @@ export function IntakeHealthHome({
 }: IntakeHealthHomeProps): JSX.Element {
   const [scores, setScores] = useState<HealthScore[] | null>(null);
   const [licences, setLicences] = useState<LicenceExpiryAlertSummary | null>(null);
+  const [orphans, setOrphans] = useState<OrphanSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -159,18 +205,33 @@ export function IntakeHealthHome({
     setLoading(true);
     setError(null);
 
-    Promise.all([
+    Promise.allSettled([
       computeHealthScores(supabase),
       runLicenceExpiryCheck(supabase, tenantId),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      runOrphanCheck({ supabase: supabase as any, tenantId }),
     ])
-      .then(([healthScores, licenceSummary]) => {
+      .then(([healthResult, licenceResult, orphanResult]) => {
         if (cancelled) return;
-        setScores(healthScores);
-        setLicences(licenceSummary);
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : String(err));
+
+        if (healthResult.status === "fulfilled") {
+          setScores(healthResult.value);
+        } else {
+          setError(
+            healthResult.reason instanceof Error
+              ? healthResult.reason.message
+              : String(healthResult.reason),
+          );
+        }
+
+        if (licenceResult.status === "fulfilled") {
+          setLicences(licenceResult.value);
+        }
+
+        if (orphanResult.status === "fulfilled") {
+          setOrphans(orphanResult.value.summary);
+        }
+        // Orphan check failure is silent — the rest of the UI still shows.
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -235,6 +296,13 @@ export function IntakeHealthHome({
         <div className="eq-health-licence-section">
           <span className="eq-health-licence-label">Licences</span>
           <LicenceStrip summary={licences} />
+        </div>
+      )}
+
+      {orphans && (
+        <div className="eq-health-licence-section">
+          <span className="eq-health-licence-label">Broken links</span>
+          <OrphanStrip summary={orphans} />
         </div>
       )}
     </section>
