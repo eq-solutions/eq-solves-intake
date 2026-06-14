@@ -21,6 +21,8 @@ export interface EntityDrillDownProps {
   /** Full Supabase client — used for row fetching, tidy pass, and fix commits. */
   supabase?: SupabaseLikeClient | null;
   tenantId?: string;
+  /** Which filter tab to open on mount. Defaults to "all". */
+  initialMode?: FilterMode;
   onBack?: () => void;
   onBulkFix?: (csvBlob: Blob, filename: string) => void;
 }
@@ -37,6 +39,7 @@ const GAP_FIELDS: Record<string, string[]> = {
   contacts: ["email", "phone"],
   customers: ["email", "phone", "abn"],
   assets: ["asset_type", "serial_number", "site_id"],
+  licences: ["expiry_date", "licence_number", "licence_type"],
 };
 
 const DUPE_KEYS: Record<string, string[]> = {
@@ -45,6 +48,7 @@ const DUPE_KEYS: Record<string, string[]> = {
   contacts: ["email"],
   customers: ["abn", "company_name"],
   assets: ["serial_number"],
+  licences: ["licence_number"],
 };
 
 // Entity string used in the UI → TidyEntity used by the tidy pass engine.
@@ -54,6 +58,7 @@ const ENTITY_TO_TIDY: Partial<Record<string, TidyEntity>> = {
   contacts: "contact",
   staff: "staff",
   assets: "asset",
+  licences: "licence",
 };
 
 const DISPLAY_COLUMNS: Record<string, string[]> = {
@@ -62,6 +67,7 @@ const DISPLAY_COLUMNS: Record<string, string[]> = {
   contacts: ["full_name", "email", "phone"],
   customers: ["company_name", "email", "phone", "abn"],
   assets: ["asset_name", "asset_type", "serial_number"],
+  licences: ["licence_number", "licence_type", "expiry_date", "staff_id"],
 };
 
 const COLUMN_LABELS: Record<string, string> = {
@@ -80,6 +86,10 @@ const COLUMN_LABELS: Record<string, string> = {
   asset_name: "Asset Name",
   asset_type: "Asset Type",
   serial_number: "Serial Number",
+  licence_number: "Licence No.",
+  licence_type: "Type",
+  expiry_date: "Expiry",
+  staff_id: "Staff",
 };
 
 function isBlank(value: unknown): boolean {
@@ -130,6 +140,7 @@ export function EntityDrillDown({
   entity,
   supabase,
   tenantId,
+  initialMode,
   onBack,
   onBulkFix,
 }: EntityDrillDownProps): JSX.Element {
@@ -138,7 +149,14 @@ export function EntityDrillDown({
   const [error, setError] = useState<string | null>(null);
   const [refreshCounter, setRefreshCounter] = useState(0);
 
-  const [filterMode, setFilterMode] = useState<FilterMode>("all");
+  // Honour initialMode only if the entity supports that mode (e.g. "tidy"
+  // needs a tidy entity mapping; fall back to "all" if not).
+  const resolvedInitialMode: FilterMode =
+    initialMode === "tidy" && !ENTITY_TO_TIDY[entity]
+      ? "all"
+      : (initialMode ?? "all");
+
+  const [filterMode, setFilterMode] = useState<FilterMode>(resolvedInitialMode);
   const [editState, setEditState] = useState<EditState | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [hasLocalEdits, setHasLocalEdits] = useState(false);
