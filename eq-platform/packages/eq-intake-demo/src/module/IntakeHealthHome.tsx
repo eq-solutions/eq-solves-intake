@@ -110,7 +110,13 @@ function HealthCard({
   );
 }
 
-function OrphanStrip({ summary }: { summary: OrphanSummary }): JSX.Element {
+function OrphanStrip({
+  summary,
+  onEntityClick,
+}: {
+  summary: OrphanSummary;
+  onEntityClick?: (entity: string) => void;
+}): JSX.Element {
   if (summary.total === 0) {
     return (
       <div className="eq-health-orphan eq-health-orphan--ok">
@@ -121,28 +127,55 @@ function OrphanStrip({ summary }: { summary: OrphanSummary }): JSX.Element {
     );
   }
 
+  function OrphanBadge({
+    count,
+    entity,
+    label,
+  }: {
+    count: number;
+    entity: string;
+    label: string;
+  }): JSX.Element | null {
+    if (count === 0) return null;
+    const text = `${count} ${label}`;
+    return onEntityClick ? (
+      <button
+        type="button"
+        className="eq-health-licence__badge eq-health-licence__badge--warning eq-health-orphan__btn"
+        onClick={() => onEntityClick(entity)}
+        title={`Open ${entity} drill-down`}
+      >
+        {text}
+      </button>
+    ) : (
+      <span className="eq-health-licence__badge eq-health-licence__badge--warning">
+        {text}
+      </span>
+    );
+  }
+
   return (
     <div className="eq-health-orphan">
-      {summary.assets_no_site_count > 0 && (
-        <span className="eq-health-licence__badge eq-health-licence__badge--warning">
-          {summary.assets_no_site_count} asset{summary.assets_no_site_count !== 1 ? "s" : ""} missing site
-        </span>
-      )}
-      {summary.contacts_no_parent_count > 0 && (
-        <span className="eq-health-licence__badge eq-health-licence__badge--warning">
-          {summary.contacts_no_parent_count} contact{summary.contacts_no_parent_count !== 1 ? "s" : ""} unlinked
-        </span>
-      )}
-      {summary.licences_no_staff_count > 0 && (
-        <span className="eq-health-licence__badge eq-health-licence__badge--warning">
-          {summary.licences_no_staff_count} licence{summary.licences_no_staff_count !== 1 ? "s" : ""} missing staff
-        </span>
-      )}
-      {summary.sites_no_customer_count > 0 && (
-        <span className="eq-health-licence__badge eq-health-licence__badge--warning">
-          {summary.sites_no_customer_count} site{summary.sites_no_customer_count !== 1 ? "s" : ""} missing customer
-        </span>
-      )}
+      <OrphanBadge
+        count={summary.assets_no_site_count}
+        entity="assets"
+        label={`asset${summary.assets_no_site_count !== 1 ? "s" : ""} missing site`}
+      />
+      <OrphanBadge
+        count={summary.contacts_no_parent_count}
+        entity="contacts"
+        label={`contact${summary.contacts_no_parent_count !== 1 ? "s" : ""} unlinked`}
+      />
+      <OrphanBadge
+        count={summary.licences_no_staff_count}
+        entity="licences"
+        label={`licence${summary.licences_no_staff_count !== 1 ? "s" : ""} missing staff`}
+      />
+      <OrphanBadge
+        count={summary.sites_no_customer_count}
+        entity="sites"
+        label={`site${summary.sites_no_customer_count !== 1 ? "s" : ""} missing customer`}
+      />
     </div>
   );
 }
@@ -302,7 +335,7 @@ export function IntakeHealthHome({
       {orphans && (
         <div className="eq-health-licence-section">
           <span className="eq-health-licence-label">Broken links</span>
-          <OrphanStrip summary={orphans} />
+          <OrphanStrip summary={orphans} onEntityClick={onEntityClick} />
         </div>
       )}
     </section>

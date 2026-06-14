@@ -3567,6 +3567,7 @@ button.eq-primary:hover {
 /* Orphan strip — reuse licence section layout */
 .eq-health-orphan { display: flex; flex-wrap: wrap; gap: 8px; }
 .eq-health-orphan--ok { display: flex; flex-wrap: wrap; gap: 8px; }
+.eq-health-orphan__btn { cursor: pointer; border: none; font-family: inherit; font-size: inherit; text-align: left; }
 
 .eq-intake-preview__table tbody tr {
   border-bottom: 1px solid var(--eq-line);

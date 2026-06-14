@@ -48,7 +48,7 @@ const DUPE_KEYS: Record<string, string[]> = {
   contacts: ["email"],
   customers: ["abn", "company_name"],
   assets: ["serial_number"],
-  licences: ["licence_number"],
+  // licences: licence_number legitimately repeats across different staff/states
 };
 
 // Entity string used in the UI → TidyEntity used by the tidy pass engine.
@@ -453,7 +453,7 @@ export function EntityDrillDown({
       cols.push({
         key: "_dupeKey",
         header: "Matched on",
-        sortable: false,
+        // no sortAccessor = not sortable
         render: (row: DrillRow) =>
           row._dupeField ? (
             <span className="eq-drill__dupe-badge">
