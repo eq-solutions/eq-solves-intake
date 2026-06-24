@@ -2861,6 +2861,12 @@ button.eq-primary:hover {
   color: var(--eq-ok);
 }
 
+.eq-reconcile__confidence-note {
+  font-size: 12px;
+  font-weight: 600;
+  margin-left: 4px;
+}
+
 /* Summary badge strip */
 .eq-reconcile__summary {
   display: flex;

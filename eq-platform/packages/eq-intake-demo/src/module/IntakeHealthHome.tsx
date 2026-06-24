@@ -5,12 +5,14 @@ import {
   runOrphanCheck,
   computeComplianceMetrics,
   detectAllDuplicates,
+  decayCheck,
 } from "@eq/intake";
 import type {
   HealthScore,
   LicenceExpiryAlertSummary,
   ComplianceMetrics,
   DuplicateReport,
+  DecaySummary,
 } from "@eq/intake";
 import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
 
@@ -420,6 +422,59 @@ function OrphanStrip({
   );
 }
 
+function DecayStrip({
+  report, onEntityClick,
+}: { report: DecaySummary[]; onEntityClick?: (entity: string) => void }): JSX.Element {
+  const anyStale = report.some((r) => r.aging + r.stale + r.very_stale > 0);
+
+  if (!anyStale) {
+    return (
+      <div className="eq-health-licence-strip">
+        <span className="eq-health-badge eq-health-badge--ok">All records current</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="eq-health-licence-strip">
+      {report
+        .filter((r) => r.aging + r.stale + r.very_stale > 0)
+        .map((r) => {
+          const label    = ENTITY_LABELS[r.entity] ?? r.entity;
+          const severity = r.very_stale > 0 ? "err" : r.stale > 0 ? "warning" : "info";
+          const worst    = r.very_stale > 0
+            ? `${r.very_stale} very stale`
+            : r.stale > 0
+            ? `${r.stale} stale`
+            : `${r.aging} aging`;
+          const tip = r.stalest[0]
+            ? `Oldest: ${r.stalest[0].label} (${r.stalest[0].days_since}d)`
+            : `${r.oldest_days}d since last update`;
+
+          return onEntityClick ? (
+            <button
+              key={r.entity}
+              type="button"
+              className={`eq-health-badge eq-health-badge--${severity} eq-health-orphan__btn`}
+              onClick={() => onEntityClick(r.entity)}
+              title={tip}
+            >
+              {label}: {worst}, oldest {r.oldest_days}d
+            </button>
+          ) : (
+            <span
+              key={r.entity}
+              className={`eq-health-badge eq-health-badge--${severity}`}
+              title={tip}
+            >
+              {label}: {worst}, oldest {r.oldest_days}d
+            </span>
+          );
+        })}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Root component
 // ---------------------------------------------------------------------------
@@ -442,6 +497,8 @@ export function IntakeHealthHome({
   const [compliance, setCompliance] = useState<ComplianceMetrics | null>(null);
   const [dupes,      setDupes]      = useState<DuplicateReport[] | null>(null);
   const [dupesBusy,  setDupesBusy]  = useState(false);
+  const [decay,      setDecay]      = useState<DecaySummary[] | null>(null);
+  const [decayBusy,  setDecayBusy]  = useState(false);
   const [loading,    setLoading]    = useState(false);
   const [error,      setError]      = useState<string | null>(null);
 
@@ -543,6 +600,20 @@ export function IntakeHealthHome({
     }
   };
 
+  const scanDecay = async () => {
+    if (!supabase || decayBusy) return;
+    setDecayBusy(true);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const report = await decayCheck(supabase as any);
+      setDecay(report);
+    } catch {
+      // non-critical — silently skip
+    } finally {
+      setDecayBusy(false);
+    }
+  };
+
   return (
     <section className="eq-health-home">
 
@@ -606,6 +677,23 @@ export function IntakeHealthHome({
           </button>
         ) : (
           <DuplicateStrip report={dupes} onEntityClick={onEntityClick} />
+        )}
+      </div>
+
+      {/* Decay detection (on-demand) */}
+      <div className="eq-health-strip-section">
+        <span className="eq-health-section-label">Record age</span>
+        {decay === null ? (
+          <button
+            type="button"
+            className="eq-intake-btn-ghost"
+            onClick={scanDecay}
+            disabled={decayBusy}
+          >
+            {decayBusy ? "Scanning…" : "Check for stale records"}
+          </button>
+        ) : (
+          <DecayStrip report={decay} onEntityClick={onEntityClick} />
         )}
       </div>
 

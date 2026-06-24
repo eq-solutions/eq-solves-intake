@@ -14,7 +14,7 @@
 
 import { useState, useCallback, type JSX } from "react";
 import { parseFile, classifySheet, reconcileSheets, fetchCanonicalRows, scoreRows, normaliseAbn, normalisePhone, type ParsedSheet } from "@eq/intake";
-import type { ReconcileResult, ReconcileRow, Resolution, RowConfidence } from "@eq/intake";
+import type { ReconcileResult, ReconcileRow, Resolution, RowConfidence, EntityConfidenceSummary } from "@eq/intake";
 import {
   commitBundleToCanonical,
   type SupabaseLikeClient,
@@ -40,9 +40,9 @@ const DEFAULT_TENANT_ID = "00000000-0000-4000-8000-000000000001";
 type Step =
   | { tag: "idle" }
   | { tag: "loading"; label: string }
-  | { tag: "ready"; entity: string; sheet: ParsedSheet; result: ReconcileResult; scores: RowConfidence[] }
+  | { tag: "ready"; entity: string; sheet: ParsedSheet; result: ReconcileResult; scores: EntityConfidenceSummary }
   | { tag: "committing" }
-  | { tag: "done"; added: number; updated: number }
+  | { tag: "done"; added: number; updated: number; avgConfidence?: number }
   | { tag: "error"; message: string };
 
 const PHONE_FIELDS: Record<string, string> = {
@@ -139,7 +139,7 @@ export function ReconcileModule({ supabase, tenantId }: ReconcileModuleProps): J
   const handleCommit = useCallback(async () => {
     if (step.tag !== "ready" || !supabase) return;
 
-    const { result, entity, sheet } = step;
+    const { result, entity, sheet, scores } = step;
 
     // Build rows to commit:
     //   - All onlyInSource rows (new additions)
@@ -155,6 +155,10 @@ export function ReconcileModule({ supabase, tenantId }: ReconcileModuleProps): J
         toUpdate.push(row.sourceRow);
       }
     });
+
+    const avgConfidence = scores.scores.length > 0
+      ? Math.round(scores.avg_score * 100)
+      : undefined;
 
     setStep({ tag: "committing" });
 
@@ -182,7 +186,7 @@ export function ReconcileModule({ supabase, tenantId }: ReconcileModuleProps): J
         sourceFilename: sheet.sheetName ?? "reconcile",
       });
 
-      setStep({ tag: "done", added: toAdd.length, updated: toUpdate.length });
+      setStep({ tag: "done", added: toAdd.length, updated: toUpdate.length, avgConfidence });
     } catch (e) {
       setStep({ tag: "error", message: e instanceof Error ? e.message : String(e) });
     }
@@ -224,7 +228,7 @@ export function ReconcileModule({ supabase, tenantId }: ReconcileModuleProps): J
         <ReconcileReview
           entity={step.entity}
           result={step.result}
-          scores={step.scores}
+          scores={step.scores.scores}
           resolutions={resolutions}
           onSetResolution={setResolution}
           onResolveAll={resolveAll}
@@ -250,6 +254,14 @@ export function ReconcileModule({ supabase, tenantId }: ReconcileModuleProps): J
             {step.added > 0 && `${step.added} new row${step.added === 1 ? "" : "s"} added.`}{" "}
             {step.updated > 0 && `${step.updated} row${step.updated === 1 ? "" : "s"} updated.`}
             {step.added === 0 && step.updated === 0 && "Nothing to commit — all resolved as keep-canonical or skipped."}
+            {step.avgConfidence !== undefined && (
+              <span
+                className="eq-reconcile__confidence-note"
+                style={{ color: step.avgConfidence >= 80 ? "var(--eq-ok)" : step.avgConfidence >= 60 ? "var(--eq-warn)" : "var(--eq-err)" } as React.CSSProperties}
+              >
+                {" "}Avg confidence: {step.avgConfidence}%
+              </span>
+            )}
           </div>
           <button type="button" onClick={reset}>
             Reconcile another file
