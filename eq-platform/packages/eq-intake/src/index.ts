@@ -98,3 +98,48 @@ export type { LicenceExpiryAlertSummary } from "./licence-expiry-check.js";
 
 export { computeHealthScores } from "./health-score.js";
 export type { HealthScore } from "./health-score.js";
+
+export { computeComplianceMetrics } from "./compliance-metrics.js";
+export type { ComplianceMetrics } from "./compliance-metrics.js";
+
+// ── AI data quality ────────────────────────────────────────────────────────
+export {
+  normaliseAbn,
+  isValidAbn,
+  normalisePhone,
+  isValidAuPhone,
+  isValidAuState,
+  isValidAuPostcode,
+  normaliseCompanyName,
+  normalisePersonName,
+} from "./normalize.js";
+
+export { scoreRow, scoreRows } from "./confidence-score.js";
+export type {
+  RowConfidence,
+  EntityConfidenceSummary,
+} from "./confidence-score.js";
+
+export { detectAllDuplicates } from "./duplicate-detect.js";
+export type { DuplicateCluster, DuplicateReport } from "./duplicate-detect.js";
+
+export { decayCheck } from "./decay-detect.js";
+export type {
+  StalenessLevel,
+  StaleRecord,
+  DecaySummary,
+} from "./decay-detect.js";
+
+export { makeEdgeFnCaller } from "./ai-client.js";
+export type { EdgeFnCaller, EdgeFnResponse } from "./ai-client.js";
+
+export { suggestGaps } from "./gap-suggest.js";
+export type { GapSuggestion, GapSuggestResult } from "./gap-suggest.js";
+
+export { askCanonical } from "./ask-canonical.js";
+export type {
+  AskFilter,
+  AskIntent,
+  AskResult,
+  FilterOp,
+} from "./ask-canonical.js";

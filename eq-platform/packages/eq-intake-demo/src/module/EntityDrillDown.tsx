@@ -3,6 +3,7 @@ import {
   fetchCanonicalRows,
   runTidyPass,
   commitTidyFixes,
+  suggestGaps,
 } from "@eq/intake";
 import type {
   CanonicalFetchClient,
@@ -12,6 +13,9 @@ import type {
   TidyReport,
   TidyCommitResult,
   TidyEntity,
+  GapSuggestResult,
+  GapSuggestion,
+  EdgeFnCaller,
 } from "@eq/intake";
 import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
 import { Table, type TableColumn } from "@eq-solutions/ui/Table";
@@ -170,11 +174,22 @@ export function EntityDrillDown({
   const [committing, setCommitting] = useState(false);
   const [commitResult, setCommitResult] = useState<TidyCommitResult | null>(null);
 
+  // Gap suggestion state
+  const [suggestRowId, setSuggestRowId] = useState<string | null>(null);
+  const [suggestRowLabel, setSuggestRowLabel] = useState("");
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const [suggestResult, setSuggestResult] = useState<GapSuggestResult | null>(null);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+
   const gapFields = GAP_FIELDS[entity] ?? [];
   const displayColumns = DISPLAY_COLUMNS[entity] ?? [];
   const dupeKeys = DUPE_KEYS[entity] ?? [];
   const tidyEntity = ENTITY_TO_TIDY[entity] ?? null;
   const resolvedTenantId = tenantId ?? DEFAULT_TENANT_ID;
+  if (!tenantId) {
+    // eslint-disable-next-line no-console
+    console.warn("[EntityDrillDown] tenantId prop not provided — tidy-pass and fix-commits will use the fixture tenant.");
+  }
 
   // ── Fetch canonical rows ────────────────────────────────────────────────
   useEffect(() => {
@@ -262,10 +277,10 @@ export function EntityDrillDown({
   const duplicateRows = useMemo<DrillRow[]>(() => {
     if (dupeKeys.length === 0) return [];
 
-    const seenIds = new Set<string>();
     const allGroups: DrillRow[][] = [];
 
     for (const keyField of dupeKeys) {
+      const seenIds = new Set<string>();
       const byValue = new Map<string, Row[]>();
       for (const row of rows) {
         const val = row[keyField];
@@ -376,6 +391,59 @@ export function EntityDrillDown({
     }
   }, [supabase, tidyReport, selectedFixKeys, committing, resolvedTenantId]);
 
+  // ── Gap suggestions ───────────────────────────────────────────────────
+  const callEdgeFn = useMemo<EdgeFnCaller | null>(() => {
+    if (!supabase) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabase as any;
+    return (action: string, payload: Record<string, unknown>) =>
+      sb.functions.invoke('eq-ai-assist', { body: { action, ...payload } }) as Promise<{
+        data: unknown;
+        error: { message: string } | null;
+      }>;
+  }, [supabase]);
+
+  const handleSuggest = useCallback(
+    async (row: Row) => {
+      if (!callEdgeFn) return;
+      const rowId = String(row.id ?? '');
+      const missingFields = gapFields.filter((f) => isBlank(row[f]));
+      if (missingFields.length === 0) return;
+
+      const label = String(
+        row['company_name'] ?? row['first_name'] ?? row['site_name'] ??
+        row['asset_name'] ?? row['licence_number'] ?? rowId
+      );
+
+      setSuggestRowId(rowId);
+      setSuggestRowLabel(label);
+      setSuggestLoading(true);
+      setSuggestResult(null);
+      setSuggestError(null);
+
+      try {
+        const result = await suggestGaps(entity, row, missingFields, callEdgeFn);
+        setSuggestResult(result);
+      } catch (err: unknown) {
+        setSuggestError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setSuggestLoading(false);
+      }
+    },
+    [callEdgeFn, entity, gapFields],
+  );
+
+  const acceptSuggestion = useCallback(
+    (field: string, value: string) => {
+      if (!suggestRowId) return;
+      setRows((prev) =>
+        prev.map((r) => String(r.id ?? '') === suggestRowId ? { ...r, [field]: value } : r),
+      );
+      setHasLocalEdits(true);
+    },
+    [suggestRowId],
+  );
+
   // ── Column definitions ────────────────────────────────────────────────
   const columns = useMemo<TableColumn<DrillRow>[]>(() => {
     const cols: TableColumn<DrillRow>[] = displayColumns.map((col) => {
@@ -463,6 +531,26 @@ export function EntityDrillDown({
       });
     }
 
+    if (filterMode === "gaps" && callEdgeFn) {
+      cols.push({
+        key: "_suggest",
+        header: "Suggest",
+        render: (row: DrillRow) => {
+          const missing = gapFields.filter((f) => isBlank(row[f]));
+          if (missing.length === 0) return null;
+          return (
+            <button
+              type="button"
+              className="eq-drill__suggest-btn"
+              onClick={(e) => { e.stopPropagation(); handleSuggest(row); }}
+            >
+              Suggest
+            </button>
+          );
+        },
+      });
+    }
+
     return cols;
   }, [
     displayColumns,
@@ -473,6 +561,8 @@ export function EntityDrillDown({
     commitEdit,
     cancelEdit,
     startEdit,
+    callEdgeFn,
+    handleSuggest,
   ]);
 
   // ── CSV download ──────────────────────────────────────────────────────
@@ -495,7 +585,7 @@ export function EntityDrillDown({
       a.href = url;
       a.download = filename;
       a.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
   }, [displayRows, displayColumns, entity, filterMode, onBulkFix]);
 
@@ -653,6 +743,17 @@ export function EntityDrillDown({
               : undefined
           }
           className="eq-drill__data-table"
+        />
+      )}
+
+      {suggestRowId && (
+        <SuggestPanel
+          rowLabel={suggestRowLabel}
+          loading={suggestLoading}
+          result={suggestResult}
+          error={suggestError}
+          onAccept={acceptSuggestion}
+          onClose={() => { setSuggestRowId(null); setSuggestResult(null); setSuggestError(null); }}
         />
       )}
     </div>
@@ -938,6 +1039,81 @@ function TidyPanel({
             emptyMessage="Nothing to review."
             className="eq-tidy__table"
           />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── SuggestPanel ──────────────────────────────────────────────────────────────
+
+interface SuggestPanelProps {
+  rowLabel: string;
+  loading: boolean;
+  result: GapSuggestResult | null;
+  error: string | null;
+  onAccept: (field: string, value: string) => void;
+  onClose: () => void;
+}
+
+function SuggestPanel({ rowLabel, loading, result, error, onAccept, onClose }: SuggestPanelProps): JSX.Element {
+  return (
+    <div className="eq-suggest-panel" role="region" aria-label="Gap suggestions">
+      <div className="eq-suggest-panel__header">
+        <span className="eq-suggest-panel__title">Suggestions for {rowLabel}</span>
+        <button type="button" className="eq-suggest-panel__close" onClick={onClose} aria-label="Close suggestions">
+          ×
+        </button>
+      </div>
+
+      {loading && (
+        <div className="eq-suggest-panel__loading">
+          <span className="eq-health-spinner" aria-hidden="true" />
+          Asking Claude…
+        </div>
+      )}
+
+      {error && (
+        <div role="alert" className="eq-suggest-panel__error">{error}</div>
+      )}
+
+      {result && result.suggestions.length === 0 && !loading && (
+        <p className="eq-suggest-panel__empty">
+          No suggestions — not enough context to infer values for the missing fields.
+        </p>
+      )}
+
+      {result && result.suggestions.length > 0 && (
+        <div className="eq-suggest-panel__list">
+          {result.suggestions.map((s: GapSuggestion) => (
+            <div key={s.field} className="eq-suggest-panel__row">
+              <div className="eq-suggest-panel__field-info">
+                <span className="eq-suggest-panel__field-name">
+                  {COLUMN_LABELS[s.field] ?? s.field}
+                </span>
+                <span className={`eq-suggest-panel__confidence eq-suggest-panel__confidence--${s.confidence}`}>
+                  {s.confidence}
+                </span>
+                <span className="eq-suggest-panel__reasoning">{s.reasoning}</span>
+              </div>
+              <div className="eq-suggest-panel__value-row">
+                {s.suggested_value !== null ? (
+                  <>
+                    <code className="eq-suggest-panel__value">{s.suggested_value}</code>
+                    <button
+                      type="button"
+                      className="eq-intake-btn-primary eq-suggest-panel__accept"
+                      onClick={() => onAccept(s.field, s.suggested_value!)}
+                    >
+                      Accept
+                    </button>
+                  </>
+                ) : (
+                  <span className="eq-suggest-panel__no-value">No suggestion</span>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
