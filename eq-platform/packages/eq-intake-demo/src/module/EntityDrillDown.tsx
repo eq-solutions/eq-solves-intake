@@ -175,6 +175,10 @@ export function EntityDrillDown({
   const dupeKeys = DUPE_KEYS[entity] ?? [];
   const tidyEntity = ENTITY_TO_TIDY[entity] ?? null;
   const resolvedTenantId = tenantId ?? DEFAULT_TENANT_ID;
+  if (!tenantId) {
+    // eslint-disable-next-line no-console
+    console.warn("[EntityDrillDown] tenantId prop not provided — tidy-pass and fix-commits will use the fixture tenant.");
+  }
 
   // ── Fetch canonical rows ────────────────────────────────────────────────
   useEffect(() => {
@@ -262,10 +266,10 @@ export function EntityDrillDown({
   const duplicateRows = useMemo<DrillRow[]>(() => {
     if (dupeKeys.length === 0) return [];
 
-    const seenIds = new Set<string>();
     const allGroups: DrillRow[][] = [];
 
     for (const keyField of dupeKeys) {
+      const seenIds = new Set<string>();
       const byValue = new Map<string, Row[]>();
       for (const row of rows) {
         const val = row[keyField];
@@ -495,7 +499,7 @@ export function EntityDrillDown({
       a.href = url;
       a.download = filename;
       a.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
   }, [displayRows, displayColumns, entity, filterMode, onBulkFix]);
 

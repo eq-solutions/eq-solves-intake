@@ -56,6 +56,8 @@ BEGIN
     RAISE EXCEPTION 'upsert not supported for contract_scopes (no natural import key) — use append or replace';
   END IF;
 
+  PERFORM _eq_intake_check_tenant_match(p_tenant_id);
+
   -- ── replace pre-delete ────────────────────────────────────────────────
   IF p_import_mode = 'replace' THEN
     IF NOT p_confirm_replace THEN RAISE EXCEPTION 'replace requires p_confirm_replace=true'; END IF;
@@ -70,7 +72,7 @@ BEGIN
       DELETE FROM app_data.contract_scopes cs
       USING (
         SELECT DISTINCT
-          (r ->> 'customer_id')::uuid          AS customer_id,
+          NULLIF(r ->> 'customer_id', '')::uuid AS customer_id,
           NULLIF(r ->> 'site_id', '')::uuid     AS site_id,
           r ->> 'financial_year'                AS financial_year
         FROM jsonb_array_elements(p_rows) AS r
@@ -143,6 +145,9 @@ BEGIN
     END IF;
   END LOOP;
 
+  PERFORM _eq_intake_record_committed(p_intake_id, v_count);
   RETURN QUERY SELECT v_count, v_ids;
 END
 $function$;
+
+GRANT EXECUTE ON FUNCTION public.eq_intake_commit_batch_service(uuid, uuid, text, jsonb, text, text, text, boolean) TO authenticated;

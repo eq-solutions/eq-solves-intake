@@ -259,6 +259,13 @@ export function IntakeHealthHome({
 
         if (licenceResult.status === "fulfilled") {
           setLicences(licenceResult.value);
+        } else {
+          console.warn(
+            "[IntakeHealthHome] Licence expiry check failed:",
+            licenceResult.reason instanceof Error
+              ? licenceResult.reason.message
+              : licenceResult.reason,
+          );
         }
 
         if (orphanResult.status === "fulfilled") {
