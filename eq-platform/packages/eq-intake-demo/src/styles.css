@@ -3749,6 +3749,128 @@ button.eq-primary:hover {
   margin-top: 2px;
 }
 
+/* ── Ask Canonical ─────────────────────────────────────────────────────── */
+
+.eq-ask {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 0;
+}
+
+.eq-ask-notice {
+  padding: 24px;
+  color: var(--eq-muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+.eq-ask-bar {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.eq-ask-input {
+  flex: 1;
+  font-family: inherit;
+  font-size: 15px;
+  padding: 10px 14px;
+  border: 1.5px solid var(--eq-line);
+  border-radius: 7px;
+  background: var(--eq-paper);
+  color: var(--eq-ink);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.eq-ask-input:focus {
+  border-color: var(--eq-sky);
+}
+
+.eq-ask-btn {
+  flex-shrink: 0;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.eq-ask-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.eq-ask-example {
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--eq-sky);
+  background: none;
+  border: 1px solid var(--eq-line);
+  border-radius: 20px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+
+.eq-ask-example:hover {
+  background: var(--eq-ice);
+  border-color: var(--eq-sky);
+}
+
+.eq-ask-results {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.eq-ask-results-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.eq-ask-description {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--eq-ink);
+  flex: 1;
+}
+
+.eq-ask-count {
+  font-size: 13px;
+  color: var(--eq-muted);
+  white-space: nowrap;
+}
+
+.eq-ask-open-btn {
+  font-size: 13px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+.eq-ask-table td,
+.eq-ask-table th {
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.eq-ask-overflow,
+.eq-ask-empty {
+  font-size: 13px;
+  color: var(--eq-muted);
+  margin: 0;
+}
+
+.eq-ask-clear {
+  align-self: flex-start;
+  font-size: 13px;
+  padding: 4px 10px;
+}
+
 /* Tighter rules for very narrow phones (≤ 380px). 360px Chrome dev-tools
  * (iPhone SE / Galaxy S range) must avoid horizontal scroll. */
 @media (max-width: 380px) {

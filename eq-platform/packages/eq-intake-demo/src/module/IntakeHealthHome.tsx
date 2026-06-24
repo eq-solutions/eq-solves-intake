@@ -4,11 +4,13 @@ import {
   runLicenceExpiryCheck,
   runOrphanCheck,
   computeComplianceMetrics,
+  detectAllDuplicates,
 } from "@eq/intake";
 import type {
   HealthScore,
   LicenceExpiryAlertSummary,
   ComplianceMetrics,
+  DuplicateReport,
 } from "@eq/intake";
 import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
 
@@ -343,6 +345,43 @@ function LicenceStrip({ summary }: { summary: LicenceExpiryAlertSummary }): JSX.
   );
 }
 
+function DuplicateStrip({
+  report, onEntityClick,
+}: { report: DuplicateReport[]; onEntityClick?: (entity: string) => void }): JSX.Element {
+  const total = report.reduce((n, r) => n + r.clusters.length, 0);
+
+  if (total === 0) {
+    return (
+      <div className="eq-health-licence-strip">
+        <span className="eq-health-badge eq-health-badge--ok">No duplicates found</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="eq-health-licence-strip">
+      {report
+        .filter((r) => r.clusters.length > 0)
+        .map((r) => {
+          const text = `${r.clusters.length} possible duplicate${r.clusters.length !== 1 ? "s" : ""} in ${r.entity}`;
+          return onEntityClick ? (
+            <button
+              key={r.entity}
+              type="button"
+              className="eq-health-badge eq-health-badge--warning eq-health-orphan__btn"
+              onClick={() => onEntityClick(r.entity)}
+              title={`Open ${r.entity} drill-down`}
+            >
+              {text}
+            </button>
+          ) : (
+            <span key={r.entity} className="eq-health-badge eq-health-badge--warning">{text}</span>
+          );
+        })}
+    </div>
+  );
+}
+
 function OrphanStrip({
   summary, onEntityClick,
 }: { summary: OrphanSummary; onEntityClick?: (entity: string) => void }): JSX.Element {
@@ -401,6 +440,8 @@ export function IntakeHealthHome({
   const [licences,   setLicences]   = useState<LicenceExpiryAlertSummary | null>(null);
   const [orphans,    setOrphans]    = useState<OrphanSummary | null>(null);
   const [compliance, setCompliance] = useState<ComplianceMetrics | null>(null);
+  const [dupes,      setDupes]      = useState<DuplicateReport[] | null>(null);
+  const [dupesBusy,  setDupesBusy]  = useState(false);
   const [loading,    setLoading]    = useState(false);
   const [error,      setError]      = useState<string | null>(null);
 
@@ -488,6 +529,20 @@ export function IntakeHealthHome({
   const dims    = computeDimensions(scores, licences, orphans, compliance);
   const actions = deriveActions(licences, compliance);
 
+  const scanDuplicates = async () => {
+    if (!supabase || dupesBusy) return;
+    setDupesBusy(true);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const report = await detectAllDuplicates(supabase as any);
+      setDupes(report);
+    } catch {
+      // non-critical — silently skip
+    } finally {
+      setDupesBusy(false);
+    }
+  };
+
   return (
     <section className="eq-health-home">
 
@@ -536,6 +591,23 @@ export function IntakeHealthHome({
           <OrphanStrip summary={orphans} onEntityClick={onEntityClick} />
         </div>
       )}
+
+      {/* Duplicate detection (on-demand) */}
+      <div className="eq-health-strip-section">
+        <span className="eq-health-section-label">Duplicates</span>
+        {dupes === null ? (
+          <button
+            type="button"
+            className="eq-intake-btn-ghost"
+            onClick={scanDuplicates}
+            disabled={dupesBusy}
+          >
+            {dupesBusy ? "Scanning…" : "Scan for possible duplicates"}
+          </button>
+        ) : (
+          <DuplicateStrip report={dupes} onEntityClick={onEntityClick} />
+        )}
+      </div>
 
     </section>
   );
