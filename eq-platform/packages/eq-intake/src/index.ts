@@ -98,3 +98,6 @@ export type { LicenceExpiryAlertSummary } from "./licence-expiry-check.js";
 
 export { computeHealthScores } from "./health-score.js";
 export type { HealthScore } from "./health-score.js";
+
+export { computeComplianceMetrics } from "./compliance-metrics.js";
+export type { ComplianceMetrics } from "./compliance-metrics.js";

@@ -3493,7 +3493,59 @@ button.eq-primary:hover {
 .eq-health-badge--info     { background: var(--eq-ice); color: var(--eq-deep); }
 .eq-health-badge--ok       { background: #dcfce7; color: #166534; }
 .eq-health-notice { font-size: 13px; color: var(--eq-muted); padding: 32px 0; text-align: center; }
+.eq-health-notice--err { color: var(--eq-err); }
 .eq-health-loading { font-size: 13px; color: var(--eq-muted); padding: 24px 0; }
+
+/* Health card header row */
+.eq-health-card__header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+
+/* Composite score + ring */
+.eq-health-top { display: flex; align-items: flex-start; gap: 24px; margin-bottom: 24px; flex-wrap: wrap; }
+.eq-health-ring-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; flex-shrink: 0; }
+.eq-health-ring-svg { position: relative; width: 96px; height: 96px; }
+.eq-health-ring-inner { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.eq-health-ring-num { font-size: 26px; font-weight: 700; color: var(--eq-ink); line-height: 1; }
+.eq-health-ring-sub { font-size: 11px; color: var(--eq-muted); }
+.eq-health-ring-status { font-size: 12px; font-weight: 600; }
+
+/* Dimension bars */
+.eq-health-dims { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 10px; padding-top: 4px; }
+.eq-health-dim { display: flex; align-items: center; gap: 8px; }
+.eq-health-dim-name { font-size: 12px; color: var(--eq-ink); width: 110px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; }
+.eq-health-dim-weight { font-size: 11px; color: var(--eq-muted); }
+.eq-health-dim-track { flex: 1; height: 6px; background: var(--eq-line); border-radius: 3px; overflow: hidden; }
+.eq-health-dim-fill { height: 100%; border-radius: 3px; transition: width 0.4s; }
+.eq-health-dim-fill--ok   { background: var(--eq-ok); }
+.eq-health-dim-fill--warn { background: var(--eq-warn); }
+.eq-health-dim-fill--err  { background: var(--eq-err); }
+.eq-health-dim-pct { font-size: 11px; font-weight: 600; color: var(--eq-muted); width: 32px; text-align: right; flex-shrink: 0; }
+
+/* Action queue */
+.eq-health-actions { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
+.eq-health-section-label { font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--eq-muted); display: block; margin-bottom: 4px; }
+
+.eq-health-action { display: flex; align-items: flex-start; gap: 12px; width: 100%; padding: 12px 14px; border-radius: 8px; background: var(--eq-paper); border: 1px solid var(--eq-line); cursor: pointer; text-align: left; transition: border-color 0.15s; }
+.eq-health-action:hover { border-color: var(--eq-sky); }
+.eq-health-action--danger  { border-left: 3px solid var(--eq-err);  background: #fef9f9; }
+.eq-health-action--warning { border-left: 3px solid var(--eq-warn); background: #fffdf7; }
+.eq-health-action--info    { border-left: 3px solid var(--eq-sky);  background: var(--eq-paper); }
+
+.eq-health-action-icon { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+.eq-health-action-icon--danger  { background: #fee2e2; color: var(--eq-err); }
+.eq-health-action-icon--warning { background: #fef3c7; color: var(--eq-warn); }
+.eq-health-action-icon--info    { background: var(--eq-ice); color: var(--eq-deep); }
+
+.eq-health-action-body { flex: 1; min-width: 0; }
+.eq-health-action-title { margin: 0 0 2px; font-size: 13px; font-weight: 600; color: var(--eq-ink); }
+.eq-health-action-sub   { margin: 0; font-size: 12px; color: var(--eq-muted); }
+
+.eq-health-action-badge { flex-shrink: 0; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; white-space: nowrap; align-self: flex-start; }
+.eq-health-action-badge--danger  { background: #fee2e2; color: #991b1b; }
+.eq-health-action-badge--warning { background: #fef3c7; color: #92400e; }
+.eq-health-action-badge--info    { background: var(--eq-ice); color: var(--eq-deep); }
+
+/* Strip section wrapper */
+.eq-health-strip-section { margin-bottom: 16px; }
 
 /* ===== Entity Drill-Down ===== */
 .eq-drill { padding: 24px 0; }
