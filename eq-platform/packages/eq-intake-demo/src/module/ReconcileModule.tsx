@@ -13,8 +13,8 @@
  */
 
 import { useState, useCallback, type JSX } from "react";
-import { parseFile, classifySheet, reconcileSheets, fetchCanonicalRows, type ParsedSheet } from "@eq/intake";
-import type { ReconcileResult, ReconcileRow, Resolution } from "@eq/intake";
+import { parseFile, classifySheet, reconcileSheets, fetchCanonicalRows, scoreRows, normaliseAbn, normalisePhone, type ParsedSheet } from "@eq/intake";
+import type { ReconcileResult, ReconcileRow, Resolution, RowConfidence } from "@eq/intake";
 import {
   commitBundleToCanonical,
   type SupabaseLikeClient,
@@ -40,10 +40,28 @@ const DEFAULT_TENANT_ID = "00000000-0000-4000-8000-000000000001";
 type Step =
   | { tag: "idle" }
   | { tag: "loading"; label: string }
-  | { tag: "ready"; entity: string; sheet: ParsedSheet; result: ReconcileResult }
+  | { tag: "ready"; entity: string; sheet: ParsedSheet; result: ReconcileResult; scores: RowConfidence[] }
   | { tag: "committing" }
   | { tag: "done"; added: number; updated: number }
   | { tag: "error"; message: string };
+
+const PHONE_FIELDS: Record<string, string> = {
+  customers: 'primary_phone',
+  staff:     'phone',
+  contacts:  'work_phone',
+};
+
+function normaliseRow(entity: string, row: Record<string, unknown>): Record<string, unknown> {
+  const r = { ...row };
+  if (entity === 'customers' && typeof r.abn === 'string' && r.abn) {
+    r.abn = normaliseAbn(r.abn);
+  }
+  const phoneField = PHONE_FIELDS[entity];
+  if (phoneField && typeof r[phoneField] === 'string' && r[phoneField]) {
+    r[phoneField] = normalisePhone(r[phoneField] as string);
+  }
+  return r;
+}
 
 export function ReconcileModule({ supabase, tenantId }: ReconcileModuleProps): JSX.Element {
   const [step, setStep] = useState<Step>({ tag: "idle" });
@@ -89,8 +107,10 @@ export function ReconcileModule({ supabase, tenantId }: ReconcileModuleProps): J
         setStep({ tag: "loading", label: "Reconciling…" });
         const result = reconcileSheets(sheet, canonicalRows);
 
+        const scores = scoreRows(entity, result.onlyInSource.map((r) => r.sourceRow ?? {}));
+
         setResolutions(new Map());
-        setStep({ tag: "ready", entity, sheet, result });
+        setStep({ tag: "ready", entity, sheet, result, scores });
       } catch (e) {
         setStep({ tag: "error", message: e instanceof Error ? e.message : String(e) });
       }
@@ -139,13 +159,14 @@ export function ReconcileModule({ supabase, tenantId }: ReconcileModuleProps): J
     setStep({ tag: "committing" });
 
     try {
-      // We reuse commitBundleToCanonical with a synthetic bundle containing only
-      // the entity's sheet (filtered to the rows we want to commit).
-      const allCommitRows = [...toAdd, ...toUpdate];
-      if (allCommitRows.length === 0) {
+      // Normalise ABN and phone before committing — eliminates format-based rejections.
+      const rawRows = [...toAdd, ...toUpdate];
+      if (rawRows.length === 0) {
         setStep({ tag: "done", added: 0, updated: 0 });
         return;
       }
+
+      const allCommitRows = rawRows.map((row) => normaliseRow(entity, row));
 
       // Build a thin ParsedSheet from the rows we want to commit.
       const commitSheet: ParsedSheet = {
@@ -203,6 +224,7 @@ export function ReconcileModule({ supabase, tenantId }: ReconcileModuleProps): J
         <ReconcileReview
           entity={step.entity}
           result={step.result}
+          scores={step.scores}
           resolutions={resolutions}
           onSetResolution={setResolution}
           onResolveAll={resolveAll}
@@ -284,6 +306,7 @@ function ReconcileDropZone({ onFiles }: { onFiles: (f: File[]) => void }): JSX.E
 interface ReconcileReviewProps {
   entity: string;
   result: ReconcileResult;
+  scores: RowConfidence[];
   resolutions: Map<number, Resolution>;
   onSetResolution: (index: number, resolution: Resolution) => void;
   onResolveAll: (resolution: Resolution) => void;
@@ -294,6 +317,7 @@ interface ReconcileReviewProps {
 function ReconcileReview({
   entity,
   result,
+  scores,
   resolutions,
   onSetResolution,
   onResolveAll,
@@ -391,7 +415,7 @@ function ReconcileReview({
             your file {result.onlyInSource.length === 1 ? "has" : "have"} no match in
             canonical and will be added on commit.
           </p>
-          <NewRowList rows={result.onlyInSource} matchKey={result.matchKey} />
+          <NewRowList rows={result.onlyInSource} matchKey={result.matchKey} scores={scores} />
         </div>
       )}
 
@@ -532,15 +556,23 @@ function ConflictRow({
 }
 
 // ---------------------------------------------------------------------------
-// New row list — compact key-value preview
+// New row list — compact key-value preview with confidence scores
 // ---------------------------------------------------------------------------
+
+function scoreColor(score: number): string {
+  if (score >= 0.80) return '#2f9e44';
+  if (score >= 0.60) return '#e67700';
+  return '#c92a2a';
+}
 
 function NewRowList({
   rows,
   matchKey,
+  scores,
 }: {
   rows: ReconcileRow[];
   matchKey: string;
+  scores?: RowConfidence[];
 }): JSX.Element {
   const MAX_VISIBLE = 10;
   const [showAll, setShowAll] = useState(false);
@@ -550,9 +582,19 @@ function NewRowList({
     <div className="eq-reconcile__new-list">
       {visible.map((row, i) => {
         const keyValue = String(row.sourceRow?.[matchKey] ?? `row ${i + 1}`);
+        const score = scores?.[i];
         return (
           <span key={i} className="eq-reconcile__new-chip">
             {keyValue}
+            {score !== undefined && (
+              <span
+                className="eq-reconcile__new-chip-score"
+                style={{ color: scoreColor(score.score) }}
+                title={score.issues.length > 0 ? score.issues.join(' · ') : 'Good quality'}
+              >
+                {Math.round(score.score * 100)}%
+              </span>
+            )}
           </span>
         );
       })}
