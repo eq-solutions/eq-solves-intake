@@ -18,6 +18,7 @@ import type {
   EdgeFnCaller,
 } from "@eq/intake";
 import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
+import { fieldLabel } from "../shared/entity-label.js";
 import { Table, type TableColumn } from "@eq-solutions/ui/Table";
 
 export interface EntityDrillDownProps {
@@ -74,27 +75,6 @@ const DISPLAY_COLUMNS: Record<string, string[]> = {
   licences: ["licence_number", "licence_type", "expiry_date", "staff_id"],
 };
 
-const COLUMN_LABELS: Record<string, string> = {
-  first_name: "First Name",
-  last_name: "Last Name",
-  email: "Email",
-  phone: "Phone",
-  site_name: "Site Name",
-  address: "Address",
-  suburb: "Suburb",
-  state: "State",
-  postcode: "Postcode",
-  full_name: "Full Name",
-  company_name: "Company",
-  abn: "ABN",
-  asset_name: "Asset Name",
-  asset_type: "Asset Type",
-  serial_number: "Serial Number",
-  licence_number: "Licence No.",
-  licence_type: "Type",
-  expiry_date: "Expiry",
-  staff_id: "Staff",
-};
 
 function isBlank(value: unknown): boolean {
   if (value === null || value === undefined) return true;
@@ -111,7 +91,7 @@ function formatLabel(entity: string): string {
 }
 
 function buildCsvContent(rows: Row[], columns: string[]): string {
-  const header = columns.map((c) => `"${COLUMN_LABELS[c] ?? c}"`).join(",");
+  const header = columns.map((c) => `"${fieldLabel(c)}"`).join(",");
   const body = rows.map((row) =>
     columns
       .map((col) => {
@@ -450,7 +430,7 @@ export function EntityDrillDown({
       const isGapField = gapFields.includes(col);
       return {
         key: col,
-        header: COLUMN_LABELS[col] ?? col,
+        header: fieldLabel(col),
         sortAccessor: (row: DrillRow) => {
           const v = row[col];
           return typeof v === "string" || typeof v === "number" ? v : null;
@@ -473,7 +453,7 @@ export function EntityDrillDown({
                     if (e.key === "Escape") cancelEdit();
                   }}
                   autoFocus
-                  aria-label={`Edit ${COLUMN_LABELS[col] ?? col}`}
+                  aria-label={`Edit ${fieldLabel(col)}`}
                 />
                 <button className="eq-drill__inline-save" onClick={commitEdit} type="button">
                   Save
@@ -525,7 +505,7 @@ export function EntityDrillDown({
         render: (row: DrillRow) =>
           row._dupeField ? (
             <span className="eq-drill__dupe-badge">
-              {COLUMN_LABELS[row._dupeField] ?? row._dupeField}
+              {fieldLabel(row._dupeField)}
             </span>
           ) : null,
       });
@@ -597,7 +577,7 @@ export function EntityDrillDown({
         <Table<DrillRow>
           columns={displayColumns.map((col) => ({
             key: col,
-            header: COLUMN_LABELS[col] ?? col,
+            header: fieldLabel(col),
           }))}
           rows={[]}
           loading={true}
@@ -1089,7 +1069,7 @@ function SuggestPanel({ rowLabel, loading, result, error, onAccept, onClose }: S
             <div key={s.field} className="eq-suggest-panel__row">
               <div className="eq-suggest-panel__field-info">
                 <span className="eq-suggest-panel__field-name">
-                  {COLUMN_LABELS[s.field] ?? s.field}
+                  {fieldLabel(s.field)}
                 </span>
                 <span className={`eq-suggest-panel__confidence eq-suggest-panel__confidence--${s.confidence}`}>
                   {s.confidence}

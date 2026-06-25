@@ -15,6 +15,7 @@ import type {
   DecaySummary,
 } from "@eq/intake";
 import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
+import { entityLabel } from "../shared/entity-label.js";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -186,10 +187,6 @@ function ringColour(composite: number): string {
   return "var(--eq-err)";
 }
 
-const ENTITY_LABELS: Record<string, string> = {
-  staff: "Staff", sites: "Sites", assets: "Assets",
-  customers: "Customers", contacts: "Contacts",
-};
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -285,7 +282,7 @@ function ActionCard({
 function HealthCard({
   hs, onClick,
 }: { hs: HealthScore; onClick?: (entity: string) => void }): JSX.Element {
-  const label      = ENTITY_LABELS[hs.entity] ?? hs.entity;
+  const label      = entityLabel(hs.entity);
   const percentage = pct(hs.score);
   const fillClass  = hs.score >= 0.9 ? "eq-health-bar--ok" : hs.score >= 0.7 ? "eq-health-bar--warn" : "eq-health-bar--err";
 
@@ -440,7 +437,7 @@ function DecayStrip({
       {report
         .filter((r) => r.aging + r.stale + r.very_stale > 0)
         .map((r) => {
-          const label    = ENTITY_LABELS[r.entity] ?? r.entity;
+          const label    = entityLabel(r.entity);
           const severity = r.very_stale > 0 ? "err" : r.stale > 0 ? "warning" : "info";
           const worst    = r.very_stale > 0
             ? `${r.very_stale} very stale`
