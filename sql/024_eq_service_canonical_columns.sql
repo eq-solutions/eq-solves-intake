@@ -1,8 +1,10 @@
 -- ============================================================================
 -- 024 — EQ Service → canonical_id columns
 -- ============================================================================
--- Applies to: EQ Service Supabase (urjhmkhbgaxrofurpbgc)
--- NOT sks-canonical. Run this against the eq-solves-service project.
+-- Applies to: EQ Service Supabase (ehow `ehowgjardagevnrluult`).
+-- NOTE: the original target project urjh `urjhmkhbgaxrofurpbgc` was DELETED
+-- 2026-06-22; EQ Service data moved to ehow. Run this against the EQ Service
+-- project. This migration is already applied — comment corrected for accuracy.
 --
 -- Adds canonical_id columns to EQ Service's customers and sites tables so
 -- each local record can be linked back to the canonical source of truth in
