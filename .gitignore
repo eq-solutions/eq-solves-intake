@@ -53,3 +53,7 @@ OVERNIGHT-REVIEW-*.md
 # Claude session tooling
 .claude/scheduled_tasks.lock
 
+# ARMADA vendored plugin (calumjs/ARMADA) — local-only, never committed
+.claude/skills/
+.claude/armada/
+
