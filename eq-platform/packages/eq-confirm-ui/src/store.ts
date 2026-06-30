@@ -361,6 +361,24 @@ class FlowDriverImpl implements FlowDriver {
       extra.set(index, list);
     };
 
+    // Dependency-surface guard: these come from @eq/intake. If any is not a
+    // function, @eq/intake resolved to a stale or mismatched build — a wiring
+    // error that must surface loudly (validate() rethrows), not silently
+    // degrade to "no suggestions". Genuine runtime failures inside the calls
+    // stay best-effort in the catch below. (issue #47)
+    for (const [name, fn] of [
+      ["enrichAssets", enrichAssets],
+      ["detectDuplicates", detectDuplicates],
+      ["findExistingDuplicates", findExistingDuplicates],
+    ] as const) {
+      if (typeof fn !== "function") {
+        throw new TypeError(
+          `@eq/intake.${name} is not a function — @eq/intake is built stale ` +
+            `or its export surface changed; rebuild @eq/intake.`,
+        );
+      }
+    }
+
     try {
       // Enrichment — on by default for asset imports when the provider supports it.
       const doEnrich =
