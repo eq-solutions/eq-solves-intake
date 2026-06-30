@@ -1,5 +1,13 @@
 # Phase 0 — Move `eq-solves-service` into the `eq-platform` monorepo
 
+> **⛔ Superseded / abandoned — 2026-06-30. Do not follow these steps.**
+> This migration never landed. It was prep for the Maximo PDF demo, which is
+> parked, so the reason to fold eq-service into this monorepo went away.
+> eq-service and eq-shell are developed and deployed from their own standalone
+> repos (`eq-solves-service`, `eq-shell`), shipping daily. The partial
+> `apps/eq-service` + `apps/eq-shell` copies an earlier attempt left here were
+> removed in #51. Kept below for historical context only.
+
 **Authoring context:** 2026-05-21 evening. Drafted by Claude Opus 4.7 after Royce locked the scope cut for the Maximo PDF demo (~2026-06-04). This is the prep doc for tomorrow's session — read it cold and start.
 
 **Plain-English goal:** eq-service stops being its own standalone repo and becomes `apps/eq-service/` inside `eq-platform`. After this phase, code inside eq-service can `import { parseMaximoPdfWo } from '@eq/intake'` like any other workspace consumer. Live behavior should not change. No new features. No Maximo skill yet. Just plumbing.

@@ -267,8 +267,10 @@ What's READY to wire (waiting on Royce — Option C, two-Supabase plan):
   ground for the shell + commit RPC + intake flow. ~5 min.
 - Provision `sks-canonical-eq` Supabase project (Sydney region) — live
   SKS canonical, fed by the same migration SQL once demo is proven. ~5 min.
-- Drop demo credentials in `eq-platform/apps/eq-shell/.env.local` for
-  local dev. SKS credentials go into SKS Netlify env vars only.
+- Drop demo credentials in `.env.local` of the eq-shell app for local dev.
+  (Note 2026-06-30: the in-repo `apps/eq-shell` host was removed in #51 — the
+  shell now lives only in the standalone `eq-shell` repo.) SKS credentials go
+  into SKS Netlify env vars only.
 - Paste `eq-platform/.generated/all-migrations.sql` into BOTH SQL editors
   → Run — ~1 min each.
 - Add first user via Supabase dashboard (one per project).
