@@ -1,0 +1,49 @@
+{
+  "triggerLabel": "armada",
+  "dispatch": "shipwright",
+  "baseBranch": "main",
+  "authors": "",
+  "autoMerge": false,
+  "notify": "terminal",
+  "bellCommand": "",
+  "mergeMethod": "squash",
+  "maxReviewRounds": 2,
+  "armadaRepo": "calumjs/ARMADA",
+  "autoArmSelfFixes": false,
+  "cartography": "off",
+  "foghorn": {
+    "flavour": "a gruff, proud nautical harbourmaster",
+    "verbosity": "normal",
+    "gate": "terminal",
+    "provider": "",
+    "voice": ""
+  },
+  "lighthouse": {
+    "enabled": false,
+    "autoArm": false,
+    "intervalHours": 24,
+    "commitsSinceScan": 20,
+    "minIdleToDispatch": true,
+    "budget": {
+      "maxRuntimeSec": 300,
+      "maxPlaywrightSec": 120,
+      "maxIssuesPerRun": 3,
+      "maxFindings": 20
+    }
+  },
+  "logbook": "off",
+  "publicIntake": {
+    "enabled": false,
+    "authors": "",
+    "autoArm": true,
+    "maxPerTick": 3,
+    "requireDoubleCheck": true,
+    "closeOnCharter": true
+  },
+  "commands": {
+    "build": "pnpm -C eq-platform check",
+    "lint": "pnpm -C eq-platform schemas:lint",
+    "run": ""
+  },
+  "notes": "eq-intake (repo eq-solutions/eq-solves-intake) tuning, pre-baked, not via /commission. eq-intake is a pnpm-workspace LIBRARY with NO root package.json: the build lives in eq-platform/, so the gate is `pnpm -C eq-platform check` (= schemas:lint && `pnpm -r --if-present typecheck`), NOT `npm run check`. `test` is intentionally OMITTED: `pnpm -r test` is unit-level but `test:integration` (@eq/ai) is a known-flaky integration suite; wiring tests as the fleet gate before a clean cycle is observed would make shipwright/muster thrash. Add `\"test\": \"pnpm -C eq-platform test\"` once a clean manual cycle is verified green. `run` is empty: eq-intake is a library with no dev server. autoMerge is false: unlike eq-service this repo is NOT auto-deployed (no netlify.toml/vercel.json at root), so there is no production-deploy rail risk, but autoMerge stays false for the trial until one manual cycle lands cleanly. publicIntake + lighthouse auto-dispatch are off (opt-in); manual /lighthouse still works. See .armada/SETUP-NOTES.md for the trial runbook and the CLAUDE_PLUGIN_ROOT note required before arming crows-nest's /loop."
+}
