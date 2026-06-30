@@ -13,6 +13,7 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "check": "pnpm schemas:lint && pnpm -r --if-present typecheck",
+    "check:packages": "pnpm schemas:lint && pnpm -r --filter \"./packages/*\" --if-present typecheck",
     "schemas:lint": "pnpm --filter @eq/schemas schemas:lint",
     "generate": "pnpm --filter @eq/schemas generate",
     "generate:sql": "pnpm --filter @eq/schemas generate:sql",
