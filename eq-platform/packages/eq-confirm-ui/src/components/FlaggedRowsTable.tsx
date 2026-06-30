@@ -134,6 +134,12 @@ function flagSummary(f: Flag): string {
       return `Cross-field warning: ${f.message}`;
     case "phone_kept_raw":
       return `Phone on '${f.field}' could not be normalised — kept raw`;
+    case "ai_enrichment":
+      return `AI suggestion for '${f.field}' (${Math.round(f.confidence * 100)}% confidence)`;
+    case "duplicate":
+      return f.matchType === "existing"
+        ? `Likely duplicate of an existing asset (${f.reason})`
+        : `Likely duplicate within this batch (${f.reason})`;
   }
 }
 
@@ -164,12 +170,10 @@ function errorSummary(e: import("@eq/validation").ValidationError): string {
     case "cap_exceeded":
       return `Cap exceeded on ${e.field}: ${e.reason}`;
     default:
-      return `Validation issue: ${e.kind}`;
+      // Exhaustive above; cast guards against new ValidationError kinds added
+      // in @eq/validation so this always returns a string.
+      return `Validation issue: ${(e as { kind?: string }).kind ?? "unknown"}`;
   }
-  // Fallback for any ValidationError kind not enumerated above, so this
-  // always returns a string (satisfies TS exhaustiveness + future-proofs
-  // against new error kinds added in @eq/validation).
-  return `Validation error on ${(e as { field?: string }).field ?? "row"}`;
 }
 
 function countSkipped(resolutions: Record<number, FlagResolution>): number {
