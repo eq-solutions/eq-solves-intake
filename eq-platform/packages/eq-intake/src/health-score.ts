@@ -20,6 +20,7 @@ export interface HealthScore {
   total:    number;       // total rows for tenant
   complete: number;       // rows where all required fields are present
   score:    number;       // 0–1 (complete / total, or 1 if total === 0)
+  started:  boolean;      // false when total === 0 — distinguishes "no data yet" from "fully complete"
   gaps:     string[];     // field names with the most null/empty values (top 5)
 }
 
@@ -102,15 +103,16 @@ export async function computeHealthScores(
     const inspected = INSPECTED_FIELDS[entity] ?? required;
 
     if (error) {
-      return { entity, total: 0, complete: 0, score: 0, gaps: [`Error reading ${entity}: ${error.message}`] };
+      return { entity, total: 0, complete: 0, score: 0, started: false, gaps: [`Error reading ${entity}: ${error.message}`] };
     }
 
     const rows     = (rawData as Record<string, unknown>[] | null) ?? [];
     const total    = rows.length;
     const complete = rows.filter((r) => isComplete(r, required)).length;
     const score    = total === 0 ? 1 : complete / total;
+    const started  = total > 0;
     const gaps     = topGaps(rows, inspected);
 
-    return { entity, total, complete, score, gaps };
+    return { entity, total, complete, score, started, gaps };
   });
 }
