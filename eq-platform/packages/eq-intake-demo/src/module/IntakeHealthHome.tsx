@@ -61,6 +61,15 @@ interface ActionItem {
 
 const DEFAULT_TENANT_ID = "00000000-0000-4000-8000-000000000001";
 
+// Averages only the components that have data behind them. An entity with
+// zero rows is "not started", not "fully complete" — it must not silently
+// inflate a dimension to 100% before anyone has entered a single record.
+function averageStarted(...components: Array<{ value: number; started: boolean } | null>): number {
+  const live = components.filter((c): c is { value: number; started: boolean } => c !== null && c.started);
+  if (live.length === 0) return 0;
+  return live.reduce((sum, c) => sum + c.value, 0) / live.length;
+}
+
 function computeDimensions(
   scores:    HealthScore[] | null,
   licences:  LicenceExpiryAlertSummary | null,
@@ -68,22 +77,31 @@ function computeDimensions(
   cm:        ComplianceMetrics | null,
 ): DimensionResult {
   const st = cm?.staff.total ?? 0;
+  const contactsHs = scores?.find((s) => s.entity === "contacts") ?? null;
+  const sitesHs    = scores?.find((s) => s.entity === "sites") ?? null;
 
   // Reachability (20%): staff email + contacts completeness
-  const staffEmailRate  = st > 0 ? (cm!.staff.has_email / st) : 0;
-  const contactsScore   = scores?.find((s) => s.entity === "contacts")?.score ?? 0;
-  const reachability    = (staffEmailRate + contactsScore) / 2;
+  const staffEmailRate = st > 0 ? (cm!.staff.has_email / st) : 0;
+  const reachability   = averageStarted(
+    { value: staffEmailRate, started: st > 0 },
+    contactsHs ? { value: contactsHs.score, started: contactsHs.started } : null,
+  );
 
   // Compliance (35%): licence coverage (≥1 record per staff) + emergency contacts
   const licenceRecords  = licences?.records_total ?? 0;
   const licenceCoverage = st > 0 ? Math.min(1, licenceRecords / st) : 0;
   const emergencyRate   = st > 0 ? (cm!.staff.has_emergency_contact / st) : 0;
-  const compliance      = (licenceCoverage + emergencyRate) / 2;
+  const compliance      = averageStarted(
+    { value: licenceCoverage, started: st > 0 },
+    { value: emergencyRate, started: st > 0 },
+  );
 
   // Serviceability (35%): trade classification + sites completeness
-  const tradeRate       = st > 0 ? (cm!.staff.has_trade / st) : 0;
-  const sitesScore      = scores?.find((s) => s.entity === "sites")?.score ?? 0;
-  const serviceability  = (tradeRate + sitesScore) / 2;
+  const tradeRate      = st > 0 ? (cm!.staff.has_trade / st) : 0;
+  const serviceability = averageStarted(
+    { value: tradeRate, started: st > 0 },
+    sitesHs ? { value: sitesHs.score, started: sitesHs.started } : null,
+  );
 
   // Integrity (10%): orphan-free
   const orphanTotal = orphans?.total ?? 0;
@@ -282,7 +300,25 @@ function ActionCard({
 function HealthCard({
   hs, onClick,
 }: { hs: HealthScore; onClick?: (entity: string) => void }): JSX.Element {
-  const label      = entityLabel(hs.entity);
+  const label = entityLabel(hs.entity);
+
+  if (!hs.started) {
+    return (
+      <button
+        type="button"
+        className="eq-health-card"
+        onClick={onClick ? () => onClick(hs.entity) : undefined}
+        aria-label={`${label} — no records yet`}
+      >
+        <div className="eq-health-card__header">
+          <span className="eq-health-card__name">{label}</span>
+          <span className="eq-health-card__count">0 records</span>
+        </div>
+        <p className="eq-health-card__gaps">No records yet — not counted in the health score.</p>
+      </button>
+    );
+  }
+
   const percentage = pct(hs.score);
   const fillClass  = hs.score >= 0.9 ? "eq-health-bar--ok" : hs.score >= 0.7 ? "eq-health-bar--warn" : "eq-health-bar--err";
 
