@@ -9,22 +9,10 @@
  * Each run is logged to eq_quality_runs with a summary JSONB.
  *
  * ── Schedule ──────────────────────────────────────────────────────────────
- * Register as a pg_cron job (run once after applying sql/053):
- *
- *   SELECT cron.schedule(
- *     'quality-guardian-nightly',
- *     '0 1 * * *',                              -- 01:00 UTC daily
- *     $$
- *     SELECT net.http_post(
- *       url    := current_setting('app.edge_function_base_url') || '/quality-guardian',
- *       headers := jsonb_build_object(
- *         'Authorization', 'Bearer ' || current_setting('app.service_role_key'),
- *         'Content-Type',  'application/json'
- *       ),
- *       body   := '{"triggered_by":"schedule"}'::jsonb
- *     );
- *     $$
- *   );
+ * Registered as a pg_cron job by sql/060_quality_guardian_cron_sks.sql
+ * ('quality-guardian-nightly', 01:00 UTC daily). The job reads the
+ * service-role key from Vault (secret name: edge_service_role_key) at fire
+ * time — see that file for the one-time vault.create_secret prerequisite.
  *
  * Or invoke manually:
  *   POST /functions/v1/quality-guardian
@@ -32,9 +20,14 @@
  *   Body: { "triggered_by": "manual", "tenant_id": "<uuid>" }
  *
  * ── Auth ──────────────────────────────────────────────────────────────────
- * Expects the service-role key. The function sets tenant scope per-tenant
- * by querying app_data.tenants and running checks with that tenant's JWT context.
- * When triggered manually with a tenant_id, only that tenant is processed.
+ * Requires the service-role key EXACTLY — the platform's verify_jwt gate
+ * admits any valid project JWT (including tenant users), so the handler
+ * compares the bearer token to SUPABASE_SERVICE_ROLE_KEY itself and rejects
+ * everything else. Tenant scope is passed explicitly to the service-role RPC
+ * variants from sql/059 (eq_tidy_read_entity_admin, eq_tidy_orphan_check_admin,
+ * eq_quality_start_run, eq_quality_complete_run, eq_quality_list_tenants);
+ * the JWT-scoped tidy RPCs raise 'no tenant_id in JWT' under a bare
+ * service-role call and must not be used here.
  *
  * ── Environment variables ──────────────────────────────────────────────────
  *   SUPABASE_URL               — set automatically by Supabase
@@ -50,10 +43,6 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 interface RequestBody {
   triggered_by?: string;
   tenant_id?:    string;   // limit to single tenant when set
-}
-
-interface TenantRow {
-  tenant_id: string;
 }
 
 interface RunSummary {
@@ -82,8 +71,9 @@ async function runLicenceExpiry(
 ): Promise<RunSummary['licence_alerts']> {
   const summary = { total: 0, critical: 0, warning: 0, info: 0, alerts_failed: 0 };
 
-  const { data: rawData, error } = await supabase.rpc('eq_tidy_read_entity', {
-    p_table: 'licences',
+  const { data: rawData, error } = await supabase.rpc('eq_tidy_read_entity_admin', {
+    p_tenant_id: tenantId,
+    p_table:     'licences',
   });
   if (error) throw new Error(`licence read failed: ${error.message}`);
 
@@ -138,6 +128,7 @@ async function runLicenceExpiry(
 
 async function computeHealthScores(
   supabase: ReturnType<typeof createClient>,
+  tenantId: string,
 ): Promise<RunSummary['health_scores']> {
   const ENTITIES: Record<string, { required: string[]; inspected: string[] }> = {
     customers: {
@@ -165,8 +156,9 @@ async function computeHealthScores(
   const scores: RunSummary['health_scores'] = [];
 
   for (const [entity, { required, inspected }] of Object.entries(ENTITIES)) {
-    const { data: rawData, error } = await supabase.rpc('eq_tidy_read_entity', {
-      p_table: entity,
+    const { data: rawData, error } = await supabase.rpc('eq_tidy_read_entity_admin', {
+      p_tenant_id: tenantId,
+      p_table:     entity,
     });
     if (error) {
       scores.push({ entity, total: 0, complete: 0, score: 0, gaps: [`read error: ${error.message}`] });
@@ -203,8 +195,11 @@ async function computeHealthScores(
 
 async function runOrphanCheck(
   supabase: ReturnType<typeof createClient>,
+  tenantId: string,
 ): Promise<RunSummary['orphan_totals']> {
-  const { data, error } = await supabase.rpc('eq_tidy_orphan_check', {});
+  const { data, error } = await supabase.rpc('eq_tidy_orphan_check_admin', {
+    p_tenant_id: tenantId,
+  });
   if (error) throw new Error(`orphan check failed: ${error.message}`);
 
   const raw = data as {
@@ -259,6 +254,16 @@ Deno.serve(async (req: Request) => {
     );
   }
 
+  // verify_jwt admits any valid project JWT — require the service-role key
+  // itself. Tenant-user tokens must not be able to trigger runs.
+  const authHeader = req.headers.get('authorization') ?? '';
+  if (authHeader !== `Bearer ${serviceKey}`) {
+    return new Response(
+      JSON.stringify({ error: 'service-role key required' }),
+      { status: 401, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
+
   let body: RequestBody = {};
   try {
     body = await req.json() as RequestBody;
@@ -267,70 +272,28 @@ Deno.serve(async (req: Request) => {
   }
 
   const triggeredBy = body.triggered_by ?? 'schedule';
+  const runType     = triggeredBy === 'schedule' ? 'scheduled' : 'manual';
   const admin = createClient(supabaseUrl, serviceKey);
 
   // Resolve tenant list
-  let tenants: TenantRow[] = [];
+  let tenantIds: string[] = [];
 
   if (body.tenant_id) {
-    tenants = [{ tenant_id: body.tenant_id }];
+    tenantIds = [body.tenant_id];
   } else {
-    // Service-role query — fetch all active tenants
-    const { data, error } = await admin
-      .from('app_data.tenants')
-      .select('tenant_id');
-
+    const { data, error } = await admin.rpc('eq_quality_list_tenants');
     if (error) {
-      // Try shell_control schema
-      const { data: d2, error: e2 } = await admin
-        .schema('shell_control')
-        .from('tenants')
-        .select('tenant_id');
-
-      if (e2) {
-        return new Response(
-          JSON.stringify({ error: `Could not load tenants: ${error.message}` }),
-          { status: 500, headers: { 'Content-Type': 'application/json' } },
-        );
-      }
-      tenants = (d2 ?? []) as TenantRow[];
-    } else {
-      tenants = (data ?? []) as TenantRow[];
+      return new Response(
+        JSON.stringify({ error: `Could not load tenants: ${error.message}` }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } },
+      );
     }
+    tenantIds = (data as string[] | null) ?? [];
   }
 
-  const results: Array<{ tenant_id: string; run_id: string; summary: RunSummary }> = [];
+  const results: Array<{ tenant_id: string; run_id: string | null; summary: RunSummary }> = [];
 
-  for (const { tenant_id } of tenants) {
-    // Create a run record
-    const startedAt = new Date().toISOString();
-
-    const { data: runData, error: runErr } = await admin
-      .from('app_data.eq_quality_runs')
-      .insert({
-        tenant_id,
-        run_type:     triggeredBy === 'schedule' ? 'scheduled' : 'manual',
-        triggered_by: triggeredBy,
-        started_at:   startedAt,
-      })
-      .select('id')
-      .single();
-
-    const runId: string = (runData as { id: string } | null)?.id ?? crypto.randomUUID();
-
-    // Build a per-tenant Supabase client with the tenant JWT baked in via
-    // service-role. We inject tenant_id into the global setting so RPCs can
-    // read it from app_metadata.
-    // NOTE: For service-role, RLS is bypassed; the RPCs themselves gate on
-    // the tenant_id parameter passed explicitly.
-    const tenantSupabase = createClient(supabaseUrl, serviceKey, {
-      global: {
-        headers: {
-          'x-tenant-id': tenant_id,
-        },
-      },
-    });
-
+  for (const tenantId of tenantIds) {
     const summary: RunSummary = {
       licence_alerts: { total: 0, critical: 0, warning: 0, info: 0, alerts_failed: 0 },
       health_scores:  [],
@@ -338,36 +301,48 @@ Deno.serve(async (req: Request) => {
       errors:         [],
     };
 
+    // Open the run record
+    const { data: runData, error: runErr } = await admin.rpc('eq_quality_start_run', {
+      p_tenant_id:    tenantId,
+      p_run_type:     runType,
+      p_triggered_by: triggeredBy,
+    });
+    const runId = (runData as string | null) ?? null;
+    if (runErr) {
+      summary.errors.push(`start_run: ${runErr.message}`);
+      console.error(`start_run failed for tenant ${tenantId}: ${runErr.message}`);
+    }
+
     try {
-      summary.licence_alerts = await runLicenceExpiry(tenantSupabase, tenant_id);
+      summary.licence_alerts = await runLicenceExpiry(admin, tenantId);
     } catch (e) {
       summary.errors.push(`licence_expiry: ${e instanceof Error ? e.message : String(e)}`);
     }
 
     try {
-      summary.health_scores = await computeHealthScores(tenantSupabase);
+      summary.health_scores = await computeHealthScores(admin, tenantId);
     } catch (e) {
       summary.errors.push(`health_scores: ${e instanceof Error ? e.message : String(e)}`);
     }
 
     try {
-      summary.orphan_totals = await runOrphanCheck(tenantSupabase);
+      summary.orphan_totals = await runOrphanCheck(admin, tenantId);
     } catch (e) {
       summary.errors.push(`orphan_check: ${e instanceof Error ? e.message : String(e)}`);
     }
 
-    // Update run record with completed_at + summary
-    if (!runErr && runId) {
-      await admin
-        .from('app_data.eq_quality_runs')
-        .update({
-          completed_at: new Date().toISOString(),
-          summary:      summary,
-        })
-        .eq('id', runId);
+    // Stamp completed_at + summary
+    if (runId) {
+      const { error: doneErr } = await admin.rpc('eq_quality_complete_run', {
+        p_run_id:  runId,
+        p_summary: summary,
+      });
+      if (doneErr) {
+        console.error(`complete_run failed for run ${runId}: ${doneErr.message}`);
+      }
     }
 
-    results.push({ tenant_id, run_id: runId, summary });
+    results.push({ tenant_id: tenantId, run_id: runId, summary });
   }
 
   return new Response(
