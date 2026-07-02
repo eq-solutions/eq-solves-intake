@@ -61,6 +61,10 @@ interface ActionItem {
 
 const DEFAULT_TENANT_ID = "00000000-0000-4000-8000-000000000001";
 
+// Below this many rows, a 100% (or 0%) score is a coin flip, not a trend —
+// flag it so a nearly-empty entity doesn't read as confidently as a big one.
+const LOW_SAMPLE_THRESHOLD = 5;
+
 // Averages only the components that have data behind them. An entity with
 // zero rows is "not started", not "fully complete" — it must not silently
 // inflate a dimension to 100% before anyone has entered a single record.
@@ -321,13 +325,14 @@ function HealthCard({
 
   const percentage = pct(hs.score);
   const fillClass  = hs.score >= 0.9 ? "eq-health-bar--ok" : hs.score >= 0.7 ? "eq-health-bar--warn" : "eq-health-bar--err";
+  const lowSample  = hs.total < LOW_SAMPLE_THRESHOLD;
 
   return (
     <button
       type="button"
       className="eq-health-card"
       onClick={onClick ? () => onClick(hs.entity) : undefined}
-      aria-label={`${label} — ${percentage} complete`}
+      aria-label={`${label} — ${percentage} complete${lowSample ? `, based on only ${hs.total} record${hs.total === 1 ? "" : "s"}` : ""}`}
     >
       <div className="eq-health-card__header">
         <span className="eq-health-card__name">{label}</span>
@@ -339,6 +344,9 @@ function HealthCard({
         <div className={`eq-health-bar ${fillClass}`} style={{ width: percentage } as React.CSSProperties} />
       </div>
       <span className="eq-health-card__pct">{percentage}</span>
+      {lowSample && (
+        <p className="eq-health-card__low-sample">Based on only {hs.total} record{hs.total === 1 ? "" : "s"} — treat this score as unproven.</p>
+      )}
       {hs.gaps.length > 0 && (
         <p className="eq-health-card__gaps">Missing: {hs.gaps.join(", ")}</p>
       )}
