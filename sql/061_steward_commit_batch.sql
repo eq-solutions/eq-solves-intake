@@ -1,5 +1,5 @@
 -- ============================================================================
--- 058 — eq_steward_commit_batch: the data steward's sanctioned write path
+-- 061 — eq_steward_commit_batch: the data steward's sanctioned write path
 -- ============================================================================
 -- The tidy RPC (049) is JWT-scoped and its field whitelist excludes trade and
 -- customer_id — right for the browser UI, wrong for a server-side steward.
@@ -119,5 +119,5 @@ REVOKE ALL ON FUNCTION public.eq_steward_commit_batch(uuid, text, text, uuid, js
 REVOKE ALL ON FUNCTION public.eq_steward_commit_batch(uuid, text, text, uuid, json) FROM anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.eq_steward_commit_batch(uuid, text, text, uuid, json) TO service_role;
 
-INSERT INTO app_data._eq_migrations (name) VALUES ('058_steward_commit_batch')
+INSERT INTO app_data._eq_migrations (name) VALUES ('061_steward_commit_batch')
 ON CONFLICT (name) DO NOTHING;

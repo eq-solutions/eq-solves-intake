@@ -1,5 +1,5 @@
 -- ============================================================================
--- 059 — Review-queue RPCs + tidy whitelist extension
+-- 062 — Review-queue RPCs + tidy whitelist extension
 -- ============================================================================
 -- Gives the dashboard's Queue tab a browser-safe surface over
 -- app_data.eq_remediation_queue (app_data is not PostgREST-exposed, so all
@@ -205,5 +205,5 @@ GRANT EXECUTE ON FUNCTION public.eq_queue_close_event(uuid, int) TO authenticate
 GRANT EXECUTE ON FUNCTION public.eq_queue_resolve(uuid, text, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.eq_tidy_commit_fixes(uuid, json) TO authenticated;
 
-INSERT INTO app_data._eq_migrations (name) VALUES ('059_queue_rpcs')
+INSERT INTO app_data._eq_migrations (name) VALUES ('062_queue_rpcs')
 ON CONFLICT (name) DO NOTHING;
