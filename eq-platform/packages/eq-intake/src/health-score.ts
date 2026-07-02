@@ -1,27 +1,41 @@
 /**
  * @eq/intake — data health scorer
  *
- * computeHealthScores() checks each core entity type for completeness of
- * required fields and returns a HealthScore[] array.
+ * computeHealthScores() checks each core entity type against three of the
+ * DAMA-UK data quality dimensions (Completeness, Validity, Timeliness) and
+ * returns a HealthScore[] array. Consistency (referential integrity) and
+ * Uniqueness (duplicate detection) are computed elsewhere — see
+ * orphan-check.ts and duplicate-detect.ts — because they need cross-row or
+ * cross-entity comparison rather than a per-row pass. Accuracy (does the
+ * value reflect ground truth) is deliberately not attempted here — no
+ * automated check can verify it without an external source of truth, which
+ * is why every mainstream data-quality platform excludes it from an
+ * automated composite score too.
  *
  * A "complete" row has all required fields non-null and non-empty.
  * The score is the fraction of complete rows: complete / total (0–1).
  * gaps[] lists which fields are most frequently missing.
+ *
+ * validity and freshness are computed from the same fetched rows as
+ * completeness — no extra round trip.
  */
 
 import type { SupabaseLikeClient } from './canonical/commit-canonical.js';
+import { isValidAbn, isValidAuPhone, isValidAuState, isValidAuPostcode } from './normalize.js';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export interface HealthScore {
-  entity:   string;       // 'staff' | 'sites' | 'assets' | 'customers' | 'contacts'
-  total:    number;       // total rows for tenant
-  complete: number;       // rows where all required fields are present
-  score:    number;       // 0–1 (complete / total, or 1 if total === 0)
-  started:  boolean;      // false when total === 0 — distinguishes "no data yet" from "fully complete"
-  gaps:     string[];     // field names with the most null/empty values (top 5)
+  entity:    string;       // 'staff' | 'sites' | 'assets' | 'customers' | 'contacts'
+  total:     number;       // total rows for tenant
+  complete:  number;       // rows where all required fields are present
+  score:     number;       // 0–1 (complete / total, or 1 if total === 0)
+  started:   boolean;      // false when total === 0 — distinguishes "no data yet" from "fully complete"
+  validity:  number;       // 0–1 — fraction of format-checkable fields that pass, among rows that populated them (1 if nothing to check)
+  freshness: number;       // 0–1 — fraction of rows updated within the last 365 days (1 if no rows, or no updated_at data to judge)
+  gaps:      string[];     // field names with the most null/empty values (top 5)
 }
 
 // Required field lists per entity — mirrors NOT NULL columns in app_data schema.
@@ -43,6 +57,15 @@ const INSPECTED_FIELDS: Record<string, string[]> = {
   assets:    ['name', 'asset_type', 'serial_number', 'make', 'model'],
 };
 
+// Phone field name varies per entity — mirrors confidence-score.ts.
+const PHONE_FIELD: Record<string, string> = {
+  customers: 'primary_phone',
+  contacts:  'work_phone',
+  staff:     'phone',
+};
+
+const FRESHNESS_WINDOW_DAYS = 365;
+
 type EntityKey = keyof typeof REQUIRED_FIELDS;
 
 // ---------------------------------------------------------------------------
@@ -57,6 +80,42 @@ function isBlank(value: unknown): boolean {
 
 function isComplete(row: Record<string, unknown>, requiredFields: string[]): boolean {
   return requiredFields.every((f) => !isBlank(row[f]));
+}
+
+// Validity: of the format-checkable fields a row actually populated, what
+// fraction pass the format check? A blank field is a completeness gap
+// (counted above), not a validity failure — excluded here so it isn't
+// double-penalised.
+function rowValidityChecks(entity: string, row: Record<string, unknown>): { checked: number; valid: number } {
+  let checked = 0;
+  let valid = 0;
+
+  if (entity === 'customers') {
+    const abn = row['abn'];
+    if (!isBlank(abn)) { checked++; if (isValidAbn(String(abn))) valid++; }
+    const state = row['state'];
+    if (!isBlank(state)) { checked++; if (isValidAuState(String(state))) valid++; }
+  }
+  if (entity === 'sites') {
+    const state = row['state'];
+    if (!isBlank(state)) { checked++; if (isValidAuState(String(state))) valid++; }
+    const postcode = row['postcode'];
+    if (!isBlank(postcode)) { checked++; if (isValidAuPostcode(String(postcode))) valid++; }
+  }
+  const phoneField = PHONE_FIELD[entity];
+  if (phoneField) {
+    const phone = row[phoneField];
+    if (!isBlank(phone)) { checked++; if (isValidAuPhone(String(phone))) valid++; }
+  }
+
+  return { checked, valid };
+}
+
+function daysSince(isoStr: unknown, now: Date): number | null {
+  if (typeof isoStr !== 'string' || isoStr === '') return null;
+  const then = new Date(isoStr);
+  if (isNaN(then.getTime())) return null;
+  return Math.floor((now.getTime() - then.getTime()) / 86_400_000);
 }
 
 function topGaps(
@@ -98,12 +157,17 @@ export async function computeHealthScores(
     ),
   );
 
+  const now = new Date();
+
   return results.map(({ entity, data: rawData, error }) => {
     const required  = REQUIRED_FIELDS[entity] ?? [];
     const inspected = INSPECTED_FIELDS[entity] ?? required;
 
     if (error) {
-      return { entity, total: 0, complete: 0, score: 0, started: false, gaps: [`Error reading ${entity}: ${error.message}`] };
+      return {
+        entity, total: 0, complete: 0, score: 0, started: false,
+        validity: 1, freshness: 1, gaps: [`Error reading ${entity}: ${error.message}`],
+      };
     }
 
     const rows     = (rawData as Record<string, unknown>[] | null) ?? [];
@@ -113,6 +177,26 @@ export async function computeHealthScores(
     const started  = total > 0;
     const gaps     = topGaps(rows, inspected);
 
-    return { entity, total, complete, score, started, gaps };
+    let checkedTotal = 0;
+    let validTotal   = 0;
+    let freshCount   = 0;
+    let judgeable    = 0;
+
+    for (const row of rows) {
+      const { checked, valid } = rowValidityChecks(entity, row);
+      checkedTotal += checked;
+      validTotal   += valid;
+
+      const days = daysSince(row['updated_at'], now);
+      if (days !== null) {
+        judgeable++;
+        if (days <= FRESHNESS_WINDOW_DAYS) freshCount++;
+      }
+    }
+
+    const validity  = checkedTotal === 0 ? 1 : validTotal / checkedTotal;
+    const freshness = judgeable === 0 ? 1 : freshCount / judgeable;
+
+    return { entity, total, complete, score, started, validity, freshness, gaps };
   });
 }

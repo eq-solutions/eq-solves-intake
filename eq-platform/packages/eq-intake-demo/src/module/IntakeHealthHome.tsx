@@ -40,11 +40,13 @@ interface OrphanSummary {
 }
 
 interface DimensionResult {
-  reachability:  number; // 0–1
-  compliance:    number;
-  serviceability: number;
-  integrity:     number;
-  composite:     number; // 0–100
+  completeness:   number; // 0–1 — can we reach people (staff email + contacts on file)
+  compliance:     number; // 0–1 — SKS-specific: licence coverage + emergency contacts
+  serviceability: number; // 0–1 — SKS-specific: trade classification + sites on file
+  validity:       number; // 0–1 — DAMA "Validity": do populated fields pass format checks (ABN, phone, state, postcode)
+  consistency:    number; // 0–1 — DAMA "Consistency": referential integrity (no broken FK links)
+  timeliness:     number; // 0–1 — DAMA "Timeliness": records touched within the last year
+  composite:      number; // 0–100
 }
 
 interface ActionItem {
@@ -74,6 +76,20 @@ function averageStarted(...components: Array<{ value: number; started: boolean }
   return live.reduce((sum, c) => sum + c.value, 0) / live.length;
 }
 
+// Weights reflect SKS's consumption context (Soda's phrase for it): licence
+// coverage and dispatch-readiness carry real compliance/safety consequences,
+// so they outweigh general data hygiene. Validity and Timeliness were
+// computed by the underlying modules all along but never fed the composite
+// — see health-score.ts's module comment for the DAMA-UK framing.
+const WEIGHTS = {
+  compliance:     30,
+  serviceability: 25,
+  completeness:   15,
+  validity:       12,
+  consistency:    10,
+  timeliness:      8,
+} as const;
+
 function computeDimensions(
   scores:    HealthScore[] | null,
   licences:  LicenceExpiryAlertSummary | null,
@@ -84,14 +100,14 @@ function computeDimensions(
   const contactsHs = scores?.find((s) => s.entity === "contacts") ?? null;
   const sitesHs    = scores?.find((s) => s.entity === "sites") ?? null;
 
-  // Reachability (20%): staff email + contacts completeness
+  // Completeness: staff email + contacts completeness (can we reach people)
   const staffEmailRate = st > 0 ? (cm!.staff.has_email / st) : 0;
-  const reachability   = averageStarted(
+  const completeness    = averageStarted(
     { value: staffEmailRate, started: st > 0 },
     contactsHs ? { value: contactsHs.score, started: contactsHs.started } : null,
   );
 
-  // Compliance (35%): licence coverage (≥1 record per staff) + emergency contacts
+  // Compliance: licence coverage (≥1 record per staff) + emergency contacts
   const licenceRecords  = licences?.records_total ?? 0;
   const licenceCoverage = st > 0 ? Math.min(1, licenceRecords / st) : 0;
   const emergencyRate   = st > 0 ? (cm!.staff.has_emergency_contact / st) : 0;
@@ -100,22 +116,37 @@ function computeDimensions(
     { value: emergencyRate, started: st > 0 },
   );
 
-  // Serviceability (35%): trade classification + sites completeness
+  // Serviceability: trade classification + sites completeness
   const tradeRate      = st > 0 ? (cm!.staff.has_trade / st) : 0;
   const serviceability = averageStarted(
     { value: tradeRate, started: st > 0 },
     sitesHs ? { value: sitesHs.score, started: sitesHs.started } : null,
   );
 
-  // Integrity (10%): orphan-free
-  const orphanTotal = orphans?.total ?? 0;
-  const integrity   = orphanTotal === 0 ? 1 : Math.max(0, 1 - orphanTotal / 100);
-
-  const composite = Math.round(
-    reachability * 20 + compliance * 35 + serviceability * 35 + integrity * 10,
+  // Validity: average format-correctness across every entity that has data
+  const validity = averageStarted(
+    ...(scores ?? []).map((s) => ({ value: s.validity, started: s.started })),
   );
 
-  return { reachability, compliance, serviceability, integrity, composite };
+  // Timeliness: average freshness across every entity that has data
+  const timeliness = averageStarted(
+    ...(scores ?? []).map((s) => ({ value: s.freshness, started: s.started })),
+  );
+
+  // Consistency: orphan-free (referential integrity)
+  const orphanTotal = orphans?.total ?? 0;
+  const consistency  = orphanTotal === 0 ? 1 : Math.max(0, 1 - orphanTotal / 100);
+
+  const composite = Math.round(
+    compliance * WEIGHTS.compliance +
+    serviceability * WEIGHTS.serviceability +
+    completeness * WEIGHTS.completeness +
+    validity * WEIGHTS.validity +
+    consistency * WEIGHTS.consistency +
+    timeliness * WEIGHTS.timeliness,
+  );
+
+  return { completeness, compliance, serviceability, validity, consistency, timeliness, composite };
 }
 
 function deriveActions(
@@ -658,14 +689,16 @@ export function IntakeHealthHome({
   return (
     <section className="eq-health-home">
 
-      {/* Composite score + 4 dimensions */}
+      {/* Composite score + 6 dimensions */}
       <div className="eq-health-top">
         <ScoreRing composite={dims.composite} />
         <div className="eq-health-dims">
-          <DimensionBar label="Reachability"  score={dims.reachability}   weight="20%" />
-          <DimensionBar label="Compliance"    score={dims.compliance}     weight="35%" />
-          <DimensionBar label="Serviceability" score={dims.serviceability} weight="35%" />
-          <DimensionBar label="Integrity"     score={dims.integrity}      weight="10%" />
+          <DimensionBar label="Compliance"     score={dims.compliance}     weight={`${WEIGHTS.compliance}%`} />
+          <DimensionBar label="Serviceability" score={dims.serviceability} weight={`${WEIGHTS.serviceability}%`} />
+          <DimensionBar label="Completeness"   score={dims.completeness}   weight={`${WEIGHTS.completeness}%`} />
+          <DimensionBar label="Validity"       score={dims.validity}       weight={`${WEIGHTS.validity}%`} />
+          <DimensionBar label="Consistency"    score={dims.consistency}    weight={`${WEIGHTS.consistency}%`} />
+          <DimensionBar label="Timeliness"     score={dims.timeliness}     weight={`${WEIGHTS.timeliness}%`} />
         </div>
       </div>
 
