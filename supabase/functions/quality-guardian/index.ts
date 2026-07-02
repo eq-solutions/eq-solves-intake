@@ -57,7 +57,7 @@ interface TenantRow {
 }
 
 interface RunSummary {
-  licence_alerts:  { total: number; critical: number; warning: number; info: number };
+  licence_alerts:  { total: number; critical: number; warning: number; info: number; alerts_failed: number };
   health_scores:   Array<{ entity: string; score: number; total: number; complete: number; gaps: string[] }>;
   orphan_totals:   {
     assets_no_site:     number;
@@ -80,7 +80,7 @@ async function runLicenceExpiry(
   supabase: ReturnType<typeof createClient>,
   tenantId: string,
 ): Promise<RunSummary['licence_alerts']> {
-  const summary = { total: 0, critical: 0, warning: 0, info: 0 };
+  const summary = { total: 0, critical: 0, warning: 0, info: 0, alerts_failed: 0 };
 
   const { data: rawData, error } = await supabase.rpc('eq_tidy_read_entity', {
     p_table: 'licences',
@@ -113,6 +113,11 @@ async function runLicenceExpiry(
         ? `${row.licence_type ?? 'Licence'} expired ${Math.abs(days)} day(s) ago.`
         : `${row.licence_type ?? 'Licence'} expires in ${days} day(s).`;
 
+    // Count from the data before attempting persistence — an expired licence
+    // must show in the run summary even if the alert upsert fails.
+    summary.total++;
+    (summary as Record<string, number>)[severity]++;
+
     const { error: alertErr } = await supabase.rpc('eq_quality_upsert_alert', {
       p_tenant_id:   tenantId,
       p_alert_type:  'licence_expiry',
@@ -123,12 +128,9 @@ async function runLicenceExpiry(
     });
 
     if (alertErr) {
+      summary.alerts_failed++;
       console.warn(`alert upsert failed for ${row.licence_id}: ${alertErr.message}`);
-      continue;
     }
-
-    summary.total++;
-    (summary as Record<string, number>)[severity]++;
   }
 
   return summary;
@@ -330,7 +332,7 @@ Deno.serve(async (req: Request) => {
     });
 
     const summary: RunSummary = {
-      licence_alerts: { total: 0, critical: 0, warning: 0, info: 0 },
+      licence_alerts: { total: 0, critical: 0, warning: 0, info: 0, alerts_failed: 0 },
       health_scores:  [],
       orphan_totals:  { assets_no_site: 0, contacts_no_parent: 0, licences_no_staff: 0, sites_no_customer: 0, total: 0 },
       errors:         [],

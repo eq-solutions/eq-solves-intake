@@ -23,6 +23,7 @@ export interface LicenceExpiryAlertSummary {
   critical:      number;
   warning:       number;
   info:          number;
+  alerts_failed: number; // alert upserts that failed — the counts above still reflect the data
 }
 
 // Raw row shape returned by the licence expiry query
@@ -65,7 +66,9 @@ function buildMessage(row: LicenceRow, days: number): string {
 // ---------------------------------------------------------------------------
 // Public: runLicenceExpiryCheck
 //
-// Returns the number of alerts raised (inserts + updates via upsert).
+// Returns severity counts computed from the licence data itself; alert
+// persistence (eq_quality_upsert_alert) is best-effort and failures are
+// reported via alerts_failed rather than suppressing the counts.
 // The Supabase client is expected to carry a JWT with app_metadata.tenant_id
 // so the RPC can scope to the correct tenant.
 // ---------------------------------------------------------------------------
@@ -90,7 +93,7 @@ export async function runLicenceExpiryCheck(
   const now   = new Date();
   const limit = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000); // +60 days
 
-  const summary: LicenceExpiryAlertSummary = { records_total: rows.length, total: 0, critical: 0, warning: 0, info: 0 };
+  const summary: LicenceExpiryAlertSummary = { records_total: rows.length, total: 0, critical: 0, warning: 0, info: 0, alerts_failed: 0 };
 
   for (const row of rows) {
     if (!row.expiry_date) continue;
@@ -102,6 +105,11 @@ export async function runLicenceExpiryCheck(
     const days     = daysUntil(row.expiry_date);
     const severity = severityForDays(days);
     const message  = buildMessage(row, days);
+
+    // Count from the data before attempting persistence — an expired licence
+    // must show in the summary even if the alert store is unreachable.
+    summary.total++;
+    summary[severity]++;
 
     // Upsert alert via the guardian RPC
     const { error: alertError } = await (supabase as unknown as {
@@ -116,13 +124,10 @@ export async function runLicenceExpiryCheck(
     });
 
     if (alertError) {
-      // Non-fatal — log and continue
+      // Non-fatal — the summary already carries the severity counts
+      summary.alerts_failed++;
       console.warn(`runLicenceExpiryCheck: upsert alert failed for ${row.licence_id}: ${alertError.message}`);
-      continue;
     }
-
-    summary.total++;
-    summary[severity]++;
   }
 
   return summary;
