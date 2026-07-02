@@ -3492,6 +3492,7 @@ button.eq-primary:hover {
 .eq-health-bar--err  { background: var(--eq-err); }
 .eq-health-card__pct { font-size: 12px; font-weight: 600; color: var(--eq-ink); margin: 0 0 6px; }
 .eq-health-card__gaps { font-size: 11px; color: var(--eq-muted); margin: 0; }
+.eq-health-card__low-sample { font-size: 11px; color: var(--eq-warn); margin: 0 0 4px; }
 .eq-health-licence-strip { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; align-items: center; }
 .eq-health-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; }
 .eq-health-badge--critical { background: #fee2e2; color: #991b1b; }
