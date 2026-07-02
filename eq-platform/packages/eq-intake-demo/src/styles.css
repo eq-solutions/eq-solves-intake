@@ -3503,6 +3503,31 @@ button.eq-primary:hover {
 .eq-health-notice--err { color: var(--eq-err); }
 .eq-health-loading { font-size: 13px; color: var(--eq-muted); padding: 24px 0; }
 
+/* ---- Review queue (steward) ---- */
+.eq-queue__header h2 { margin: 0 0 4px; }
+.eq-queue__subtitle { font-size: 13px; color: var(--eq-muted); margin: 0 0 10px; max-width: 60ch; }
+.eq-queue__counts { display: flex; gap: 8px; margin-bottom: 20px; }
+.eq-queue__empty { font-size: 13px; color: var(--eq-muted); padding: 32px 0; text-align: center; }
+.eq-queue__section { margin-bottom: 24px; }
+.eq-queue__section-header { display: flex; align-items: baseline; gap: 8px; }
+.eq-queue__section-header h3 { margin: 0; font-size: 15px; }
+.eq-queue__section-count { font-size: 12px; font-weight: 600; color: var(--eq-muted); }
+.eq-queue__section-hint { font-size: 12px; color: var(--eq-muted); margin: 2px 0 10px; }
+.eq-queue__item { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; padding: 10px 12px; border: 1px solid var(--eq-line); border-radius: 8px; margin-bottom: 8px; background: var(--eq-bg, transparent); }
+.eq-queue__item-main { min-width: 0; flex: 1; }
+.eq-queue__item-label { font-size: 14px; font-weight: 600; margin-right: 8px; }
+.eq-queue__item-field { font-size: 12px; color: var(--eq-deep); background: var(--eq-ice); border-radius: 4px; padding: 1px 6px; margin-right: 8px; }
+.eq-queue__item-current { font-size: 12px; color: var(--eq-muted); text-decoration: line-through; }
+.eq-queue__item-reason { font-size: 13px; color: var(--eq-ink); margin: 4px 0 0; }
+.eq-queue__item-evidence { font-size: 12px; color: var(--eq-muted); margin: 2px 0 0; }
+.eq-queue__item-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; max-width: 320px; }
+.eq-queue__input { font-size: 13px; padding: 6px 8px; border: 1px solid var(--eq-line); border-radius: 6px; min-width: 180px; }
+.eq-queue__btn { white-space: nowrap; }
+@media (max-width: 640px) {
+  .eq-queue__item { flex-direction: column; }
+  .eq-queue__item-actions { justify-content: flex-start; max-width: none; }
+}
+
 /* Health card header row */
 .eq-health-card__header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
 
