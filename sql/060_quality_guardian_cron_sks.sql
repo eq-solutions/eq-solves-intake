@@ -21,7 +21,8 @@
 --   → vault secret → this file.
 --
 -- Re-running replaces the job in place (cron.schedule upserts by jobname).
--- 01:00 UTC = 11:00 AEST / 12:00 AEDT.
+-- 17:00 UTC = 03:00 AEST / 04:00 AEDT — pre-dawn Sydney so overnight results
+-- are on the dashboard before the workday (Royce's call, 2026-07-03).
 
 DO $guard$
 BEGIN
@@ -36,7 +37,7 @@ $guard$;
 
 SELECT cron.schedule(
   'quality-guardian-nightly',
-  '0 1 * * *',
+  '0 17 * * *',
   $job$
   SELECT net.http_post(
     url     := 'https://ehowgjardagevnrluult.supabase.co/functions/v1/quality-guardian',
