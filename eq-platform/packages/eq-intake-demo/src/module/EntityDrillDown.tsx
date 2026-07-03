@@ -95,6 +95,26 @@ function deriveRow(entity: string, row: Row): Row {
   return row;
 }
 
+// Real app_data tables use `<entity>_id`, never a bare `id` column. Row
+// identity (dedup, inline-edit targeting, Suggest-accept, Table's React
+// key) must key off the real PK — matching on `row.id` silently resolves
+// to '' for every row of every real entity, which made every row look
+// identical to dedup/edit/accept logic.
+const ROW_ID_FIELD: Record<string, string> = {
+  staff: "staff_id",
+  sites: "site_id",
+  contacts: "contact_id",
+  customers: "customer_id",
+  assets: "asset_id",
+  licences: "licence_id",
+};
+
+function rowKey(entity: string, row: Row): string {
+  const field = ROW_ID_FIELD[entity] ?? "id";
+  const v = row[field];
+  return v !== null && v !== undefined ? String(v) : "";
+}
+
 
 function isBlank(value: unknown): boolean {
   if (value === null || value === undefined) return true;
@@ -291,9 +311,9 @@ export function EntityDrillDown({
       }
       for (const group of byValue.values()) {
         if (group.length < 2) continue;
-        const fresh = group.filter((r) => !seenIds.has(String(r.id ?? "")));
+        const fresh = group.filter((r) => !seenIds.has(rowKey(entity, r)));
         if (fresh.length < 2) continue;
-        fresh.forEach((r) => seenIds.add(String(r.id ?? "")));
+        fresh.forEach((r) => seenIds.add(rowKey(entity, r)));
         allGroups.push(
           fresh.map((r) => ({
             ...r,
@@ -334,12 +354,12 @@ export function EntityDrillDown({
   // ── Edit handlers (by row ID) ──────────────────────────────────────────
   const startEdit = useCallback(
     (rowId: string, field: string) => {
-      const targetRow = rows.find((r) => String(r.id ?? "") === rowId);
+      const targetRow = rows.find((r) => rowKey(entity, r) === rowId);
       const current = targetRow?.[field];
       setEditState({ rowId, field });
       setEditDraft(current === null || current === undefined ? "" : String(current));
     },
-    [rows],
+    [rows, entity],
   );
 
   const commitEdit = useCallback(() => {
@@ -347,13 +367,13 @@ export function EntityDrillDown({
     const { rowId, field } = editState;
     setRows((prev) =>
       prev.map((r) =>
-        String(r.id ?? "") === rowId ? { ...r, [field]: editDraft } : r,
+        rowKey(entity, r) === rowId ? { ...r, [field]: editDraft } : r,
       ),
     );
     setHasLocalEdits(true);
     setEditState(null);
     setEditDraft("");
-  }, [editState, editDraft]);
+  }, [editState, editDraft, entity]);
 
   const cancelEdit = useCallback(() => {
     setEditState(null);
@@ -404,15 +424,15 @@ export function EntityDrillDown({
   }, [supabase]);
 
   const handleSuggest = useCallback(
-    async (row: Row) => {
+    async (row: Row, fieldsOverride?: string[]) => {
       if (!callEdgeFn) return;
-      const rowId = String(row.id ?? '');
-      const missingFields = gapFields.filter((f) => isBlank(row[f]));
+      const rowId = rowKey(entity, row);
+      const missingFields = fieldsOverride ?? gapFields.filter((f) => isBlank(row[f]));
       if (missingFields.length === 0) return;
 
       const label = String(
-        row['company_name'] ?? row['first_name'] ?? row['site_name'] ??
-        row['asset_name'] ?? row['licence_number'] ?? rowId
+        row['company_name'] ?? row['first_name'] ?? row['name'] ??
+        row['licence_number'] ?? rowId
       );
 
       setSuggestRowId(rowId);
@@ -437,11 +457,11 @@ export function EntityDrillDown({
     (field: string, value: string) => {
       if (!suggestRowId) return;
       setRows((prev) =>
-        prev.map((r) => String(r.id ?? '') === suggestRowId ? { ...r, [field]: value } : r),
+        prev.map((r) => rowKey(entity, r) === suggestRowId ? { ...r, [field]: value } : r),
       );
       setHasLocalEdits(true);
     },
-    [suggestRowId],
+    [suggestRowId, entity],
   );
 
   // ── Column definitions ────────────────────────────────────────────────
@@ -457,7 +477,7 @@ export function EntityDrillDown({
         },
         filterable: "text" as const,
         render: (row: DrillRow) => {
-          const rowId = String(row.id ?? "");
+          const rowId = rowKey(entity, row);
           const isEditing = editState?.rowId === rowId && editState?.field === col;
           const blank = isGapField && isBlank(row[col]);
 
@@ -563,6 +583,7 @@ export function EntityDrillDown({
     startEdit,
     callEdgeFn,
     handleSuggest,
+    entity,
   ]);
 
   // ── CSV download ──────────────────────────────────────────────────────
@@ -703,7 +724,7 @@ export function EntityDrillDown({
         </div>
       </div>
 
-      {hasLocalEdits && filterMode !== "tidy" && (
+      {hasLocalEdits && (
         <div className="eq-drill__edit-notice" role="status">
           Changes are local only — use Download to export and re-import via Reconcile.
         </div>
@@ -721,15 +742,23 @@ export function EntityDrillDown({
           committing={committing}
           commitResult={commitResult}
           entityLabel={formatLabel(entity)}
+          editState={editState}
+          editDraft={editDraft}
+          onEditDraftChange={setEditDraft}
+          onStartEdit={startEdit}
+          onCommitEdit={commitEdit}
+          onCancelEdit={cancelEdit}
+          onSuggest={(rowId, field) => {
+            const row = rows.find((r) => rowKey(entity, r) === rowId);
+            if (row) void handleSuggest(row, [field]);
+          }}
+          canSuggest={!!callEdgeFn}
         />
       ) : (
         <Table<DrillRow>
           columns={columns}
           rows={displayRows}
-          getRowId={(row) => {
-            const id = row["id"];
-            return id !== null && id !== undefined ? String(id) : "";
-          }}
+          getRowId={(row) => rowKey(entity, row)}
           emptyMessage={emptyMsg}
           rowStyle={
             filterMode === "duplicates"
@@ -773,6 +802,14 @@ interface TidyPanelProps {
   committing: boolean;
   commitResult: TidyCommitResult | null;
   entityLabel: string;
+  editState: { rowId: string; field: string } | null;
+  editDraft: string;
+  onEditDraftChange: (v: string) => void;
+  onStartEdit: (rowId: string, field: string) => void;
+  onCommitEdit: () => void;
+  onCancelEdit: () => void;
+  onSuggest: (rowId: string, field: string) => void;
+  canSuggest: boolean;
 }
 
 const FIX_TYPE_LABELS: Record<string, string> = {
@@ -810,6 +847,14 @@ function TidyPanel({
   committing,
   commitResult,
   entityLabel,
+  editState,
+  editDraft,
+  onEditDraftChange,
+  onStartEdit,
+  onCommitEdit,
+  onCancelEdit,
+  onSuggest,
+  canSuggest,
 }: TidyPanelProps): JSX.Element {
   if (loading) {
     return (
@@ -899,6 +944,57 @@ function TidyPanel({
         </span>
       ),
     },
+    {
+      key: "_fix",
+      header: "Fix",
+      sortable: false,
+      render: (g) => {
+        const isEditing = editState?.rowId === g.row_id && editState?.field === g.field;
+        if (isEditing) {
+          return (
+            <span className="eq-drill__inline-edit">
+              <input
+                className="eq-drill__inline-input"
+                value={editDraft}
+                onChange={(e) => onEditDraftChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") onCommitEdit();
+                  if (e.key === "Escape") onCancelEdit();
+                }}
+                autoFocus
+                aria-label={`Edit ${fieldLabel(g.field)} for ${g.row_label}`}
+              />
+              <button className="eq-drill__inline-save" onClick={onCommitEdit} type="button">
+                Save
+              </button>
+              <button className="eq-drill__inline-cancel" onClick={onCancelEdit} type="button">
+                Cancel
+              </button>
+            </span>
+          );
+        }
+        return (
+          <span className="eq-tidy__fix-actions">
+            <button
+              type="button"
+              className="eq-drill__edit-btn"
+              onClick={() => onStartEdit(g.row_id, g.field)}
+            >
+              Edit
+            </button>
+            {canSuggest && (
+              <button
+                type="button"
+                className="eq-drill__suggest-btn"
+                onClick={() => onSuggest(g.row_id, g.field)}
+              >
+                Suggest
+              </button>
+            )}
+          </span>
+        );
+      },
+    },
   ];
 
   const flagColumns: TableColumn<ReviewFlag>[] = [
@@ -965,10 +1061,12 @@ function TidyPanel({
       {auto_fixes.length > 0 && (
         <div className="eq-tidy__section">
           <div className="eq-tidy__section-header">
-            <h3 className="eq-tidy__section-title">Auto-fixes</h3>
-            <p className="eq-tidy__section-hint">
-              These values can be normalised automatically. Select the ones to apply.
-            </p>
+            <div className="eq-tidy__section-header-text">
+              <h3 className="eq-tidy__section-title">Auto-fixes</h3>
+              <p className="eq-tidy__section-hint">
+                These values can be normalised automatically. Select the ones to apply.
+              </p>
+            </div>
           </div>
 
           <Table<TidyFix>
@@ -1011,10 +1109,34 @@ function TidyPanel({
       {gaps.length > 0 && (
         <div className="eq-tidy__section">
           <div className="eq-tidy__section-header">
-            <h3 className="eq-tidy__section-title">Data gaps</h3>
-            <p className="eq-tidy__section-hint">
-              Missing required fields or invalid formats. Use Download → Reconcile to fix in bulk.
-            </p>
+            <div className="eq-tidy__section-header-text">
+              <h3 className="eq-tidy__section-title">Data gaps</h3>
+              <p className="eq-tidy__section-hint">
+                Missing required fields or invalid formats. Fix one at a time below, or download
+                this list, edit it in a spreadsheet, and re-upload it on the Reconcile tab for
+                bulk changes.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="eq-drill__download"
+              onClick={() => {
+                const csv = buildCsvContent(
+                  gaps.map((g) => ({ ...g })),
+                  ["row_label", "field", "message", "gap_type"],
+                );
+                const filename = `${entityLabel.toLowerCase()}-gaps-${todayString()}.csv`;
+                const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = filename;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+            >
+              Download {gaps.length} gap{gaps.length !== 1 ? "s" : ""} as CSV
+            </button>
           </div>
           <Table<GapItem>
             columns={gapColumns}
@@ -1030,10 +1152,12 @@ function TidyPanel({
       {review_flags.length > 0 && (
         <div className="eq-tidy__section">
           <div className="eq-tidy__section-header">
-            <h3 className="eq-tidy__section-title">Needs review</h3>
-            <p className="eq-tidy__section-hint">
-              These could not be auto-fixed — a human should check them.
-            </p>
+            <div className="eq-tidy__section-header-text">
+              <h3 className="eq-tidy__section-title">Needs review</h3>
+              <p className="eq-tidy__section-hint">
+                These could not be auto-fixed — a human should check them.
+              </p>
+            </div>
           </div>
           <Table<ReviewFlag>
             columns={flagColumns}
