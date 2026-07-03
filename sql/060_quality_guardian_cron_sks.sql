@@ -53,5 +53,5 @@ SELECT cron.schedule(
 );
 
 -- Migration record
-INSERT INTO app_data._eq_migrations (name) VALUES ('060_quality_guardian_cron_sks')
+INSERT INTO app_data._eq_migrations (name, checksum) VALUES ('060_quality_guardian_cron_sks', 'eq-intake-lineage')
 ON CONFLICT (name) DO NOTHING;
