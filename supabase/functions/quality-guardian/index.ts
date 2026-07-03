@@ -10,7 +10,7 @@
  *
  * ── Schedule ──────────────────────────────────────────────────────────────
  * Registered as a pg_cron job by sql/060_quality_guardian_cron_sks.sql
- * ('quality-guardian-nightly', 01:00 UTC daily). The job reads the
+ * ('quality-guardian-nightly', 17:00 UTC daily = 03:00 AEST). The job reads the
  * service-role key from Vault (secret name: edge_service_role_key) at fire
  * time — see that file for the one-time vault.create_secret prerequisite.
  *
