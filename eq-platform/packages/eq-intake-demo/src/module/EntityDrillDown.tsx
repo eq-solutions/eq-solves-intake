@@ -40,7 +40,7 @@ const DEFAULT_TENANT_ID = "00000000-0000-4000-8000-000000000001";
 
 const GAP_FIELDS: Record<string, string[]> = {
   staff: ["email", "phone"],
-  sites: ["address", "suburb", "state", "postcode"],
+  sites: ["address_line_1", "suburb", "state", "postcode"],
   contacts: ["email", "phone"],
   customers: ["email", "phone", "abn"],
   assets: ["asset_type", "serial_number", "site_id"],
@@ -49,7 +49,7 @@ const GAP_FIELDS: Record<string, string[]> = {
 
 const DUPE_KEYS: Record<string, string[]> = {
   staff: ["email"],
-  sites: ["site_name"],
+  sites: ["name"],
   contacts: ["email"],
   customers: ["abn", "company_name"],
   assets: ["serial_number"],
@@ -68,12 +68,32 @@ const ENTITY_TO_TIDY: Partial<Record<string, TidyEntity>> = {
 
 const DISPLAY_COLUMNS: Record<string, string[]> = {
   staff: ["first_name", "last_name", "email", "phone"],
-  sites: ["site_name", "address", "suburb", "state", "postcode"],
+  sites: ["name", "address_line_1", "suburb", "state", "postcode"],
   contacts: ["full_name", "email", "phone"],
   customers: ["company_name", "email", "phone", "abn"],
-  assets: ["asset_name", "asset_type", "serial_number"],
+  assets: ["name", "asset_type", "serial_number"],
   licences: ["licence_number", "licence_type", "expiry_date", "staff_id"],
 };
+
+// Some entities are checked/displayed under a field name that has no direct
+// DB column (contacts.full_name, contacts/customers.phone) — derived from
+// the real columns right after fetch so GAP_FIELDS/DISPLAY_COLUMNS/DUPE_KEYS
+// above can reference one canonical key per concept instead of forcing every
+// consumer to know which of 2-3 raw columns to coalesce.
+function deriveRow(entity: string, row: Row): Row {
+  if (entity === "contacts") {
+    const first = String(row["first_name"] ?? "").trim();
+    const last = String(row["last_name"] ?? "").trim();
+    const full_name = `${first} ${last}`.trim();
+    const phone = row["mobile_phone"] || row["work_phone"] || null;
+    return { ...row, full_name: full_name || null, phone };
+  }
+  if (entity === "customers") {
+    const phone = row["mobile_phone"] || row["primary_phone"] || null;
+    return { ...row, phone };
+  }
+  return row;
+}
 
 
 function isBlank(value: unknown): boolean {
@@ -187,7 +207,7 @@ export function EntityDrillDown({
 
       try {
         const data = await fetchCanonicalRows(supabase as unknown as CanonicalFetchClient, entity);
-        if (!cancelled) setRows(data);
+        if (!cancelled) setRows(data.map((row) => deriveRow(entity, row)));
       } catch (err: unknown) {
         if (!cancelled)
           setError(err instanceof Error ? err.message : "Failed to load records.");
@@ -827,6 +847,7 @@ function TidyPanel({
       key: "field",
       header: "Field",
       sortAccessor: (f) => f.field,
+      render: (f) => <span>{fieldLabel(f.field)}</span>,
     },
     {
       key: "old_value",
@@ -861,6 +882,7 @@ function TidyPanel({
       key: "field",
       header: "Field",
       sortAccessor: (g) => g.field,
+      render: (g) => <span>{fieldLabel(g.field)}</span>,
     },
     {
       key: "message",
@@ -890,6 +912,7 @@ function TidyPanel({
       key: "field",
       header: "Field",
       sortAccessor: (r) => r.field,
+      render: (r) => <span>{fieldLabel(r.field)}</span>,
     },
     {
       key: "message",
