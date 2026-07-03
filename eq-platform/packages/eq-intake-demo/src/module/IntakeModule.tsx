@@ -32,6 +32,7 @@ import { ReconcileModule } from "./ReconcileModule.js";
 import { IntakeHealthHome } from "./IntakeHealthHome.js";
 import { EntityDrillDown } from "./EntityDrillDown.js";
 import { AskCanonical } from "./AskCanonical.js";
+import { RemediationQueue } from "./RemediationQueue.js";
 import { QUICK_DESTINATIONS, encodeCsv, type QuickDestination } from "../quick-export/destinations.js";
 import {
   commitBundleToCanonical,
@@ -101,7 +102,7 @@ function defaultRouteLogger(
   }
 }
 
-type IntakeMode = "health" | "import" | "reconcile" | "ask";
+type IntakeMode = "health" | "queue" | "import" | "reconcile" | "ask";
 
 export function IntakeModule(props: IntakeModuleProps): JSX.Element {
   const onDestinationChange = useMemo(
@@ -141,6 +142,15 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
           onClick={() => setMode("health")}
         >
           Health
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "queue"}
+          className={"eq-intake-tab" + (mode === "queue" ? " eq-intake-tab--active" : "")}
+          onClick={() => { setDrillEntity(null); setMode("queue"); }}
+        >
+          Queue
         </button>
         <button
           type="button"
@@ -187,6 +197,8 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
             onEntityClick={(e) => setDrillEntity(e)}
           />
         )
+      ) : mode === "queue" ? (
+        <RemediationQueue supabase={props.supabase} />
       ) : mode === "ask" ? (
         <AskCanonical
           supabase={props.supabase}
