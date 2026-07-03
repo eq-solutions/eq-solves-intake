@@ -20,14 +20,19 @@
  *   Body: { "triggered_by": "manual", "tenant_id": "<uuid>" }
  *
  * ── Auth ──────────────────────────────────────────────────────────────────
- * Requires the service-role key EXACTLY — the platform's verify_jwt gate
- * admits any valid project JWT (including tenant users), so the handler
- * compares the bearer token to SUPABASE_SERVICE_ROLE_KEY itself and rejects
- * everything else. Tenant scope is passed explicitly to the service-role RPC
- * variants from sql/059 (eq_tidy_read_entity_admin, eq_tidy_orphan_check_admin,
- * eq_quality_start_run, eq_quality_complete_run, eq_quality_list_tenants);
- * the JWT-scoped tidy RPCs raise 'no tenant_id in JWT' under a bare
- * service-role call and must not be used here.
+ * Requires a service-LEVEL key — the platform's verify_jwt gate admits any
+ * valid project JWT (including tenant users), so the handler proves the
+ * caller's privilege instead: it keys a client with the caller's own bearer
+ * and requires eq_quality_list_tenants (service_role-only, sql/059) to
+ * succeed. Anon/publishable keys and tenant-user JWTs fail that probe.
+ * (Exact string comparison against the injected SUPABASE_SERVICE_ROLE_KEY
+ * env var was tried first and proved brittle — the dashboard key and the
+ * env value are not byte-identical on this project.) Tenant scope is passed
+ * explicitly to the service-role RPC variants from sql/059
+ * (eq_tidy_read_entity_admin, eq_tidy_orphan_check_admin, eq_quality_start_run,
+ * eq_quality_complete_run, eq_quality_list_tenants); the JWT-scoped tidy RPCs
+ * raise 'no tenant_id in JWT' under a bare service-role call and must not be
+ * used here.
  *
  * ── Environment variables ──────────────────────────────────────────────────
  *   SUPABASE_URL               — set automatically by Supabase
@@ -245,19 +250,27 @@ Deno.serve(async (req: Request) => {
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
-  const serviceKey  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-  if (!supabaseUrl || !serviceKey) {
+  if (!supabaseUrl) {
     return new Response(
-      JSON.stringify({ error: 'Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY' }),
+      JSON.stringify({ error: 'Missing SUPABASE_URL' }),
       { status: 500, headers: { 'Content-Type': 'application/json' } },
     );
   }
 
-  // verify_jwt admits any valid project JWT — require the service-role key
-  // itself. Tenant-user tokens must not be able to trigger runs.
-  const authHeader = req.headers.get('authorization') ?? '';
-  if (authHeader !== `Bearer ${serviceKey}`) {
+  // verify_jwt admits any valid project JWT — require a service-LEVEL key.
+  // Exact string comparison against the injected SUPABASE_SERVICE_ROLE_KEY
+  // proved brittle (the dashboard service_role key and the env var are not
+  // byte-identical on this project), so prove privilege instead:
+  // eq_quality_list_tenants (sql/059) is executable by service_role ONLY.
+  // If a client keyed by the caller's bearer can run it, the caller holds a
+  // service-level key; anon/publishable keys and tenant-user JWTs fail here.
+  const bearer = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
+  const callerClient = bearer ? createClient(supabaseUrl, bearer) : null;
+  const probe = callerClient
+    ? await callerClient.rpc('eq_quality_list_tenants')
+    : { data: null, error: { message: 'missing bearer' } };
+  if (!callerClient || probe.error) {
     return new Response(
       JSON.stringify({ error: 'service-role key required' }),
       { status: 401, headers: { 'Content-Type': 'application/json' } },
@@ -273,22 +286,16 @@ Deno.serve(async (req: Request) => {
 
   const triggeredBy = body.triggered_by ?? 'schedule';
   const runType     = triggeredBy === 'schedule' ? 'scheduled' : 'manual';
-  const admin = createClient(supabaseUrl, serviceKey);
+  // The caller's key just proved service-level privilege — use it for the work.
+  const admin = callerClient;
 
-  // Resolve tenant list
+  // Resolve tenant list (the auth probe already fetched it)
   let tenantIds: string[] = [];
 
   if (body.tenant_id) {
     tenantIds = [body.tenant_id];
   } else {
-    const { data, error } = await admin.rpc('eq_quality_list_tenants');
-    if (error) {
-      return new Response(
-        JSON.stringify({ error: `Could not load tenants: ${error.message}` }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } },
-      );
-    }
-    tenantIds = (data as string[] | null) ?? [];
+    tenantIds = (probe.data as string[] | null) ?? [];
   }
 
   const results: Array<{ tenant_id: string; run_id: string | null; summary: RunSummary }> = [];
