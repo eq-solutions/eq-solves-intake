@@ -205,5 +205,5 @@ GRANT EXECUTE ON FUNCTION public.eq_queue_close_event(uuid, int) TO authenticate
 GRANT EXECUTE ON FUNCTION public.eq_queue_resolve(uuid, text, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.eq_tidy_commit_fixes(uuid, json) TO authenticated;
 
-INSERT INTO app_data._eq_migrations (name) VALUES ('062_queue_rpcs')
+INSERT INTO app_data._eq_migrations (name, checksum) VALUES ('062_queue_rpcs', 'eq-intake-lineage')
 ON CONFLICT (name) DO NOTHING;

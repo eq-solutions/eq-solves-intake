@@ -254,5 +254,5 @@ GRANT EXECUTE ON FUNCTION public.eq_tidy_read_entity_admin(uuid, text)     TO se
 GRANT EXECUTE ON FUNCTION public.eq_tidy_orphan_check_admin(uuid)          TO service_role;
 
 -- Migration record
-INSERT INTO app_data._eq_migrations (name) VALUES ('059_quality_guardian_service_context')
+INSERT INTO app_data._eq_migrations (name, checksum) VALUES ('059_quality_guardian_service_context', 'eq-intake-lineage')
 ON CONFLICT (name) DO NOTHING;

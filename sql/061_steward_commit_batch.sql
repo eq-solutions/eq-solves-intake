@@ -119,5 +119,5 @@ REVOKE ALL ON FUNCTION public.eq_steward_commit_batch(uuid, text, text, uuid, js
 REVOKE ALL ON FUNCTION public.eq_steward_commit_batch(uuid, text, text, uuid, json) FROM anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.eq_steward_commit_batch(uuid, text, text, uuid, json) TO service_role;
 
-INSERT INTO app_data._eq_migrations (name) VALUES ('061_steward_commit_batch')
+INSERT INTO app_data._eq_migrations (name, checksum) VALUES ('061_steward_commit_batch', 'eq-intake-lineage')
 ON CONFLICT (name) DO NOTHING;

@@ -79,5 +79,5 @@ REVOKE ALL ON FUNCTION public.eq_quality_upsert_alert(uuid, text, text, uuid, te
 GRANT EXECUTE ON FUNCTION public.eq_quality_upsert_alert(uuid, text, text, uuid, text, text) TO authenticated, service_role;
 
 -- Migration record
-INSERT INTO app_data._eq_migrations (name) VALUES ('058_quality_upsert_alert_client_grant')
+INSERT INTO app_data._eq_migrations (name, checksum) VALUES ('058_quality_upsert_alert_client_grant', 'eq-intake-lineage')
 ON CONFLICT (name) DO NOTHING;
