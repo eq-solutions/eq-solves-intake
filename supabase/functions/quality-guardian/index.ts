@@ -135,26 +135,31 @@ async function computeHealthScores(
   supabase: ReturnType<typeof createClient>,
   tenantId: string,
 ): Promise<RunSummary['health_scores']> {
+  // Field lists mirror eq-platform/packages/eq-intake/src/health-score.ts
+  // (REQUIRED_FIELDS / INSPECTED_FIELDS) — column names verified against the
+  // live app_data schema on ehow 2026-07-03. The originals here used columns
+  // that don't exist (site_name, address, full_name, asset_name, customers.phone),
+  // which scored sites/contacts/assets as 0% complete in every run summary.
   const ENTITIES: Record<string, { required: string[]; inspected: string[] }> = {
     customers: {
       required:  ['company_name'],
-      inspected: ['company_name', 'email', 'phone', 'abn'],
+      inspected: ['company_name', 'email', 'primary_phone', 'abn'],
     },
     sites: {
-      required:  ['site_name'],
-      inspected: ['site_name', 'address', 'suburb', 'state', 'postcode'],
+      required:  ['name'],
+      inspected: ['name', 'address_line_1', 'suburb', 'postcode', 'customer_id'],
     },
     contacts: {
-      required:  ['full_name'],
-      inspected: ['full_name', 'email', 'phone'],
+      required:  ['first_name', 'last_name'],
+      inspected: ['first_name', 'last_name', 'email', 'work_phone'],
     },
     staff: {
       required:  ['first_name', 'last_name'],
-      inspected: ['first_name', 'last_name', 'email', 'phone'],
+      inspected: ['first_name', 'last_name', 'email', 'phone', 'trade', 'emergency_contact_name'],
     },
     assets: {
-      required:  ['asset_name'],
-      inspected: ['asset_name', 'asset_type', 'serial_number', 'site_id'],
+      required:  ['name', 'asset_type'],
+      inspected: ['name', 'asset_type', 'serial_number', 'make', 'model'],
     },
   };
 
