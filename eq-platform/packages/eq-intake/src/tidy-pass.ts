@@ -15,6 +15,7 @@
  */
 
 import { validate } from '@eq/validation';
+import type { ValidationError, Flag } from '@eq/validation';
 
 import customerSchema from '@eq/schemas/schemas/customer.schema.json';
 import siteSchema     from '@eq/schemas/schemas/site.schema.json';
@@ -105,6 +106,58 @@ function stringify(value: unknown): string {
   if (value === null || value === undefined) return '';
   if (typeof value === 'boolean') return value ? 'true' : 'false';
   return String(value);
+}
+
+/** Snake_case → Title Case. Local to this module — avoids the tidy engine depending on the demo-UI label registry. */
+function prettyField(field: string): string {
+  return field
+    .split('_')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+/**
+ * Turn a structural ValidationError into a plain-English sentence. The
+ * validator itself never builds messages for these (only cross_field_error
+ * carries author-supplied text) — without this, the UI fell back to the raw
+ * `.kind` code (e.g. "field_required") verbatim.
+ */
+function describeValidationError(e: ValidationError): string {
+  if ('message' in e && e.message) return e.message;
+  const f = 'field' in e ? prettyField(e.field) : 'This field';
+  switch (e.kind) {
+    case 'field_required':         return `${f} is required.`;
+    case 'field_type_mismatch':    return `${f} should be a ${e.expected}.`;
+    case 'field_format_invalid':   return `${f} isn't a valid ${e.format}.`;
+    case 'field_enum_invalid':     return `"${String(e.value)}" isn't a recognised value for ${f}. Allowed: ${e.allowed.join(', ')}.`;
+    case 'field_pattern_mismatch': return `${f} doesn't match the expected format.`;
+    case 'field_out_of_range':
+      if (e.min !== undefined && e.max !== undefined) return `${f} should be between ${e.min} and ${e.max}.`;
+      if (e.min !== undefined) return `${f} should be at least ${e.min}.`;
+      return `${f} should be at most ${e.max}.`;
+    case 'field_length_invalid':
+      if (e.min !== undefined && e.max !== undefined) return `${f} should be between ${e.min} and ${e.max} characters.`;
+      if (e.min !== undefined) return `${f} should be at least ${e.min} characters.`;
+      return `${f} should be at most ${e.max} characters.`;
+    case 'fk_no_match':            return `${f} doesn't match an existing record.`;
+    case 'date_ambiguous_strict':  return `${f} — the date format is ambiguous.`;
+    case 'coerce_failed':          return e.reason;
+    case 'cap_exceeded':           return e.reason;
+    default:                       return `${f}: please check this value.`;
+  }
+}
+
+/** Same idea as describeValidationError(), for the review-flag path. */
+function describeFlag(flag: Flag): string {
+  if ('message' in flag && flag.message) return flag.message;
+  const f = 'field' in flag ? prettyField(flag.field) : 'This field';
+  switch (flag.kind) {
+    case 'phone_kept_raw': return `${f} couldn't be normalised automatically — kept as entered.`;
+    case 'date_ambiguous': return `${f} — the date could be read more than one way; please confirm.`;
+    case 'value_unusual':  return `${f}: ${flag.reason}`;
+    default:                return `${f}: please review.`;
+  }
 }
 
 /**
@@ -240,7 +293,7 @@ async function scanEntity(
   type FlaggedLike = {
     source_row_index: number;
     canonical:        Record<string, unknown>;
-    flags:            Array<{ kind: string; field?: string; message?: string; reason?: string }>;
+    flags:            Flag[];
   };
   for (const frow of result.flagged_rows as FlaggedLike[]) {
     const original = rows[frow.source_row_index] as Record<string, unknown>;
@@ -267,13 +320,13 @@ async function scanEntity(
 
     // Surface flags as review items (need human attention)
     for (const flag of frow.flags) {
-      const flagField = flag.field ?? 'row';
+      const flagField = ('field' in flag && flag.field) || 'row';
       if (SYSTEM_FIELDS.has(flagField)) continue;
       reviewFlags.push({
         entity, table, row_id: rowId, row_label: label,
         field:     flagField,
         flag_type: flag.kind as ReviewFlag['flag_type'],
-        message:   flag.message ?? flag.reason ?? flag.kind,
+        message:   describeFlag(flag),
       });
     }
   }
@@ -281,9 +334,7 @@ async function scanEntity(
   // --- rejected_rows: validation errors → gaps ---
   type RejectedLike = {
     source_row_index: number;
-    errors:           Array<{
-      kind: string; field?: string; message?: string; reason?: string; format?: string;
-    }>;
+    errors:           ValidationError[];
   };
   for (const rrow of result.rejected_rows as RejectedLike[]) {
     const original = rows[rrow.source_row_index] as Record<string, unknown>;
@@ -293,18 +344,18 @@ async function scanEntity(
     const label = rowLabel(original, entity);
 
     for (const e of rrow.errors) {
-      const field = e.field ?? 'row';
+      const field = ('field' in e && e.field) || 'row';
       if (SYSTEM_FIELDS.has(field)) continue;
 
       let gapType: GapItem['gap_type'] = 'format_invalid';
-      if (e.kind === 'required_field_missing') gapType = 'required_missing';
-      if (e.kind === 'fk_no_match')            gapType = 'fk_no_match';
+      if (e.kind === 'field_required') gapType = 'required_missing';
+      if (e.kind === 'fk_no_match')    gapType = 'fk_no_match';
 
       gaps.push({
         entity, table, row_id: rowId, row_label: label,
         field,
         gap_type: gapType,
-        message:  e.message ?? e.reason ?? e.kind,
+        message:  describeValidationError(e),
       });
     }
   }
