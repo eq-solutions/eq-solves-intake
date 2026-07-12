@@ -1,0 +1,54 @@
+name: CI
+
+# Basic CI for the eq-platform pnpm monorepo (packages/eq-intake, eq-ai, eq-schemas,
+# eq-validation, eq-confirm-ui, eq-format-ui, eq-intake-demo). This repo had no CI at
+# all before this workflow — verified via the GitHub API (zero workflows configured).
+#
+# Deliberately excludes:
+#   - `pnpm test:integration` (eq-ai only) — hits a real provider and needs an API key;
+#     not appropriate for a basic, secret-free CI gate.
+#   - `pnpm ci:drift` (schema-generation drift check) — verified locally that it FAILS
+#     on a clean, unmodified checkout: pnpm rewrites root package.json's `packageManager`
+#     field (adds an integrity hash) and normalises an em-dash as a side effect of
+#     install/generate, which the diff then flags as "drift" even though nothing about
+#     the generated schemas actually changed. Wiring up a check that's already flaky on
+#     a clean tree would be worse than no check. Worth fixing separately, not here.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+defaults:
+  run:
+    working-directory: eq-platform
+
+jobs:
+  build-test:
+    name: Build, typecheck, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: eq-platform/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck + schema lint
+        run: pnpm check
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
