@@ -44,11 +44,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck + schema lint
-        run: pnpm check
-
+      # Build MUST run before typecheck: eq-validation imports @eq/ai, and TypeScript
+      # resolves that workspace dependency against its built dist/index.d.ts, not its
+      # source. Verified on real CI (not just locally): typecheck-before-build failed
+      # with "Cannot find module '@eq/ai'"; a from-scratch local repro (node_modules AND
+      # every dist/ deleted, not just node_modules) reproduced it, confirming order is
+      # the actual cause, not an environment fluke.
       - name: Build
         run: pnpm build
+
+      - name: Typecheck + schema lint
+        run: pnpm check
 
       - name: Test
         run: pnpm test
