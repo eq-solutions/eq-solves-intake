@@ -4,15 +4,16 @@ name: CI
 # eq-validation, eq-confirm-ui, eq-format-ui, eq-intake-demo). This repo had no CI at
 # all before this workflow — verified via the GitHub API (zero workflows configured).
 #
-# Deliberately excludes:
-#   - `pnpm test:integration` (eq-ai only) — hits a real provider and needs an API key;
-#     not appropriate for a basic, secret-free CI gate.
-#   - `pnpm ci:drift` (schema-generation drift check) — verified locally that it FAILS
-#     on a clean, unmodified checkout: pnpm rewrites root package.json's `packageManager`
-#     field (adds an integrity hash) and normalises an em-dash as a side effect of
-#     install/generate, which the diff then flags as "drift" even though nothing about
-#     the generated schemas actually changed. Wiring up a check that's already flaky on
-#     a clean tree would be worse than no check. Worth fixing separately, not here.
+# `pnpm ci:drift` (schema-generation drift check) — a prior local test flagged this as
+# failing on a clean checkout (packageManager hash + em-dash noise). Re-verified from a
+# genuinely fresh clone with the pinned pnpm version: zero diff, exit 0, reproducible
+# twice in a row. The earlier finding was contaminated-environment noise, not a real
+# bug — see PR discussion. Included below as a real gate.
+#
+# `pnpm test:integration` (eq-ai only, real Anthropic API) also runs unconditionally:
+# the suite is self-skipping when ANTHROPIC_API_KEY is empty (see
+# packages/eq-ai/test/anthropic.integration.test.ts — describe.skipIf(!HAS_KEY)), so it
+# costs nothing today and starts asserting for real the moment the secret is added.
 
 on:
   push:
@@ -63,5 +64,13 @@ jobs:
       - name: Typecheck + schema lint
         run: pnpm check
 
+      - name: Schema drift check
+        run: pnpm ci:drift
+
       - name: Test
         run: pnpm test
+
+      - name: Integration test (real API, self-skips without a key)
+        run: pnpm test:integration
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
