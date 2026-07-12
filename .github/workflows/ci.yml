@@ -1,0 +1,67 @@
+name: CI
+
+# Basic CI for the eq-platform pnpm monorepo (packages/eq-intake, eq-ai, eq-schemas,
+# eq-validation, eq-confirm-ui, eq-format-ui, eq-intake-demo). This repo had no CI at
+# all before this workflow — verified via the GitHub API (zero workflows configured).
+#
+# Deliberately excludes:
+#   - `pnpm test:integration` (eq-ai only) — hits a real provider and needs an API key;
+#     not appropriate for a basic, secret-free CI gate.
+#   - `pnpm ci:drift` (schema-generation drift check) — verified locally that it FAILS
+#     on a clean, unmodified checkout: pnpm rewrites root package.json's `packageManager`
+#     field (adds an integrity hash) and normalises an em-dash as a side effect of
+#     install/generate, which the diff then flags as "drift" even though nothing about
+#     the generated schemas actually changed. Wiring up a check that's already flaky on
+#     a clean tree would be worse than no check. Worth fixing separately, not here.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+defaults:
+  run:
+    working-directory: eq-platform
+
+jobs:
+  build-test:
+    name: Build, typecheck, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+        # No cache: 'pnpm' here. actions/setup-node's built-in pnpm cache computed its
+        # store path (via `pnpm store path`) before `pnpm/action-setup` had finished
+        # configuring PNPM_HOME, so it cached the wrong directory and the post-job save
+        # step failed with a path-validation error (caught on a real CI run — every
+        # actual build/typecheck/test step had already passed; only the cache-save
+        # step failed). Caching is a speed optimisation, not a correctness requirement,
+        # and getting the two actions' store-path resolution to agree isn't worth the
+        # complexity for "basic" CI. Revisit with an explicit `actions/cache` step on
+        # `~/.pnpm-store` if build times become a real problem.
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Build MUST run before typecheck: eq-validation imports @eq/ai, and TypeScript
+      # resolves that workspace dependency against its built dist/index.d.ts, not its
+      # source. Verified on real CI (not just locally): typecheck-before-build failed
+      # with "Cannot find module '@eq/ai'"; a from-scratch local repro (node_modules AND
+      # every dist/ deleted, not just node_modules) reproduced it, confirming order is
+      # the actual cause, not an environment fluke.
+      - name: Build
+        run: pnpm build
+
+      - name: Typecheck + schema lint
+        run: pnpm check
+
+      - name: Test
+        run: pnpm test
