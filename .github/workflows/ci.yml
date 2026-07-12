@@ -38,8 +38,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm'
-          cache-dependency-path: eq-platform/pnpm-lock.yaml
+        # No cache: 'pnpm' here. actions/setup-node's built-in pnpm cache computed its
+        # store path (via `pnpm store path`) before `pnpm/action-setup` had finished
+        # configuring PNPM_HOME, so it cached the wrong directory and the post-job save
+        # step failed with a path-validation error (caught on a real CI run — every
+        # actual build/typecheck/test step had already passed; only the cache-save
+        # step failed). Caching is a speed optimisation, not a correctness requirement,
+        # and getting the two actions' store-path resolution to agree isn't worth the
+        # complexity for "basic" CI. Revisit with an explicit `actions/cache` step on
+        # `~/.pnpm-store` if build times become a real problem.
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
