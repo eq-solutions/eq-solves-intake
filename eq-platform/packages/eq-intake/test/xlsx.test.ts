@@ -14,11 +14,16 @@ import * as XLSX from "xlsx";
 import { parseXlsx } from "../src/readers/xlsx.js";
 import { validate } from "@eq/validation";
 
+type Merge = { s: { r: number; c: number }; e: { r: number; c: number } };
+
 /** Build an XLSX buffer from an array-of-arrays. */
-function buildXlsx(sheets: Array<{ name: string; rows: unknown[][]; hidden?: boolean }>): Uint8Array {
+function buildXlsx(
+  sheets: Array<{ name: string; rows: unknown[][]; hidden?: boolean; merges?: Merge[] }>,
+): Uint8Array {
   const wb = XLSX.utils.book_new();
   for (const s of sheets) {
     const ws = XLSX.utils.aoa_to_sheet(s.rows);
+    if (s.merges?.length) ws["!merges"] = s.merges;
     XLSX.utils.book_append_sheet(wb, ws, s.name);
   }
   if (sheets.some((s) => s.hidden)) {
@@ -139,6 +144,34 @@ describe("parseXlsx — auto-detects header row past title rows", () => {
       last_name: "Patel",
       employment_type: "employee",
     });
+  });
+});
+
+describe("parseXlsx — merged banner row does not fool header detection", () => {
+  it("treats a merged title banner as one cell (ExcelJS/SheetJS parity)", async () => {
+    const buf = buildXlsx([
+      {
+        name: "Working Job List",
+        rows: [
+          ["MONTHLY JOB LIST", null, null], // banner, merged across A1:C1
+          ["job_no", "site", "hours"], // real header (row 1)
+          ["27151", "Equinix SY3", 8],
+          ["27152", "NEXTDC S2", 6],
+        ],
+        merges: [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }],
+      },
+    ]);
+
+    const wb = await parseXlsx(buf);
+    const sheet = wb.sheets[0]!;
+    // Without the merged-slave null guard in worksheetToAoa, ExcelJS fills the
+    // banner row with the repeated master value ("MONTHLY JOB LIST" ×3), which
+    // detectHeaderRow (>=2 non-empty) would mis-pick as the header. The guard
+    // nulls the slave cells, matching SheetJS, so the real header wins.
+    expect(sheet.headerRowIndex).toBe(1);
+    expect(sheet.headerRow).toEqual(["job_no", "site", "hours"]);
+    expect(sheet.rows).toHaveLength(2);
+    expect(sheet.rows[0]).toMatchObject({ job_no: "27151", site: "Equinix SY3", hours: 8 });
   });
 });
 
