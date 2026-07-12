@@ -12,13 +12,18 @@
  * to care whether the source was CSV or XLSX.
  *
  * Behaviour:
- *   - Reads .xlsx, .xls, and .xlsm. SheetJS handles the format detection.
+ *   - Reads .xlsx and .xlsm (OOXML zip archives) via ExcelJS.
+ *   - Legacy .xls (BIFF compound-document) support was DROPPED in the ExcelJS
+ *     migration (2026-07-11): ExcelJS reads OOXML only, not the old binary
+ *     format. Such files are rejected with a clear error rather than parsed.
+ *     (We moved off SheetJS/`xlsx@0.18.5` because it carries unpatched
+ *     prototype-pollution + ReDoS advisories on the untrusted-upload path.)
  *   - One ParsedSheet returned per worksheet in workbook order.
  *   - Skips hidden sheets by default (override with includeHidden).
  *   - Header row auto-detected: first row with >= 2 non-empty cells where
  *     the next row also has data. Override with opts.headerRowIndex.
- *   - Excel date cells come back as ISO strings (cellDates: true), so
- *     coerceDate downstream sees a parseable input.
+ *   - Excel date cells come back as Date objects, so coerceDate downstream
+ *     sees a parseable input.
  *   - Numbers and booleans come through as their native JS types. The
  *     downstream coercers happily accept either.
  *   - Empty rows (every cell blank) are skipped.
@@ -31,7 +36,7 @@
  *   - Streaming for huge files. v1 loads the whole workbook into memory.
  */
 
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import type { ParsedSheet, ParseMeta, CsvRow } from "./csv.js";
 
 export interface ParsedWorkbook {
@@ -53,7 +58,7 @@ export interface WorkbookMeta {
   totalSheets: number;
   /** Count of sheets returned (after filtering). */
   returnedSheets: number;
-  /** Format SheetJS detected. */
+  /** Format detected from the file's leading bytes. */
   format: string;
 }
 
@@ -92,42 +97,40 @@ export async function parseXlsx(
         ? new Uint8Array(input)
         : new Uint8Array(input as ArrayBufferLike);
 
-  const workbook = XLSX.read(bytes, {
-    type: "array",
-    cellDates: true,
-    cellFormula: false,
-    cellHTML: false,
-    cellNF: false,
-    cellStyles: false,
-  });
+  // ExcelJS reads OOXML (.xlsx/.xlsm) only. Reject a legacy .xls BIFF
+  // compound-document up front with a clear message — SheetJS used to handle
+  // it, but it was dropped with the xlsx@0.18.5 removal (see file header).
+  if (isBiffCompoundDocument(bytes)) {
+    throw new Error(
+      "Legacy .xls (BIFF) files are no longer supported — re-save as .xlsx and try again.",
+    );
+  }
 
-  const totalSheets = workbook.SheetNames.length;
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(toArrayBuffer(bytes));
+
+  const worksheets = workbook.worksheets;
+  const totalSheets = worksheets.length;
   const includeHidden = opts.includeHidden ?? false;
   const scanLimit = opts.headerScanLimit ?? 20;
 
-  const targetNames = opts.sheetName
-    ? workbook.SheetNames.filter((n) => n === opts.sheetName)
-    : workbook.SheetNames;
+  const targetSheets = opts.sheetName
+    ? worksheets.filter((ws) => ws.name === opts.sheetName)
+    : worksheets;
 
   const sheets: ParsedXlsxSheet[] = [];
 
-  for (const sheetName of targetNames) {
-    const sheet = workbook.Sheets[sheetName];
-    if (!sheet) continue;
+  for (const worksheet of targetSheets) {
+    const sheetName = worksheet.name;
 
-    // SheetJS records hidden state in workbook.Workbook.Sheets[i].Hidden
-    // (0 = visible, 1 = hidden, 2 = very hidden). Default visible.
-    const sheetMeta = workbook.Workbook?.Sheets?.find?.((s) => s.name === sheetName);
-    const hidden = (sheetMeta?.Hidden ?? 0) !== 0;
+    // ExcelJS records visibility on worksheet.state
+    // ("visible" | "hidden" | "veryHidden"). Default visible.
+    const hidden = worksheet.state === "hidden" || worksheet.state === "veryHidden";
     if (hidden && !includeHidden) continue;
 
-    // Pull all cells as a 2D array first so we can detect the header row.
-    const aoa = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-      header: 1,
-      defval: null,
-      blankrows: true,
-      raw: true,
-    });
+    // Pull all cells as a dense 0-based 2D array so we can detect the header
+    // row — the same shape SheetJS's sheet_to_json({ header: 1 }) produced.
+    const aoa = worksheetToAoa(worksheet);
 
     const headerRowIndex = opts.headerRowIndex ?? detectHeaderRow(aoa, scanLimit);
 
@@ -188,6 +191,85 @@ export async function parseXlsx(
 // ============================================================================
 // HELPERS
 // ============================================================================
+
+/**
+ * Turn an ExcelJS worksheet into a dense, 0-based array-of-arrays — one entry
+ * per cell in the sheet's used range, blank cells as null. This reproduces the
+ * shape SheetJS's `sheet_to_json(ws, { header: 1, defval: null, blankrows: true,
+ * raw: true })` returned, so the header-detection + row-building logic below is
+ * unchanged.
+ */
+function worksheetToAoa(worksheet: ExcelJS.Worksheet): unknown[][] {
+  const rowCount = worksheet.rowCount;
+  const colCount = worksheet.columnCount;
+  const aoa: unknown[][] = [];
+  for (let r = 1; r <= rowCount; r++) {
+    const row = worksheet.getRow(r);
+    const cells: unknown[] = [];
+    for (let c = 1; c <= colCount; c++) {
+      const cell = row.getCell(c);
+      // Merged cells: SheetJS emitted the value only in the top-left cell and
+      // null for the covered ("slave") cells; ExcelJS instead REPEATS the master
+      // value into every cell of the merge range. Null the slaves here to keep
+      // parity — otherwise a merged banner/title row (1 non-empty cell to SheetJS)
+      // reads as several non-empty cells and detectHeaderRow can mis-pick it as
+      // the header row.
+      if (cell.isMerged && cell.master !== cell) {
+        cells.push(null);
+      } else {
+        cells.push(cellValueToRaw(cell.value));
+      }
+    }
+    aoa.push(cells);
+  }
+  return aoa;
+}
+
+/**
+ * Flatten an ExcelJS cell value to the raw JS value SheetJS used to hand back:
+ * primitives and Dates pass through; formula cells yield their cached result;
+ * rich-text / hyperlink cells yield their text; empty cells become null.
+ */
+function cellValueToRaw(value: ExcelJS.CellValue | undefined): unknown {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) return value;
+  const t = typeof value;
+  if (t === "string" || t === "number" || t === "boolean") return value;
+
+  if (t === "object") {
+    const obj = value as unknown as Record<string, unknown>;
+    // Formula cell: { formula, result } — use the cached result (cellFormula off).
+    if ("result" in obj) return cellValueToRaw(obj.result as ExcelJS.CellValue);
+    if ("formula" in obj) return null;
+    // Rich text: { richText: [{ text }, ...] }
+    if (Array.isArray(obj.richText)) {
+      return (obj.richText as Array<{ text?: string }>).map((r) => r.text ?? "").join("");
+    }
+    // Hyperlink: { text, hyperlink }
+    if ("text" in obj) return obj.text ?? null;
+    // Error cell: { error }
+    if ("error" in obj) return null;
+  }
+  return value;
+}
+
+/** Copy a Uint8Array into a standalone ArrayBuffer for ExcelJS's loader. */
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
+/** True if the bytes are a legacy .xls OLE2/BIFF compound document (D0 CF 11 E0). */
+function isBiffCompoundDocument(bytes: Uint8Array): boolean {
+  return (
+    bytes.length >= 4 &&
+    bytes[0] === 0xd0 &&
+    bytes[1] === 0xcf &&
+    bytes[2] === 0x11 &&
+    bytes[3] === 0xe0
+  );
+}
 
 /** A row is empty if every cell is null, undefined, or whitespace-only string. */
 function rowIsEmpty(row: unknown[]): boolean {
