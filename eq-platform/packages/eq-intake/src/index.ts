@@ -123,6 +123,9 @@ export type {
 export { detectAllDuplicates } from "./duplicate-detect.js";
 export type { DuplicateCluster, DuplicateReport } from "./duplicate-detect.js";
 
+export { readSiteAdvisory } from "./read-site-advisory.js";
+export type { SiteAdvisorySummary, SiteAdvisoryItem } from "./read-site-advisory.js";
+
 export { decayCheck } from "./decay-detect.js";
 export type {
   StalenessLevel,
