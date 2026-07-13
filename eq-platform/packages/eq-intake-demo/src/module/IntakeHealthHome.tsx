@@ -5,6 +5,7 @@ import {
   runOrphanCheck,
   computeComplianceMetrics,
   detectAllDuplicates,
+  readSiteAdvisory,
   decayCheck,
 } from "@eq/intake";
 import type {
@@ -12,6 +13,7 @@ import type {
   LicenceExpiryAlertSummary,
   ComplianceMetrics,
   DuplicateReport,
+  SiteAdvisorySummary,
   DecaySummary,
 } from "@eq/intake";
 import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
@@ -468,6 +470,53 @@ function DuplicateStrip({
   );
 }
 
+// The write-time resolver's adjudication console: what got flagged AS IT WAS
+// WRITTEN (eq-shell 0179), not an after-the-fact scan. Leads with the count —
+// that number is "duplicates the system caught before they were born".
+function SiteAdvisoryPanel({ summary }: { summary: SiteAdvisorySummary }): JSX.Element {
+  if (summary.total === 0) {
+    return (
+      <div className="eq-health-licence-strip">
+        <span className="eq-health-badge eq-health-badge--ok">Watching — nothing flagged yet</span>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="eq-health-licence-strip">
+        <span className="eq-health-badge eq-health-badge--critical">
+          {summary.total} caught at the write
+        </span>
+        {summary.recent_count > 0 && (
+          <span className="eq-health-badge eq-health-badge--warning">
+            {summary.recent_count} in the last {summary.recent_days} days
+          </span>
+        )}
+        {summary.ambiguous > 0 && (
+          <span className="eq-health-badge eq-health-badge--info">
+            {summary.ambiguous} need a human
+          </span>
+        )}
+      </div>
+      <ul style={{ listStyle: "none", margin: "8px 0 0", padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+        {summary.items.slice(0, 8).map((it) => (
+          <li key={it.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 13 }}>
+            <span style={{ fontWeight: 500 }}>{it.candidate_name ?? it.candidate_code ?? "New site"}</span>
+            <span aria-hidden="true" style={{ opacity: 0.5 }}>→</span>
+            <span style={{ color: "var(--eq-ink-soft, #64748b)" }}>
+              {it.matched_name ?? "existing site"}{it.matched_active === false ? " (retired)" : ""}
+            </span>
+            <span className={`eq-health-badge eq-health-badge--${it.outcome === "match" ? "warning" : "info"}`}>
+              {it.outcome === "match" ? "likely same" : "unsure"}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function OrphanStrip({
   summary, onEntityClick,
 }: { summary: OrphanSummary; onEntityClick?: (entity: string) => void }): JSX.Element {
@@ -581,6 +630,7 @@ export function IntakeHealthHome({
   const [compliance, setCompliance] = useState<ComplianceMetrics | null>(null);
   const [dupes,      setDupes]      = useState<DuplicateReport[] | null>(null);
   const [dupesBusy,  setDupesBusy]  = useState(false);
+  const [advisory,   setAdvisory]   = useState<SiteAdvisorySummary | null>(null);
   const [decay,      setDecay]      = useState<DecaySummary[] | null>(null);
   const [decayBusy,  setDecayBusy]  = useState(false);
   const [loading,    setLoading]    = useState(false);
@@ -604,7 +654,8 @@ export function IntakeHealthHome({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       runOrphanCheck({ supabase: supabase as any, tenantId: resolvedTenantId }),
       computeComplianceMetrics(sb),
-    ]).then(([healthResult, licenceResult, orphanResult, complianceResult]) => {
+      readSiteAdvisory(sb),
+    ]).then(([healthResult, licenceResult, orphanResult, complianceResult, advisoryResult]) => {
       if (cancelled) return;
 
       if (healthResult.status === "fulfilled") {
@@ -635,6 +686,19 @@ export function IntakeHealthHome({
 
       if (complianceResult.status === "fulfilled") {
         setCompliance(complianceResult.value);
+      }
+
+      if (advisoryResult.status === "fulfilled") {
+        setAdvisory(advisoryResult.value);
+      } else {
+        // Non-fatal — a tenant not yet on migration 0180 has no summary RPC.
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[IntakeHealthHome] Site advisory read failed:",
+          advisoryResult.reason instanceof Error
+            ? advisoryResult.reason.message
+            : advisoryResult.reason,
+        );
       }
     }).finally(() => {
       if (!cancelled) setLoading(false);
@@ -723,6 +787,14 @@ export function IntakeHealthHome({
           {actions.map((a) => (
             <ActionCard key={a.id} action={a} onEntityClick={onEntityClick} />
           ))}
+        </div>
+      )}
+
+      {/* Duplicates caught at the write (resolver adjudication console) */}
+      {advisory && (
+        <div className="eq-health-strip-section">
+          <span className="eq-health-section-label">Duplicates caught at the write</span>
+          <SiteAdvisoryPanel summary={advisory} />
         </div>
       )}
 
