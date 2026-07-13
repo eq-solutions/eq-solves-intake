@@ -437,19 +437,31 @@ function DuplicateStrip({
       {report
         .filter((r) => r.clusters.length > 0)
         .map((r) => {
-          const text = `${r.clusters.length} possible duplicate${r.clusters.length !== 1 ? "s" : ""} in ${r.entity}`;
+          // "Needs reconcile" is the actionable subset — a duplicate whose live
+          // state disagrees with the survivor pick (the SY9 shape: the correct
+          // row retired, or data split across active copies). Lead with that
+          // count and colour it danger; fall back to the raw dupe count.
+          const needs = r.needs_reconcile ?? 0;
+          const danger = needs > 0;
+          const text = danger
+            ? `${needs} to reconcile in ${r.entity}`
+            : `${r.clusters.length} possible duplicate${r.clusters.length !== 1 ? "s" : ""} in ${r.entity}`;
+          const cls = danger ? "eq-health-badge--critical" : "eq-health-badge--warning";
+          const tip = danger
+            ? `${r.clusters.length} duplicate group${r.clusters.length !== 1 ? "s" : ""} · ${needs} need a survivor chosen — open ${r.entity}`
+            : `Open ${r.entity} drill-down`;
           return onEntityClick ? (
             <button
               key={r.entity}
               type="button"
-              className="eq-health-badge eq-health-badge--warning eq-health-orphan__btn"
+              className={`eq-health-badge ${cls} eq-health-orphan__btn`}
               onClick={() => onEntityClick(r.entity)}
-              title={`Open ${r.entity} drill-down`}
+              title={tip}
             >
               {text}
             </button>
           ) : (
-            <span key={r.entity} className="eq-health-badge eq-health-badge--warning">{text}</span>
+            <span key={r.entity} className={`eq-health-badge ${cls}`} title={tip}>{text}</span>
           );
         })}
     </div>

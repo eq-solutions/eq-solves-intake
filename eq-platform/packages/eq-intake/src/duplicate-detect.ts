@@ -8,6 +8,16 @@
  *
  * Clusters are surfaced in the health home so operators can review before
  * committing further data. No auto-merge — that requires human confirmation.
+ *
+ * Inactive (retired) rows ARE included in clustering. A retired row is the
+ * classic silent-failure shape: the one copy that holds the correct customer
+ * link can be `active = false`, so filtering it out hides the very row an
+ * operator needs to keep. Instead each cluster carries per-member state
+ * (active / has_customer_link / completeness), a *suggested* survivor, and a
+ * `needs_reconcile` flag for when the live state disagrees with that
+ * suggestion. When the signals conflict (e.g. two rows each carry a customer
+ * link, as in the SY9 incident) survivor_confidence is 'low' — the engine
+ * declines to pick for you rather than confidently picking wrong.
  */
 
 import {
@@ -21,6 +31,15 @@ import type { SupabaseLikeClient } from './canonical/commit-canonical.js';
 // Types
 // ---------------------------------------------------------------------------
 
+export interface DuplicateMember {
+  id:                 string;   // PK value
+  label:              string;   // human-readable display name
+  active:             boolean;  // false = retired (still surfaced, not hidden)
+  has_customer_link:  boolean;  // sites: customer_id set · assets: site_id set
+  completeness:       number;   // count of populated fields — survivor tie-break
+  recommended_survivor: boolean;// the suggested row to keep
+}
+
 export interface DuplicateCluster {
   entity:      string;
   record_ids:  string[];    // PK values (e.g. staff_id, customer_id)
@@ -28,6 +47,11 @@ export interface DuplicateCluster {
   similarity:  number;      // highest pair-wise similarity (0–1)
   match_field: string;      // field that triggered the match
   confidence:  'high' | 'medium';
+  // ── Reconciliation decision support ──────────────────────────────────────
+  members:                 DuplicateMember[];
+  recommended_survivor_id: string | null;   // suggested row to keep, or null
+  survivor_confidence:     'high' | 'low';  // 'low' when signals conflict
+  needs_reconcile:         boolean;         // live state ≠ recommendation
 }
 
 export interface DuplicateReport {
@@ -35,6 +59,7 @@ export interface DuplicateReport {
   clusters:       DuplicateCluster[];
   total_records:  number;
   affected:       number;  // distinct records appearing in at least one cluster
+  needs_reconcile: number; // clusters whose live state disagrees with the pick
 }
 
 // ---------------------------------------------------------------------------
@@ -43,6 +68,10 @@ export interface DuplicateReport {
 
 const HIGH_SIM   = 0.85;
 const MEDIUM_SIM = 0.65;
+
+// A shared, non-null site code is a strong same-site identity claim — treated
+// as a near-exact match, just below an exact ABN/serial (1.0).
+const CODE_SIM   = 0.95;
 
 // ---------------------------------------------------------------------------
 // Bigram Dice coefficient
@@ -87,33 +116,64 @@ function labelFor(entity: string, row: EntityRow): string {
   return String(row[PK[entity] ?? 'id'] ?? '');
 }
 
+function isBlank(v: unknown): boolean {
+  return v === null || v === undefined || String(v).trim() === '';
+}
+
+/** Count of populated fields on a row — a cheap, entity-agnostic completeness
+ *  proxy used only to break survivor ties between otherwise-equal rows. */
+function completenessOf(row: EntityRow): number {
+  let n = 0;
+  for (const v of Object.values(row)) if (!isBlank(v)) n++;
+  return n;
+}
+
+/** Whether a row carries its defining parent link. For sites this is the
+ *  customer_id — the single most decisive "this is the real row" signal, and
+ *  exactly the field whose absence made the SY9 customer vanish from the
+ *  site-driven service.customers view. */
+function hasCustomerLink(entity: string, row: EntityRow): boolean {
+  if (entity === 'sites')    return !isBlank(row['customer_id']);
+  if (entity === 'assets')   return !isBlank(row['site_id']);
+  if (entity === 'contacts') return !isBlank(row['customer_id']) || !isBlank(row['site_id']);
+  return false;
+}
+
 type Candidate = {
   id:           string;
   label:        string;
   key_primary:  string;   // main comparison string
   key_abn?:     string;   // secondary: ABN (for customers)
   key_serial?:  string;   // secondary: serial number (for assets)
+  key_code?:    string;   // secondary: site code (for sites)
+  active:       boolean;
+  hasLink:      boolean;
+  completeness: number;
 };
 
 function buildCandidates(entity: string, rows: EntityRow[]): Candidate[] {
   return rows
-    .filter((r) => r['active'] !== false)
-    .map((row) => {
-      const id    = String(row[PK[entity] ?? 'id'] ?? '');
-      const label = labelFor(entity, row);
+    // NB: inactive rows are intentionally retained — a retired row can be the
+    // one holding the correct link, and hiding it is what makes the failure
+    // silent. State is carried per-candidate instead of filtered away.
+    .map((row): Candidate => {
+      const id           = String(row[PK[entity] ?? 'id'] ?? '');
+      const label        = labelFor(entity, row);
+      const active       = row['active'] !== false; // null/undefined ⇒ active
+      const hasLink      = hasCustomerLink(entity, row);
+      const completeness = completenessOf(row);
+      const base = { id, label, active, hasLink, completeness };
 
       if (entity === 'customers') {
         return {
-          id,
-          label,
+          ...base,
           key_primary: normaliseCompanyName(String(row['company_name'] ?? '')),
           key_abn:     row['abn'] ? normaliseAbn(String(row['abn'])) : undefined,
         };
       }
       if (entity === 'staff' || entity === 'contacts') {
         return {
-          id,
-          label,
+          ...base,
           key_primary: normalisePersonName(
             String(row['first_name'] ?? ''),
             String(row['last_name'] ?? ''),
@@ -124,24 +184,25 @@ function buildCandidates(entity: string, rows: EntityRow[]): Candidate[] {
         const name    = String(row['name'] ?? '').toLowerCase().trim();
         const address = String(row['address_line_1'] ?? '').toLowerCase().trim();
         return {
-          id,
-          label,
+          ...base,
           key_primary: address ? `${name} ${address}` : name,
+          key_code:    row['code']
+            ? String(row['code']).toUpperCase().replace(/\s+/g, '')
+            : undefined,
         };
       }
       if (entity === 'assets') {
         return {
-          id,
-          label,
+          ...base,
           key_primary: String(row['name'] ?? '').toLowerCase().trim(),
           key_serial:  row['serial_number']
             ? String(row['serial_number']).toLowerCase().replace(/\s/g, '')
             : undefined,
         };
       }
-      return { id, label, key_primary: label.toLowerCase() };
+      return { ...base, key_primary: label.toLowerCase() };
     })
-    .filter((c) => c.key_primary.length >= 2);
+    .filter((c) => c.key_primary.length >= 2 || c.key_code || c.key_abn || c.key_serial);
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +226,40 @@ function union(parent: Map<string, string>, a: string, b: string): void {
   const ra = findCluster(parent, a);
   const rb = findCluster(parent, b);
   if (ra !== rb) parent.set(ra, rb);
+}
+
+// ---------------------------------------------------------------------------
+// Survivor selection
+// ---------------------------------------------------------------------------
+
+/**
+ * Suggest which row in a cluster to keep, and how much to trust the suggestion.
+ *
+ * Ranking: a present customer link outranks everything (it is the field whose
+ * absence causes silent customer loss), then completeness, then active state,
+ * then a stable id tiebreak. Confidence is 'low' when the choice is genuinely
+ * contested — more than one row carries a customer link, or more than one is
+ * active — because that is precisely the shape (SY9) where the "obvious" pick
+ * can be the wrong one. Low confidence tells the UI to ask a human, not act.
+ */
+function pickSurvivor(
+  members: DuplicateMember[],
+): { id: string | null; confidence: 'high' | 'low' } {
+  if (members.length === 0) return { id: null, confidence: 'low' };
+
+  const ranked = [...members].sort((a, b) =>
+    (Number(b.has_customer_link) - Number(a.has_customer_link)) ||
+    (b.completeness - a.completeness) ||
+    (Number(b.active) - Number(a.active)) ||
+    (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  );
+
+  const linkedCount = members.filter((m) => m.has_customer_link).length;
+  const activeCount = members.filter((m) => m.active).length;
+  const confidence: 'high' | 'low' =
+    linkedCount > 1 || activeCount > 1 ? 'low' : 'high';
+
+  return { id: ranked[0]!.id, confidence };
 }
 
 // ---------------------------------------------------------------------------
@@ -201,6 +296,17 @@ function detectForEntity(entity: string, rows: EntityRow[]): DuplicateReport {
       ) {
         sim   = 1.0;
         field = 'serial_number';
+      }
+      // Site code exact match — a shared code is a strong same-site claim,
+      // and reaches rows whose names diverge ("SY9" vs "Equinix SY9").
+      else if (
+        a.key_code &&
+        b.key_code &&
+        a.key_code.length >= 2 &&
+        a.key_code === b.key_code
+      ) {
+        sim   = CODE_SIM;
+        field = 'code';
       }
       // Primary key fuzzy match
       else if (a.key_primary && b.key_primary) {
@@ -250,6 +356,27 @@ function detectForEntity(entity: string, rows: EntityRow[]): DuplicateReport {
 
     group.forEach((c) => affectedIds.add(c.id));
 
+    // Per-member decision signals
+    const members: DuplicateMember[] = group.map((c) => ({
+      id:                   c.id,
+      label:                c.label,
+      active:               c.active,
+      has_customer_link:    c.hasLink,
+      completeness:         c.completeness,
+      recommended_survivor: false,
+    }));
+
+    const { id: survivorId, confidence } = pickSurvivor(members);
+    for (const m of members) m.recommended_survivor = m.id === survivorId;
+
+    // needs_reconcile: the live state disagrees with the recommendation —
+    // either the suggested survivor is retired (SY9), or the active count is
+    // anything other than exactly one (0 = all retired, >1 = split data).
+    const activeCount   = members.filter((m) => m.active).length;
+    const survivorActive =
+      members.find((m) => m.id === survivorId)?.active ?? false;
+    const needsReconcile = !survivorActive || activeCount !== 1;
+
     clusters.push({
       entity,
       record_ids:  group.map((c) => c.id),
@@ -257,17 +384,25 @@ function detectForEntity(entity: string, rows: EntityRow[]): DuplicateReport {
       similarity:  highestSim,
       match_field: matchField,
       confidence:  highestSim >= HIGH_SIM ? 'high' : 'medium',
+      members,
+      recommended_survivor_id: survivorId,
+      survivor_confidence:     confidence,
+      needs_reconcile:         needsReconcile,
     });
   }
 
-  // Sort by similarity desc (highest confidence duplicates first)
-  clusters.sort((a, b) => b.similarity - a.similarity);
+  // Sort: clusters needing reconciliation first, then by similarity desc.
+  clusters.sort((a, b) =>
+    (Number(b.needs_reconcile) - Number(a.needs_reconcile)) ||
+    (b.similarity - a.similarity),
+  );
 
   return {
     entity,
     clusters,
-    total_records: candidates.length,
-    affected:      affectedIds.size,
+    total_records:   candidates.length,
+    affected:        affectedIds.size,
+    needs_reconcile: clusters.filter((c) => c.needs_reconcile).length,
   };
 }
 
@@ -299,3 +434,6 @@ export async function detectAllDuplicates(
     return detectForEntity(entity, rows);
   });
 }
+
+// Exported for unit testing — pure, no DB dependency.
+export { detectForEntity as _detectForEntity };
