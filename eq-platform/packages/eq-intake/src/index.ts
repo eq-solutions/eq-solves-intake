@@ -141,6 +141,9 @@ export type {
 export { makeEdgeFnCaller } from "./ai-client.js";
 export type { EdgeFnCaller, EdgeFnResponse } from "./ai-client.js";
 
+export { adjudicateDuplicateWithAI } from "./adjudicate-duplicate-ai.js";
+export type { SiteAdjudicationInput, AiSiteVerdict } from "./adjudicate-duplicate-ai.js";
+
 export { suggestGaps } from "./gap-suggest.js";
 export type { GapSuggestion, GapSuggestResult } from "./gap-suggest.js";
 
