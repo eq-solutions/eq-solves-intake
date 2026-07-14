@@ -7,6 +7,8 @@ import {
   detectAllDuplicates,
   readSiteAdvisory,
   adjudicateSiteAdvisory,
+  adjudicateDuplicateWithAI,
+  makeEdgeFnCaller,
   decayCheck,
 } from "@eq/intake";
 import type {
@@ -15,7 +17,9 @@ import type {
   ComplianceMetrics,
   DuplicateReport,
   SiteAdvisorySummary,
+  SiteAdvisoryItem,
   SiteVerdict,
+  AiSiteVerdict,
   DecaySummary,
 } from "@eq/intake";
 import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
@@ -484,12 +488,16 @@ const VERDICT_LABEL: Record<SiteVerdict, string> = {
 // flagged row is adjudicable: the human's verdict (0183) is recorded as a
 // label, so the console is a decision surface, not just a report.
 function SiteAdvisoryPanel({
-  summary, onAdjudicate, saving, errors,
+  summary, onAdjudicate, saving, errors, onAskAi, aiSuggest, aiBusy, aiErr,
 }: {
   summary: SiteAdvisorySummary;
   onAdjudicate: (advisoryId: string, verdict: SiteVerdict) => void;
   saving: Record<string, boolean>;
   errors: Record<string, boolean>;
+  onAskAi: (item: SiteAdvisoryItem) => void;
+  aiSuggest: Record<string, AiSiteVerdict>;
+  aiBusy: Record<string, boolean>;
+  aiErr: Record<string, boolean>;
 }): JSX.Element {
   if (summary.total === 0) {
     return (
@@ -537,29 +545,63 @@ function SiteAdvisoryPanel({
                 · you said: {VERDICT_LABEL[it.verdict]}
               </span>
             ) : (
-              <span style={{ display: "inline-flex", gap: 4 }}>
-                {(["same", "different", "unsure"] as SiteVerdict[]).map((v) => (
+              <>
+                <span style={{ display: "inline-flex", gap: 4 }}>
+                  {(["same", "different", "unsure"] as SiteVerdict[]).map((v) => {
+                    const suggested = aiSuggest[it.id]?.verdict === v;
+                    return (
+                      <button
+                        key={v}
+                        type="button"
+                        disabled={!!saving[it.id]}
+                        onClick={() => onAdjudicate(it.id, v)}
+                        title={suggested ? `Claude suggests: ${VERDICT_LABEL[v]}` : `Record: ${VERDICT_LABEL[v]}`}
+                        style={{
+                          fontSize: 12,
+                          padding: "1px 8px",
+                          borderRadius: 6,
+                          border: suggested ? "1px solid var(--eq-sky, #3DA8D8)" : "1px solid var(--eq-line, #e2e8f0)",
+                          background: suggested ? "var(--eq-ice, #EAF5FB)" : "var(--eq-surface, #ffffff)",
+                          color: "var(--eq-ink, #1a1a2e)",
+                          fontWeight: suggested ? 700 : 400,
+                          cursor: saving[it.id] ? "default" : "pointer",
+                          opacity: saving[it.id] ? 0.5 : 1,
+                        }}
+                      >
+                        {VERDICT_LABEL[v]}
+                      </button>
+                    );
+                  })}
+                </span>
+                {aiSuggest[it.id] ? (
+                  <span style={{ fontSize: 12, color: "var(--eq-ink-soft, #64748b)" }}>
+                    <span style={{ color: "var(--eq-deep, #2986B4)", fontWeight: 600 }}>✨ Claude:</span>{" "}
+                    {aiSuggest[it.id].reasoning}
+                  </span>
+                ) : (
                   <button
-                    key={v}
                     type="button"
-                    disabled={!!saving[it.id]}
-                    onClick={() => onAdjudicate(it.id, v)}
-                    title={`Record: ${VERDICT_LABEL[v]}`}
+                    onClick={() => onAskAi(it)}
+                    disabled={!!aiBusy[it.id]}
+                    title="Ask Claude for a suggested answer with a reason"
                     style={{
                       fontSize: 12,
                       padding: "1px 8px",
                       borderRadius: 6,
-                      border: "1px solid var(--eq-line, #e2e8f0)",
-                      background: "var(--eq-surface, #ffffff)",
-                      color: "var(--eq-ink, #1a1a2e)",
-                      cursor: saving[it.id] ? "default" : "pointer",
-                      opacity: saving[it.id] ? 0.5 : 1,
+                      border: "1px solid var(--eq-sky, #3DA8D8)",
+                      background: "transparent",
+                      color: "var(--eq-deep, #2986B4)",
+                      cursor: aiBusy[it.id] ? "default" : "pointer",
+                      opacity: aiBusy[it.id] ? 0.6 : 1,
                     }}
                   >
-                    {VERDICT_LABEL[v]}
+                    {aiBusy[it.id] ? "Asking Claude…" : "✨ Ask Claude"}
                   </button>
-                ))}
-              </span>
+                )}
+                {aiErr[it.id] && (
+                  <span style={{ fontSize: 12, color: "var(--eq-danger, #dc2626)" }}>AI unavailable</span>
+                )}
+              </>
             )}
             {errors[it.id] && (
               <span style={{ fontSize: 12, color: "var(--eq-danger, #dc2626)" }}>couldn&rsquo;t save — try again</span>
@@ -687,6 +729,9 @@ export function IntakeHealthHome({
   const [advisory,   setAdvisory]   = useState<SiteAdvisorySummary | null>(null);
   const [adjSaving,  setAdjSaving]  = useState<Record<string, boolean>>({});
   const [adjErrors,  setAdjErrors]  = useState<Record<string, boolean>>({});
+  const [aiSuggest,  setAiSuggest]  = useState<Record<string, AiSiteVerdict>>({});
+  const [aiBusy,     setAiBusy]     = useState<Record<string, boolean>>({});
+  const [aiErr,      setAiErr]      = useState<Record<string, boolean>>({});
   const [decay,      setDecay]      = useState<DecaySummary[] | null>(null);
   const [decayBusy,  setDecayBusy]  = useState(false);
   const [loading,    setLoading]    = useState(false);
@@ -814,6 +859,39 @@ export function IntakeHealthHome({
     [supabase],
   );
 
+  // Ask Claude for a suggested verdict + a plain-English reason on a flagged row.
+  // Advisory only — it fills aiSuggest so the console can show the reason and
+  // pre-highlight a button; the human still taps to record. Fails soft (aiErr).
+  const handleAskAi = useCallback(
+    async (item: SiteAdvisoryItem) => {
+      if (!supabase) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const callEdgeFn = makeEdgeFnCaller(supabase as any);
+      setAiErr((e) => {
+        if (!e[item.id]) return e;
+        const next = { ...e }; delete next[item.id]; return next;
+      });
+      setAiBusy((b) => ({ ...b, [item.id]: true }));
+      try {
+        const verdict = await adjudicateDuplicateWithAI(
+          { name: item.candidate_name, code: item.candidate_code },
+          { name: item.matched_name, active: item.matched_active },
+          callEdgeFn,
+        );
+        setAiSuggest((s) => ({ ...s, [item.id]: verdict }));
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("[IntakeHealthHome] AI adjudication failed:", err instanceof Error ? err.message : err);
+        setAiErr((e) => ({ ...e, [item.id]: true }));
+      } finally {
+        setAiBusy((b) => {
+          const next = { ...b }; delete next[item.id]; return next;
+        });
+      }
+    },
+    [supabase],
+  );
+
   if (!supabase) {
     return (
       <section className="eq-health-home">
@@ -906,6 +984,10 @@ export function IntakeHealthHome({
             onAdjudicate={handleAdjudicate}
             saving={adjSaving}
             errors={adjErrors}
+            onAskAi={handleAskAi}
+            aiSuggest={aiSuggest}
+            aiBusy={aiBusy}
+            aiErr={aiErr}
           />
         </div>
       )}
