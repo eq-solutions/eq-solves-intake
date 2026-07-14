@@ -96,6 +96,14 @@ export type {
 export { runLicenceExpiryCheck } from "./licence-expiry-check.js";
 export type { LicenceExpiryAlertSummary } from "./licence-expiry-check.js";
 
+export { readSiteAdvisory, adjudicateSiteAdvisory } from "./read-site-advisory.js";
+export type {
+  SiteAdvisoryItem,
+  SiteAdvisorySummary,
+  SiteVerdict,
+  AdjudicateResult,
+} from "./read-site-advisory.js";
+
 export { computeHealthScores } from "./health-score.js";
 export type { HealthScore } from "./health-score.js";
 
@@ -122,9 +130,6 @@ export type {
 
 export { detectAllDuplicates } from "./duplicate-detect.js";
 export type { DuplicateCluster, DuplicateReport } from "./duplicate-detect.js";
-
-export { readSiteAdvisory } from "./read-site-advisory.js";
-export type { SiteAdvisorySummary, SiteAdvisoryItem } from "./read-site-advisory.js";
 
 export { decayCheck } from "./decay-detect.js";
 export type {

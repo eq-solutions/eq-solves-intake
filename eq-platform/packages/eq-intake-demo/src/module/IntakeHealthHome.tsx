@@ -1,4 +1,4 @@
-import { useState, useEffect, type JSX } from "react";
+import { useState, useEffect, useCallback, type JSX } from "react";
 import {
   computeHealthScores,
   runLicenceExpiryCheck,
@@ -6,6 +6,7 @@ import {
   computeComplianceMetrics,
   detectAllDuplicates,
   readSiteAdvisory,
+  adjudicateSiteAdvisory,
   decayCheck,
 } from "@eq/intake";
 import type {
@@ -14,6 +15,7 @@ import type {
   ComplianceMetrics,
   DuplicateReport,
   SiteAdvisorySummary,
+  SiteVerdict,
   DecaySummary,
 } from "@eq/intake";
 import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
@@ -470,10 +472,25 @@ function DuplicateStrip({
   );
 }
 
+const VERDICT_LABEL: Record<SiteVerdict, string> = {
+  same: "Same site",
+  different: "Different",
+  unsure: "Unsure",
+};
+
 // The write-time resolver's adjudication console: what got flagged AS IT WAS
 // WRITTEN (eq-shell 0179), not an after-the-fact scan. Leads with the count —
-// that number is "duplicates the system caught before they were born".
-function SiteAdvisoryPanel({ summary }: { summary: SiteAdvisorySummary }): JSX.Element {
+// that number is "duplicates the system caught before they were born". Each
+// flagged row is adjudicable: the human's verdict (0183) is recorded as a
+// label, so the console is a decision surface, not just a report.
+function SiteAdvisoryPanel({
+  summary, onAdjudicate, saving, errors,
+}: {
+  summary: SiteAdvisorySummary;
+  onAdjudicate: (advisoryId: string, verdict: SiteVerdict) => void;
+  saving: Record<string, boolean>;
+  errors: Record<string, boolean>;
+}): JSX.Element {
   if (summary.total === 0) {
     return (
       <div className="eq-health-licence-strip">
@@ -493,13 +510,18 @@ function SiteAdvisoryPanel({ summary }: { summary: SiteAdvisorySummary }): JSX.E
             {summary.recent_count} in the last {summary.recent_days} days
           </span>
         )}
-        {summary.ambiguous > 0 && (
+        {summary.pending > 0 && (
           <span className="eq-health-badge eq-health-badge--info">
-            {summary.ambiguous} need a human
+            {summary.pending} need a human
+          </span>
+        )}
+        {summary.decided > 0 && (
+          <span className="eq-health-badge eq-health-badge--ok">
+            {summary.decided} adjudicated
           </span>
         )}
       </div>
-      <ul style={{ listStyle: "none", margin: "8px 0 0", padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+      <ul style={{ listStyle: "none", margin: "8px 0 0", padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
         {summary.items.slice(0, 8).map((it) => (
           <li key={it.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 13 }}>
             <span style={{ fontWeight: 500 }}>{it.candidate_name ?? it.candidate_code ?? "New site"}</span>
@@ -510,6 +532,38 @@ function SiteAdvisoryPanel({ summary }: { summary: SiteAdvisorySummary }): JSX.E
             <span className={`eq-health-badge eq-health-badge--${it.outcome === "match" ? "warning" : "info"}`}>
               {it.outcome === "match" ? "likely same" : "unsure"}
             </span>
+            {it.verdict ? (
+              <span style={{ fontSize: 12, fontWeight: 500, color: "var(--eq-ink-soft, #64748b)" }}>
+                · you said: {VERDICT_LABEL[it.verdict]}
+              </span>
+            ) : (
+              <span style={{ display: "inline-flex", gap: 4 }}>
+                {(["same", "different", "unsure"] as SiteVerdict[]).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    disabled={!!saving[it.id]}
+                    onClick={() => onAdjudicate(it.id, v)}
+                    title={`Record: ${VERDICT_LABEL[v]}`}
+                    style={{
+                      fontSize: 12,
+                      padding: "1px 8px",
+                      borderRadius: 6,
+                      border: "1px solid var(--eq-line, #e2e8f0)",
+                      background: "var(--eq-surface, #ffffff)",
+                      color: "var(--eq-ink, #1a1a2e)",
+                      cursor: saving[it.id] ? "default" : "pointer",
+                      opacity: saving[it.id] ? 0.5 : 1,
+                    }}
+                  >
+                    {VERDICT_LABEL[v]}
+                  </button>
+                ))}
+              </span>
+            )}
+            {errors[it.id] && (
+              <span style={{ fontSize: 12, color: "var(--eq-danger, #dc2626)" }}>couldn&rsquo;t save — try again</span>
+            )}
           </li>
         ))}
       </ul>
@@ -631,6 +685,8 @@ export function IntakeHealthHome({
   const [dupes,      setDupes]      = useState<DuplicateReport[] | null>(null);
   const [dupesBusy,  setDupesBusy]  = useState(false);
   const [advisory,   setAdvisory]   = useState<SiteAdvisorySummary | null>(null);
+  const [adjSaving,  setAdjSaving]  = useState<Record<string, boolean>>({});
+  const [adjErrors,  setAdjErrors]  = useState<Record<string, boolean>>({});
   const [decay,      setDecay]      = useState<DecaySummary[] | null>(null);
   const [decayBusy,  setDecayBusy]  = useState(false);
   const [loading,    setLoading]    = useState(false);
@@ -706,6 +762,57 @@ export function IntakeHealthHome({
 
     return () => { cancelled = true; };
   }, [supabase, resolvedTenantId]);
+
+  // Record a human verdict on a flagged row, then reflect it optimistically:
+  // the item shows the verdict and the pending/decided counts shift. If the
+  // write fails (e.g. a tenant not yet on migration 0183, so the RPC is
+  // missing) we flag it inline and leave the buttons — nothing else breaks.
+  const handleAdjudicate = useCallback(
+    async (advisoryId: string, verdict: SiteVerdict) => {
+      if (!supabase) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sb = supabase as any;
+      setAdjSaving((s) => ({ ...s, [advisoryId]: true }));
+      setAdjErrors((e) => {
+        if (!e[advisoryId]) return e;
+        const next = { ...e };
+        delete next[advisoryId];
+        return next;
+      });
+      try {
+        await adjudicateSiteAdvisory(sb, { advisoryId, verdict });
+        setAdvisory((prev) => {
+          if (!prev) return prev;
+          let wasPending = false;
+          const items = prev.items.map((it) => {
+            if (it.id !== advisoryId) return it;
+            wasPending = it.verdict == null;
+            return { ...it, verdict, decided_at: new Date().toISOString() };
+          });
+          return {
+            ...prev,
+            items,
+            decided: wasPending ? prev.decided + 1 : prev.decided,
+            pending: wasPending ? Math.max(0, prev.pending - 1) : prev.pending,
+          };
+        });
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[IntakeHealthHome] adjudicate failed:",
+          err instanceof Error ? err.message : err,
+        );
+        setAdjErrors((e) => ({ ...e, [advisoryId]: true }));
+      } finally {
+        setAdjSaving((s) => {
+          const next = { ...s };
+          delete next[advisoryId];
+          return next;
+        });
+      }
+    },
+    [supabase],
+  );
 
   if (!supabase) {
     return (
@@ -794,7 +901,12 @@ export function IntakeHealthHome({
       {advisory && (
         <div className="eq-health-strip-section">
           <span className="eq-health-section-label">Duplicates caught at the write</span>
-          <SiteAdvisoryPanel summary={advisory} />
+          <SiteAdvisoryPanel
+            summary={advisory}
+            onAdjudicate={handleAdjudicate}
+            saving={adjSaving}
+            errors={adjErrors}
+          />
         </div>
       )}
 
