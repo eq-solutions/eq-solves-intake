@@ -9,6 +9,8 @@ import {
   adjudicateSiteAdvisory,
   adjudicateDuplicateWithAI,
   makeEdgeFnCaller,
+  previewSiteMerge,
+  executeSiteMerge,
   decayCheck,
 } from "@eq/intake";
 import type {
@@ -20,6 +22,7 @@ import type {
   SiteAdvisoryItem,
   SiteVerdict,
   AiSiteVerdict,
+  SiteMergePreview,
   DecaySummary,
 } from "@eq/intake";
 import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
@@ -33,6 +36,8 @@ export interface IntakeHealthHomeProps {
   supabase?: SupabaseLikeClient | null;
   tenantId?: string;
   onEntityClick?: (entity: string) => void;
+  /** See IntakeModuleProps.canMergeSites — host-computed, manager-only by default. */
+  canMergeSites?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -482,6 +487,102 @@ const VERDICT_LABEL: Record<SiteVerdict, string> = {
   unsure: "Unsure",
 };
 
+function MergePanel({
+  item, canMerge, preview, previewBusy, mergeBusy, mergeErr, merged,
+  onPreview, onCancelPreview, onConfirm,
+}: {
+  item: SiteAdvisoryItem;
+  canMerge: boolean;
+  preview?: SiteMergePreview;
+  previewBusy: boolean;
+  mergeBusy: boolean;
+  mergeErr?: string;
+  merged?: { survivor_site_id: string; movedTotal: number };
+  onPreview: () => void;
+  onCancelPreview: () => void;
+  onConfirm: () => void;
+}): JSX.Element | null {
+  // Merge only makes sense once a human/AI has said "same" — matches the
+  // server-side gate (eq_site_merge_execute requires a recorded 'same' verdict).
+  if (item.verdict !== "same") return null;
+
+  if (!canMerge) {
+    return (
+      <span style={{ fontSize: 12, color: "var(--eq-ink-soft, #64748b)" }}>
+        Ask a manager to merge these
+      </span>
+    );
+  }
+
+  if (merged) {
+    return (
+      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--eq-ok, #16a34a)" }}>
+        ✓ Merged — {merged.movedTotal} row{merged.movedTotal === 1 ? "" : "s"} moved
+      </span>
+    );
+  }
+
+  if (preview) {
+    return (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12, color: "var(--eq-ink-soft, #64748b)" }}>
+          {preview.total_rows} row{preview.total_rows === 1 ? "" : "s"} across{" "}
+          {preview.tables.filter((t) => t.count > 0).length} table{preview.tables.filter((t) => t.count > 0).length === 1 ? "" : "s"}{" "}
+          will move into {preview.survivor_name ?? "the survivor site"}. The other row is retired, not deleted.
+        </span>
+        <button
+          type="button"
+          disabled={mergeBusy}
+          onClick={onConfirm}
+          style={{
+            fontSize: 12, padding: "1px 8px", borderRadius: 6,
+            border: "1px solid var(--eq-danger, #dc2626)",
+            background: "var(--eq-danger, #dc2626)", color: "#fff",
+            fontWeight: 600, cursor: mergeBusy ? "default" : "pointer",
+            opacity: mergeBusy ? 0.6 : 1,
+          }}
+        >
+          {mergeBusy ? "Merging…" : "Confirm merge"}
+        </button>
+        <button
+          type="button"
+          disabled={mergeBusy}
+          onClick={onCancelPreview}
+          style={{
+            fontSize: 12, padding: "1px 8px", borderRadius: 6,
+            border: "1px solid var(--eq-line, #e2e8f0)", background: "transparent",
+            color: "var(--eq-ink-soft, #64748b)", cursor: mergeBusy ? "default" : "pointer",
+          }}
+        >
+          Cancel
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <button
+        type="button"
+        disabled={previewBusy}
+        onClick={onPreview}
+        title="See exactly what will move before merging"
+        style={{
+          fontSize: 12, padding: "1px 8px", borderRadius: 6,
+          border: "1px solid var(--eq-line, #e2e8f0)", background: "transparent",
+          color: "var(--eq-ink, #1a1a2e)", cursor: previewBusy ? "default" : "pointer",
+          opacity: previewBusy ? 0.6 : 1,
+        }}
+      >
+        {previewBusy ? "Checking…" : "Preview merge"}
+      </button>
+      {mergeErr && (
+        <span style={{ fontSize: 12, color: "var(--eq-danger, #dc2626)" }}>{mergeErr}</span>
+      )}
+    </span>
+  );
+}
+
 // The write-time resolver's adjudication console: what got flagged AS IT WAS
 // WRITTEN (eq-shell 0179), not an after-the-fact scan. Leads with the count —
 // that number is "duplicates the system caught before they were born". Each
@@ -489,6 +590,8 @@ const VERDICT_LABEL: Record<SiteVerdict, string> = {
 // label, so the console is a decision surface, not just a report.
 function SiteAdvisoryPanel({
   summary, onAdjudicate, saving, errors, onAskAi, aiSuggest, aiBusy, aiErr,
+  canMergeSites, mergePreviews, mergePreviewBusy, mergeBusy, mergeErrors, merged,
+  onPreviewMerge, onCancelPreviewMerge, onConfirmMerge,
 }: {
   summary: SiteAdvisorySummary;
   onAdjudicate: (advisoryId: string, verdict: SiteVerdict) => void;
@@ -498,6 +601,15 @@ function SiteAdvisoryPanel({
   aiSuggest: Record<string, AiSiteVerdict>;
   aiBusy: Record<string, boolean>;
   aiErr: Record<string, boolean>;
+  canMergeSites?: boolean;
+  mergePreviews: Record<string, SiteMergePreview>;
+  mergePreviewBusy: Record<string, boolean>;
+  mergeBusy: Record<string, boolean>;
+  mergeErrors: Record<string, string>;
+  merged: Record<string, { survivor_site_id: string; movedTotal: number }>;
+  onPreviewMerge: (item: SiteAdvisoryItem) => void;
+  onCancelPreviewMerge: (advisoryId: string) => void;
+  onConfirmMerge: (item: SiteAdvisoryItem) => void;
 }): JSX.Element {
   if (summary.total === 0) {
     return (
@@ -541,9 +653,23 @@ function SiteAdvisoryPanel({
               {it.outcome === "match" ? "likely same" : "unsure"}
             </span>
             {it.verdict ? (
-              <span style={{ fontSize: 12, fontWeight: 500, color: "var(--eq-ink-soft, #64748b)" }}>
-                · you said: {VERDICT_LABEL[it.verdict]}
-              </span>
+              <>
+                <span style={{ fontSize: 12, fontWeight: 500, color: "var(--eq-ink-soft, #64748b)" }}>
+                  · you said: {VERDICT_LABEL[it.verdict]}
+                </span>
+                <MergePanel
+                  item={it}
+                  canMerge={!!canMergeSites}
+                  preview={mergePreviews[it.id]}
+                  previewBusy={!!mergePreviewBusy[it.id]}
+                  mergeBusy={!!mergeBusy[it.id]}
+                  mergeErr={mergeErrors[it.id]}
+                  merged={merged[it.id]}
+                  onPreview={() => onPreviewMerge(it)}
+                  onCancelPreview={() => onCancelPreviewMerge(it.id)}
+                  onConfirm={() => onConfirmMerge(it)}
+                />
+              </>
             ) : (
               <>
                 <span style={{ display: "inline-flex", gap: 4 }}>
@@ -712,6 +838,7 @@ export function IntakeHealthHome({
   supabase,
   tenantId,
   onEntityClick,
+  canMergeSites,
 }: IntakeHealthHomeProps): JSX.Element {
   const resolvedTenantId = tenantId ?? DEFAULT_TENANT_ID;
 
@@ -732,6 +859,11 @@ export function IntakeHealthHome({
   const [aiSuggest,  setAiSuggest]  = useState<Record<string, AiSiteVerdict>>({});
   const [aiBusy,     setAiBusy]     = useState<Record<string, boolean>>({});
   const [aiErr,      setAiErr]      = useState<Record<string, boolean>>({});
+  const [mergePreviews,     setMergePreviews]     = useState<Record<string, SiteMergePreview>>({});
+  const [mergePreviewBusy,  setMergePreviewBusy]  = useState<Record<string, boolean>>({});
+  const [mergeBusy,         setMergeBusy]         = useState<Record<string, boolean>>({});
+  const [mergeErrors,       setMergeErrors]       = useState<Record<string, string>>({});
+  const [merged,            setMerged]            = useState<Record<string, { survivor_site_id: string; movedTotal: number }>>({});
   const [decay,      setDecay]      = useState<DecaySummary[] | null>(null);
   const [decayBusy,  setDecayBusy]  = useState(false);
   const [loading,    setLoading]    = useState(false);
@@ -892,6 +1024,71 @@ export function IntakeHealthHome({
     [supabase],
   );
 
+  // Preview: fetch exactly what would move before the human confirms. Pure
+  // read (eq_site_merge_preview) — nothing changes until Confirm is tapped.
+  const handlePreviewMerge = useCallback(
+    async (item: SiteAdvisoryItem) => {
+      if (!supabase) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sb = supabase as any;
+      setMergeErrors((e) => {
+        if (!e[item.id]) return e;
+        const next = { ...e }; delete next[item.id]; return next;
+      });
+      setMergePreviewBusy((b) => ({ ...b, [item.id]: true }));
+      try {
+        const preview = await previewSiteMerge(sb, item.id);
+        setMergePreviews((p) => ({ ...p, [item.id]: preview }));
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("[IntakeHealthHome] merge preview failed:", err instanceof Error ? err.message : err);
+        setMergeErrors((e) => ({ ...e, [item.id]: err instanceof Error ? err.message : "couldn't preview" }));
+      } finally {
+        setMergePreviewBusy((b) => {
+          const next = { ...b }; delete next[item.id]; return next;
+        });
+      }
+    },
+    [supabase],
+  );
+
+  const handleCancelPreviewMerge = useCallback((advisoryId: string) => {
+    setMergePreviews((p) => {
+      if (!(advisoryId in p)) return p;
+      const next = { ...p }; delete next[advisoryId]; return next;
+    });
+  }, []);
+
+  // Execute: the write. Requires a preview to already be on screen (the human
+  // saw what would move) — mirrors the server-side precondition that a 'same'
+  // verdict must already be recorded.
+  const handleConfirmMerge = useCallback(
+    async (item: SiteAdvisoryItem) => {
+      if (!supabase) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sb = supabase as any;
+      setMergeErrors((e) => {
+        if (!e[item.id]) return e;
+        const next = { ...e }; delete next[item.id]; return next;
+      });
+      setMergeBusy((b) => ({ ...b, [item.id]: true }));
+      try {
+        const result = await executeSiteMerge(sb, { advisoryId: item.id });
+        const movedTotal = Object.values(result.moved).reduce((sum, n) => sum + n, 0);
+        setMerged((m) => ({ ...m, [item.id]: { survivor_site_id: result.survivor_site_id, movedTotal } }));
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("[IntakeHealthHome] merge execute failed:", err instanceof Error ? err.message : err);
+        setMergeErrors((e) => ({ ...e, [item.id]: err instanceof Error ? err.message : "merge failed" }));
+      } finally {
+        setMergeBusy((b) => {
+          const next = { ...b }; delete next[item.id]; return next;
+        });
+      }
+    },
+    [supabase],
+  );
+
   if (!supabase) {
     return (
       <section className="eq-health-home">
@@ -988,6 +1185,15 @@ export function IntakeHealthHome({
             aiSuggest={aiSuggest}
             aiBusy={aiBusy}
             aiErr={aiErr}
+            canMergeSites={canMergeSites}
+            mergePreviews={mergePreviews}
+            mergePreviewBusy={mergePreviewBusy}
+            mergeBusy={mergeBusy}
+            mergeErrors={mergeErrors}
+            merged={merged}
+            onPreviewMerge={handlePreviewMerge}
+            onCancelPreviewMerge={handleCancelPreviewMerge}
+            onConfirmMerge={handleConfirmMerge}
           />
         </div>
       )}
