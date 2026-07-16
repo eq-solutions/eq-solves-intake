@@ -72,6 +72,13 @@ export interface IntakeModuleProps {
     value: string | undefined,
     source: "suggested" | "free_text",
   ) => void;
+  /**
+   * Whether the caller may flag a Sites duplicate pair for merge review (e.g.
+   * from the Sites "Dupes" tab) — manager-only in eq-shell's role model. Only
+   * affects the EntityDrillDown Sites view; the flag RPC is also gated
+   * server-side, so this only controls whether the button renders.
+   */
+  canMergeSites?: boolean;
 }
 
 const INTO_EQ_ID = "into-eq";
@@ -189,6 +196,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
             tenantId={props.tenantId}
             initialMode="tidy"
             onBack={() => setDrillEntity(null)}
+            canMergeSites={props.canMergeSites}
           />
         ) : (
           <IntakeHealthHome

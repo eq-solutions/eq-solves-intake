@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { previewSiteMerge, executeSiteMerge } from "../src/merge-duplicate-sites.js";
+import { previewSiteMerge, executeSiteMerge, flagSitePairForMerge } from "../src/merge-duplicate-sites.js";
 import type { SupabaseLikeClient } from "../src/canonical/commit-canonical.js";
 
 function fakeClient(
@@ -107,5 +107,48 @@ describe("executeSiteMerge", () => {
       error: { message: "caller is not an active manager on this tenant" },
     }));
     await expect(executeSiteMerge(client, { advisoryId: "nope" })).rejects.toThrow(/not an active manager/);
+  });
+});
+
+describe("flagSitePairForMerge", () => {
+  it("calls the flag-pair RPC with the mapped params", async () => {
+    let seen: { name: string; params: Record<string, unknown> } = { name: "", params: {} };
+    const client = fakeClient((name, params) => {
+      seen = { name, params };
+      return { data: { advisory_id: "a9", already_flagged: false }, error: null };
+    });
+    const res = await flagSitePairForMerge(client, { survivorSiteId: "s-survivor", loserSiteId: "s-loser" });
+    expect(seen.name).toBe("eq_site_advisory_flag_pair");
+    expect(seen.params.p_survivor_id).toBe("s-survivor");
+    expect(seen.params.p_loser_id).toBe("s-loser");
+    expect(res.advisoryId).toBe("a9");
+    expect(res.alreadyFlagged).toBe(false);
+  });
+
+  it("surfaces an already-flagged pair as idempotent, not an error", async () => {
+    const client = fakeClient(() => ({
+      data: { advisory_id: "a5", already_flagged: true },
+      error: null,
+    }));
+    const res = await flagSitePairForMerge(client, { survivorSiteId: "s1", loserSiteId: "s2" });
+    expect(res.advisoryId).toBe("a5");
+    expect(res.alreadyFlagged).toBe(true);
+  });
+
+  it("defaults missing fields when the RPC returns a bare object", async () => {
+    const client = fakeClient(() => ({ data: {}, error: null }));
+    const res = await flagSitePairForMerge(client, { survivorSiteId: "s1", loserSiteId: "s2" });
+    expect(res.advisoryId).toBe("");
+    expect(res.alreadyFlagged).toBe(false);
+  });
+
+  it("throws on RPC error (e.g. caller is not an active manager)", async () => {
+    const client = fakeClient(() => ({
+      data: null,
+      error: { message: "caller is not an active manager on this tenant" },
+    }));
+    await expect(
+      flagSitePairForMerge(client, { survivorSiteId: "s1", loserSiteId: "s2" }),
+    ).rejects.toThrow(/not an active manager/);
   });
 });

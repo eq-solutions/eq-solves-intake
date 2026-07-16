@@ -4,6 +4,7 @@ import {
   runTidyPass,
   commitTidyFixes,
   suggestGaps,
+  flagSitePairForMerge,
 } from "@eq/intake";
 import type {
   CanonicalFetchClient,
@@ -30,6 +31,13 @@ export interface EntityDrillDownProps {
   initialMode?: FilterMode;
   onBack?: () => void;
   onBulkFix?: (csvBlob: Blob, filename: string) => void;
+  /**
+   * Whether the caller may flag a Sites duplicate pair for merge review (same
+   * role model as IntakeModuleProps.canMergeSites — manager-only). Only used
+   * when entity === "sites"; ignored otherwise. The flag RPC is also gated
+   * server-side, so this only controls whether the button renders.
+   */
+  canMergeSites?: boolean;
 }
 
 type Row = Record<string, unknown>;
@@ -167,11 +175,17 @@ export function EntityDrillDown({
   initialMode,
   onBack,
   onBulkFix,
+  canMergeSites,
 }: EntityDrillDownProps): JSX.Element {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshCounter, setRefreshCounter] = useState(0);
+
+  // ── Flag-for-merge state (sites only) ──────────────────────────────────
+  const [flagBusy, setFlagBusy] = useState<Record<string, boolean>>({});
+  const [flagError, setFlagError] = useState<Record<string, string>>({});
+  const [flagged, setFlagged] = useState<Record<string, string>>({}); // groupKey -> advisoryId
 
   // Honour initialMode only if the entity supports that mode (e.g. "tidy"
   // needs a tidy entity mapping; fall back to "all" if not).
@@ -337,6 +351,79 @@ export function EntityDrillDown({
     }
     return m;
   }, [duplicateRows, filterMode]);
+
+  // ── Site pairs eligible for "Flag for merge" ────────────────────────────
+  // Only exact 2-row groups on the Sites entity — 3+ rows (e.g. the SY9
+  // shape) need a human to actually look, not an auto-picked survivor.
+  // Survivor heuristic: active beats inactive, then has-a-customer beats
+  // no-customer, then lower site_id wins (deterministic tie-break only —
+  // doesn't reflect real preference at that point). Matches the pattern
+  // already observed across SY3/SY4/SY5/SY6/SY7 on ehow.
+  const sitePairs = useMemo<Map<string, { survivorId: string; loserId: string }>>(() => {
+    const m = new Map<string, { survivorId: string; loserId: string }>();
+    if (entity !== "sites") return m;
+
+    const groups = new Map<string, DrillRow[]>();
+    for (const row of duplicateRows) {
+      const key = `${row._dupeField}:${row._dupeKey}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(row);
+    }
+
+    for (const [key, group] of groups) {
+      if (group.length !== 2) continue;
+      const [a, b] = group;
+      const score = (r: Row): [number, number] => [
+        r["active"] === true ? 1 : 0,
+        r["customer_id"] ? 1 : 0,
+      ];
+      const [aActive, aCust] = score(a);
+      const [bActive, bCust] = score(b);
+      let survivor = a;
+      let loser = b;
+      if (bActive !== aActive) {
+        if (bActive > aActive) { survivor = b; loser = a; }
+      } else if (bCust !== aCust) {
+        if (bCust > aCust) { survivor = b; loser = a; }
+      } else if (rowKey(entity, b) < rowKey(entity, a)) {
+        survivor = b; loser = a;
+      }
+      const survivorId = rowKey(entity, survivor);
+      const loserId = rowKey(entity, loser);
+      if (survivorId && loserId) m.set(key, { survivorId, loserId });
+    }
+
+    return m;
+  }, [duplicateRows, entity]);
+
+  const handleFlagPair = useCallback(
+    async (groupKey: string, survivorId: string, loserId: string) => {
+      if (!supabase || flagBusy[groupKey]) return;
+      setFlagBusy((prev) => ({ ...prev, [groupKey]: true }));
+      setFlagError((prev) => {
+        const next = { ...prev };
+        delete next[groupKey];
+        return next;
+      });
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const sb = supabase as any;
+        const res = await flagSitePairForMerge(sb, {
+          survivorSiteId: survivorId,
+          loserSiteId: loserId,
+        });
+        setFlagged((prev) => ({ ...prev, [groupKey]: res.advisoryId }));
+      } catch (err: unknown) {
+        setFlagError((prev) => ({
+          ...prev,
+          [groupKey]: err instanceof Error ? err.message : "Couldn't flag this pair.",
+        }));
+      } finally {
+        setFlagBusy((prev) => ({ ...prev, [groupKey]: false }));
+      }
+    },
+    [supabase, flagBusy],
+  );
 
   const displayRows = useMemo<DrillRow[]>(() => {
     if (filterMode === "gaps") return rows.filter((r) => rowHasGap(r, gapFields));
@@ -551,6 +638,64 @@ export function EntityDrillDown({
       });
     }
 
+    if (filterMode === "duplicates" && entity === "sites") {
+      cols.push({
+        key: "_merge",
+        header: "Merge",
+        sortable: false,
+        render: (row: DrillRow) => {
+          const groupKey = `${row._dupeField}:${row._dupeKey}`;
+          const pair = sitePairs.get(groupKey);
+          if (!pair) {
+            return <span className="eq-drill__dupe-hint">3+ possible matches — review manually</span>;
+          }
+          const rowId = rowKey(entity, row);
+          if (rowId !== pair.survivorId) {
+            // Only the survivor row carries the action; the loser row just
+            // says where it's headed so the pair doesn't show two buttons.
+            return <span className="eq-drill__dupe-hint">duplicate of survivor above</span>;
+          }
+
+          const advisoryId = flagged[groupKey];
+          if (advisoryId) {
+            return (
+              <span className="eq-drill__dupe-flagged">
+                ✓ Flagged{onBack ? " — " : ""}
+                {onBack && (
+                  <button type="button" className="eq-drill__suggest-btn" onClick={(e) => { e.stopPropagation(); onBack(); }}>
+                    review on Health tab
+                  </button>
+                )}
+              </span>
+            );
+          }
+
+          if (!canMergeSites) {
+            return <span className="eq-drill__dupe-hint">Ask a manager to flag this for merging</span>;
+          }
+
+          const busy = !!flagBusy[groupKey];
+          const err = flagError[groupKey];
+          return (
+            <span className="eq-drill__merge-cell">
+              <button
+                type="button"
+                className="eq-drill__suggest-btn"
+                disabled={busy}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleFlagPair(groupKey, pair.survivorId, pair.loserId);
+                }}
+              >
+                {busy ? "Flagging…" : "Flag for merge"}
+              </button>
+              {err && <span className="eq-drill__dupe-error">{err}</span>}
+            </span>
+          );
+        },
+      });
+    }
+
     if (filterMode === "gaps" && callEdgeFn) {
       cols.push({
         key: "_suggest",
@@ -584,6 +729,13 @@ export function EntityDrillDown({
     callEdgeFn,
     handleSuggest,
     entity,
+    sitePairs,
+    flagged,
+    flagBusy,
+    flagError,
+    canMergeSites,
+    handleFlagPair,
+    onBack,
   ]);
 
   // ── CSV download ──────────────────────────────────────────────────────
