@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { previewSiteMerge, executeSiteMerge, flagSitePairForMerge } from "../src/merge-duplicate-sites.js";
+import { previewSiteMerge, executeSiteMerge, flagSitePairForMerge, getSiteDupeUsage } from "../src/merge-duplicate-sites.js";
 import type { SupabaseLikeClient } from "../src/canonical/commit-canonical.js";
 
 function fakeClient(
@@ -150,5 +150,56 @@ describe("flagSitePairForMerge", () => {
     await expect(
       flagSitePairForMerge(client, { survivorSiteId: "s1", loserSiteId: "s2" }),
     ).rejects.toThrow(/not an active manager/);
+  });
+});
+
+describe("getSiteDupeUsage", () => {
+  it("returns [] immediately without calling the RPC for an empty id list", async () => {
+    const client = fakeClient(() => {
+      throw new Error("should not be called");
+    });
+    const res = await getSiteDupeUsage(client, []);
+    expect(res).toEqual({});
+  });
+
+  it("maps the RPC payload faithfully, including snake_case -> camelCase", async () => {
+    let seen: { name: string; params: Record<string, unknown> } = { name: "", params: {} };
+    const client = fakeClient((name, params) => {
+      seen = { name, params };
+      return {
+        data: {
+          "s-survivor": { assets: 499, quotes: 2, contract_scopes: 10, jobs: 0, maintenance_checks: 0, total: 511 },
+          "s-loser": { assets: 0, quotes: 0, contract_scopes: 0, jobs: 0, maintenance_checks: 0, total: 0 },
+        },
+        error: null,
+      };
+    });
+    const res = await getSiteDupeUsage(client, ["s-survivor", "s-loser"]);
+    expect(seen.name).toBe("eq_site_dupe_usage");
+    expect(seen.params.p_site_ids).toEqual(["s-survivor", "s-loser"]);
+    expect(res["s-survivor"]).toEqual({
+      assets: 499, quotes: 2, contractScopes: 10, jobs: 0, maintenanceChecks: 0, total: 511,
+    });
+    expect(res["s-loser"].total).toBe(0);
+  });
+
+  it("defaults missing usage fields to zero", async () => {
+    const client = fakeClient(() => ({ data: { "s1": {} }, error: null }));
+    const res = await getSiteDupeUsage(client, ["s1"]);
+    expect(res["s1"]).toEqual({
+      assets: 0, quotes: 0, contractScopes: 0, jobs: 0, maintenanceChecks: 0, total: 0,
+    });
+  });
+
+  it("omits ids the RPC dropped (outside the caller's tenant)", async () => {
+    const client = fakeClient(() => ({ data: { "s1": { total: 3 } }, error: null }));
+    const res = await getSiteDupeUsage(client, ["s1", "s2"]);
+    expect(res["s1"].total).toBe(3);
+    expect(res["s2"]).toBeUndefined();
+  });
+
+  it("throws on RPC error", async () => {
+    const client = fakeClient(() => ({ data: null, error: { message: "no tenant in caller JWT" } }));
+    await expect(getSiteDupeUsage(client, ["s1"])).rejects.toThrow(/no tenant/);
   });
 });

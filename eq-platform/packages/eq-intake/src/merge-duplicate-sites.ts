@@ -59,6 +59,15 @@ export interface SiteFlagPairResult {
   alreadyFlagged: boolean;
 }
 
+export interface SiteDupeUsage {
+  assets:             number;
+  quotes:             number;
+  contractScopes:     number;
+  jobs:               number;
+  maintenanceChecks:  number;
+  total:              number;
+}
+
 // ---------------------------------------------------------------------------
 // Public: previewSiteMerge
 //
@@ -165,4 +174,51 @@ export async function flagSitePairForMerge(
     advisoryId:     d.advisory_id ?? '',
     alreadyFlagged: d.already_flagged ?? false,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Public: getSiteDupeUsage
+//
+// Decision support for the Dupes tab: for a batch of site ids, returns real
+// row counts (assets/quote/contract_scopes/jobs/maintenance_checks) from
+// eq_site_dupe_usage (eq-shell 0187) — a fast triage subset of the full
+// 26-table sweep behind previewSiteMerge, deep enough to tell a real site
+// apart from an empty shell without a human hand-querying five tables per
+// candidate (the SY9 case: the "expected wrong" active row actually held
+// every real record). Pure read, writes nothing. Sites outside the caller's
+// tenant, or with zero usage anywhere, are simply absent from the result map
+// rather than erroring — callers should default missing ids to zero usage.
+// ---------------------------------------------------------------------------
+
+export async function getSiteDupeUsage(
+  supabase: SupabaseLikeClient,
+  siteIds: string[],
+): Promise<Record<string, SiteDupeUsage>> {
+  if (siteIds.length === 0) return {};
+
+  const { data, error } = await (supabase as unknown as {
+    rpc: (name: string, params: unknown) => Promise<{ data: unknown; error: { message: string } | null }>;
+  }).rpc('eq_site_dupe_usage', { p_site_ids: siteIds });
+
+  if (error) {
+    throw new Error(`getSiteDupeUsage: ${error.message}`);
+  }
+
+  const raw = (data ?? {}) as Record<string, Partial<Record<
+    'assets' | 'quotes' | 'contract_scopes' | 'jobs' | 'maintenance_checks' | 'total',
+    number
+  >>>;
+
+  const out: Record<string, SiteDupeUsage> = {};
+  for (const [id, u] of Object.entries(raw)) {
+    out[id] = {
+      assets:            u.assets ?? 0,
+      quotes:            u.quotes ?? 0,
+      contractScopes:    u.contract_scopes ?? 0,
+      jobs:              u.jobs ?? 0,
+      maintenanceChecks: u.maintenance_checks ?? 0,
+      total:             u.total ?? 0,
+    };
+  }
+  return out;
 }
