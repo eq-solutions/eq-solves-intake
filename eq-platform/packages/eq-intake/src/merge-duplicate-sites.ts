@@ -54,6 +54,11 @@ export interface SiteMergeResult {
   moved:            Record<string, number>;
 }
 
+export interface SiteFlagPairResult {
+  advisoryId:     string;
+  alreadyFlagged: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Public: previewSiteMerge
 //
@@ -122,5 +127,42 @@ export async function executeSiteMerge(
     survivor_site_id: d.survivor_site_id ?? '',
     loser_site_id:    d.loser_site_id ?? '',
     moved:            d.moved ?? {},
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Public: flagSitePairForMerge
+//
+// The entry point for duplicates the write-time resolver never saw — e.g. two
+// rows the generic Sites "Dupes" tab (name-match, read-only) finds that predate
+// 0179 or never triggered a write. Calls eq_site_advisory_flag_pair (eq-shell
+// 0186): manager-gated, same bar as executeSiteMerge, computes real similarity
+// signals between the two named rows and creates a site_resolution_advisory
+// row — the SAME shape 0179's trigger would have logged — so the existing
+// Same/Different/Unsure -> Preview -> Confirm flow picks it up unchanged.
+// Idempotent: flagging the same pair twice returns the existing advisory
+// instead of creating a duplicate. Does NOT set a verdict or merge anything —
+// a human still has to click Same before Preview/Confirm becomes reachable.
+// ---------------------------------------------------------------------------
+
+export async function flagSitePairForMerge(
+  supabase: SupabaseLikeClient,
+  input: { survivorSiteId: string; loserSiteId: string },
+): Promise<SiteFlagPairResult> {
+  const { data, error } = await (supabase as unknown as {
+    rpc: (name: string, params: unknown) => Promise<{ data: unknown; error: { message: string } | null }>;
+  }).rpc('eq_site_advisory_flag_pair', {
+    p_survivor_id: input.survivorSiteId,
+    p_loser_id:    input.loserSiteId,
+  });
+
+  if (error) {
+    throw new Error(`flagSitePairForMerge: ${error.message}`);
+  }
+
+  const d = (data ?? {}) as { advisory_id?: string; already_flagged?: boolean };
+  return {
+    advisoryId:     d.advisory_id ?? '',
+    alreadyFlagged: d.already_flagged ?? false,
   };
 }

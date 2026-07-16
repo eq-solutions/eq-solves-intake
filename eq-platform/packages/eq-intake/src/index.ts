@@ -144,11 +144,12 @@ export type { EdgeFnCaller, EdgeFnResponse } from "./ai-client.js";
 export { adjudicateDuplicateWithAI } from "./adjudicate-duplicate-ai.js";
 export type { SiteAdjudicationInput, AiSiteVerdict } from "./adjudicate-duplicate-ai.js";
 
-export { previewSiteMerge, executeSiteMerge } from "./merge-duplicate-sites.js";
+export { previewSiteMerge, executeSiteMerge, flagSitePairForMerge } from "./merge-duplicate-sites.js";
 export type {
   SiteMergeTableCount,
   SiteMergePreview,
   SiteMergeResult,
+  SiteFlagPairResult,
 } from "./merge-duplicate-sites.js";
 
 export { suggestGaps } from "./gap-suggest.js";
