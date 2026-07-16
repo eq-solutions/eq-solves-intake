@@ -203,6 +203,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
             supabase={props.supabase}
             tenantId={props.tenantId}
             onEntityClick={(e) => setDrillEntity(e)}
+            canMergeSites={props.canMergeSites}
           />
         )
       ) : mode === "queue" ? (
