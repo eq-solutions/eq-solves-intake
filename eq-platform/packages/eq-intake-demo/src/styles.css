@@ -3606,6 +3606,10 @@ button.eq-primary:hover {
 .eq-drill__cell-empty { color: var(--eq-muted); }
 /* Duplicate mode */
 .eq-drill__dupe-badge { display: inline-flex; align-items: center; padding: 2px 8px; background: var(--eq-ice); color: var(--eq-deep); border-radius: 4px; font-size: 11px; font-weight: 500; letter-spacing: 0.02em; }
+.eq-drill__merge-cell { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.eq-drill__dupe-hint { font-size: 12px; color: var(--eq-muted); }
+.eq-drill__dupe-flagged { font-size: 12px; color: var(--eq-deep); display: inline-flex; align-items: center; gap: 4px; }
+.eq-drill__dupe-error { font-size: 11px; color: var(--eq-warn); }
 /* Inline edit controls (same as before) */
 .eq-drill__inline-edit { display: flex; gap: 4px; align-items: center; }
 .eq-drill__inline-input { border: 1px solid var(--eq-sky); border-radius: 4px; padding: 3px 6px; font-size: 13px; width: 140px; }
