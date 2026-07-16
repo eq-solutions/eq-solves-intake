@@ -28,7 +28,8 @@
     "@eq/confirm-ui": "workspace:*",
     "@eq/intake": "workspace:*",
     "@eq/schemas": "workspace:*",
-    "@eq/validation": "workspace:*"
+    "@eq/validation": "workspace:*",
+    "@fontsource/plus-jakarta-sans": "^5.2.8"
   },
   "peerDependencies": {
     "react": ">=18.0.0",
