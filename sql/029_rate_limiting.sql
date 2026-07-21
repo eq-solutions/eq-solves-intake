@@ -22,6 +22,17 @@
 --
 -- This is a soft guard. A legitimate user won't hit 50 imports/hour.
 -- A runaway script will be stopped.
+--
+-- SUPERSEDED (2026-07-21): the tenant_isolation policy below still shows the
+-- original user_metadata-keyed version (SEC-2 in eq-context/ops/security-
+-- register.md). This file is a pre-port staging copy, never self-serve
+-- applyable to live planes (see this repo's CLAUDE.md, Rule 2) — the actual
+-- fix shipped in eq-shell's canonical tenant-migrations lineage:
+-- 0023_intake_infra.sql (the original SKS→canonical port, keyed on
+-- app_metadata from the start) and 0178_intake_rate_limit_harden.sql (later
+-- hardening). Both live tenant planes (zaap, ehow) confirmed app_metadata-
+-- keyed as of 2026-07-21. Left as-is below for historical accuracy — don't
+-- treat this file as the live definition.
 -- =============================================================================
 
 -- ── Table ───────────────────────────────────────────────────────────────────
