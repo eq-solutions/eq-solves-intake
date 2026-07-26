@@ -1,7 +1,38 @@
 # EQ Intake — What Got Built
 
-> Last updated: 2026-05-29
-> All work merged to main across two repos: `eq-intake` and `eq-solves-service`.
+> Originally written: 2026-05-29 (canonical-layer sprint series, eq-intake + eq-solves-service).
+> Annotated: 2026-07-26 — the body below is left as the original point-in-time record; see
+> "Since this was written" for what's shipped in eq-intake specifically since. For anything
+> current, `eq-context/eq/changelog/eq-intake.md` is the live source of truth, not this file.
+
+---
+
+## Since this was written (2026-06 → 2026-07)
+
+The intake demo app (`@eq/intake-demo`) grew a whole adjudication layer on top of the canonical
+spine this doc describes — none of it existed on 2026-05-29:
+
+- **Write-time site duplicate resolver** — a `BEFORE INSERT` trigger flags likely-duplicate site
+  writes as they happen, not after a scan (eq-shell migration 0179).
+- **Adjudication console** (Health tab, "Duplicates caught at the write") — a human records
+  Same/Different/Unsure against each flagged write; Claude can suggest a verdict + reason first.
+- **Site merge preview → execute** — once a "Same" verdict is recorded, a manager can preview
+  exactly what would move (row counts per table) before confirming a merge; the loser is retired,
+  never deleted.
+- **Sites Dupes tab** — usage-based survivor auto-pick (assets/quotes/contract-scopes/jobs
+  counts decide which duplicate row is real, not just active+has-customer), plus a manual
+  "Flag for merge" action feeding the same adjudication console.
+- **Remediation queue** (Queue tab) — the data steward's review surface for anything the system
+  can't defensibly auto-fix, with full audit lineage through `eq_intake_events`.
+- **Ask tab** — natural-language queries over canonical data via the `eq-ai-assist` Edge Function.
+- **Health tab polish (PR #76, 2026-07-26)** — tab pending-count badges, progressive section
+  loading instead of one all-or-nothing spinner, an un-capped duplicates list, and Ask questions
+  now carry their filters into the entity drill-down instead of dropping them.
+- **Security/hardening**: `xlsx@0.18.5` migrated to `exceljs` (known CVE); basic CI (install,
+  typecheck, build, test) added for the whole `eq-platform` monorepo; the duplicate detector's
+  SY9 blind spot (it silently skipped inactive rows) fixed.
+- `sql/029_rate_limiting.sql` and `sql/032_api_audit_log.sql` below are now annotated as
+  superseded by the `app_metadata`-keyed RLS policy eq-shell actually ships — see those files.
 
 ---
 
@@ -11,7 +42,7 @@ The canonical layer is the product. EQ apps are replaceable interfaces that read
 
 ---
 
-## What is live and useful today
+## What is live and useful today (as of 2026-05-29 — see above for what's shipped since)
 
 ### Canonical Supabase (sks-canonical — ehowgjardagevnrluult)
 
