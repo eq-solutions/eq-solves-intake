@@ -12,13 +12,17 @@
 
 import { useState, type JSX } from "react";
 import { askCanonical } from "@eq/intake";
-import type { AskResult } from "@eq/intake";
+import type { AskResult, AskFilter } from "@eq/intake";
 import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
 
 export interface AskCanonicalProps {
   supabase?: SupabaseLikeClient | null;
-  /** Navigate into a specific entity's drill-down. */
-  onEntityClick?: (entity: string) => void;
+  /**
+   * Navigate into a specific entity's drill-down. filters/label (when passed)
+   * carry the question's own filters through, so the drill-down shows the
+   * rows that actually answered the question instead of every row.
+   */
+  onEntityClick?: (entity: string, filters?: AskFilter[], label?: string) => void;
 }
 
 const EXAMPLE_QUESTIONS = [
@@ -130,7 +134,7 @@ export function AskCanonical({ supabase, onEntityClick }: AskCanonicalProps): JS
               <button
                 type="button"
                 className="eq-intake-btn-ghost eq-ask-open-btn"
-                onClick={() => onEntityClick(result.intent.entity)}
+                onClick={() => onEntityClick(result.intent.entity, result.intent.filters, result.intent.description)}
               >
                 Open {result.intent.entity} →
               </button>

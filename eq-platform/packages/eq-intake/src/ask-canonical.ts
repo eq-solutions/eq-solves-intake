@@ -76,7 +76,10 @@ function applyFilter(row: Record<string, unknown>, f: AskFilter): boolean {
   }
 }
 
-function applyFilters(
+/** Exported so callers with their own row set (e.g. EntityDrillDown, re-applying
+ * an Ask question's filters after the user drills into an entity) can reuse
+ * the exact same filter semantics instead of reimplementing them. */
+export function applyFilters(
   rows: Record<string, unknown>[],
   filters: AskFilter[],
 ): Record<string, unknown>[] {

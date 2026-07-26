@@ -611,6 +611,11 @@ function SiteAdvisoryPanel({
   onCancelPreviewMerge: (advisoryId: string) => void;
   onConfirmMerge: (item: SiteAdvisoryItem) => void;
 }): JSX.Element {
+  // Hooks must run unconditionally — this state exists whether or not there's
+  // anything to show, so the "Watching — nothing flagged yet" early return
+  // below stays a valid early return rather than a Rules-of-Hooks violation.
+  const [expanded, setExpanded] = useState(false);
+
   if (summary.total === 0) {
     return (
       <div className="eq-health-licence-strip">
@@ -618,6 +623,10 @@ function SiteAdvisoryPanel({
       </div>
     );
   }
+
+  const VISIBLE_CAP = 8;
+  const visibleItems = expanded ? summary.items : summary.items.slice(0, VISIBLE_CAP);
+  const hiddenCount = summary.items.length - VISIBLE_CAP;
 
   return (
     <div>
@@ -642,7 +651,7 @@ function SiteAdvisoryPanel({
         )}
       </div>
       <ul style={{ listStyle: "none", margin: "8px 0 0", padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
-        {summary.items.slice(0, 8).map((it) => (
+        {visibleItems.map((it) => (
           <li key={it.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 13 }}>
             <span style={{ fontWeight: 500 }}>{it.candidate_name ?? it.candidate_code ?? "New site"}</span>
             <span aria-hidden="true" style={{ opacity: 0.5 }}>→</span>
@@ -735,6 +744,16 @@ function SiteAdvisoryPanel({
           </li>
         ))}
       </ul>
+      {hiddenCount > 0 && (
+        <button
+          type="button"
+          className="eq-intake-btn-ghost"
+          style={{ marginTop: 8 }}
+          onClick={() => setExpanded((e) => !e)}
+        >
+          {expanded ? "Show fewer" : `Show all ${summary.items.length}`}
+        </button>
+      )}
     </div>
   );
 }
@@ -1097,14 +1116,6 @@ export function IntakeHealthHome({
     );
   }
 
-  if (loading) {
-    return (
-      <section className="eq-health-home">
-        <div className="eq-health-loading">Checking your data…</div>
-      </section>
-    );
-  }
-
   if (error) {
     return (
       <section className="eq-health-home">
@@ -1147,17 +1158,29 @@ export function IntakeHealthHome({
   return (
     <section className="eq-health-home">
 
+      {/* The 5 checks run in parallel (Promise.allSettled) and already tolerate
+          each other failing independently — so each section below reveals
+          itself as its own data lands instead of waiting behind one big
+          spinner for the slowest of the five. */}
+      {loading && <p className="eq-health-loading-hint">Still checking a few things…</p>}
+
       {/* Composite score + 6 dimensions */}
       <div className="eq-health-top">
-        <ScoreRing composite={dims.composite} />
-        <div className="eq-health-dims">
-          <DimensionBar label="Compliance"     score={dims.compliance}     weight={`${WEIGHTS.compliance}%`} />
-          <DimensionBar label="Serviceability" score={dims.serviceability} weight={`${WEIGHTS.serviceability}%`} />
-          <DimensionBar label="Completeness"   score={dims.completeness}   weight={`${WEIGHTS.completeness}%`} />
-          <DimensionBar label="Validity"       score={dims.validity}       weight={`${WEIGHTS.validity}%`} />
-          <DimensionBar label="Consistency"    score={dims.consistency}    weight={`${WEIGHTS.consistency}%`} />
-          <DimensionBar label="Timeliness"     score={dims.timeliness}     weight={`${WEIGHTS.timeliness}%`} />
-        </div>
+        {scores !== null ? (
+          <>
+            <ScoreRing composite={dims.composite} />
+            <div className="eq-health-dims">
+              <DimensionBar label="Compliance"     score={dims.compliance}     weight={`${WEIGHTS.compliance}%`} />
+              <DimensionBar label="Serviceability" score={dims.serviceability} weight={`${WEIGHTS.serviceability}%`} />
+              <DimensionBar label="Completeness"   score={dims.completeness}   weight={`${WEIGHTS.completeness}%`} />
+              <DimensionBar label="Validity"       score={dims.validity}       weight={`${WEIGHTS.validity}%`} />
+              <DimensionBar label="Consistency"    score={dims.consistency}    weight={`${WEIGHTS.consistency}%`} />
+              <DimensionBar label="Timeliness"     score={dims.timeliness}     weight={`${WEIGHTS.timeliness}%`} />
+            </div>
+          </>
+        ) : (
+          <div className="eq-health-loading">Checking your data…</div>
+        )}
       </div>
 
       {/* Action queue */}
@@ -1199,11 +1222,13 @@ export function IntakeHealthHome({
       )}
 
       {/* Entity cards */}
-      <div className="eq-health-grid">
-        {(scores ?? []).map((hs) => (
-          <HealthCard key={hs.entity} hs={hs} onClick={onEntityClick} />
-        ))}
-      </div>
+      {scores !== null && (
+        <div className="eq-health-grid">
+          {scores.map((hs) => (
+            <HealthCard key={hs.entity} hs={hs} onClick={onEntityClick} />
+          ))}
+        </div>
+      )}
 
       {/* Licence strip */}
       {licences && (
