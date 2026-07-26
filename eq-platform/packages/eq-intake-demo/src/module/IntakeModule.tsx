@@ -21,7 +21,7 @@
  */
 
 import { useMemo, useState, useEffect, type JSX } from "react";
-import { type ParsedSheet } from "@eq/intake";
+import { type ParsedSheet, readSiteAdvisory, type AskFilter } from "@eq/intake";
 import { useIntakeBundle, roleLabel, ROLE_REGISTRY, type IntakeBundle } from "../shared/intake-bundle.js";
 import { IntakeDropZone } from "../shared/IntakeDropZone.js";
 import { MappingPreviewPanel } from "../shared/MappingPreviewPanel.js";
@@ -111,6 +111,11 @@ function defaultRouteLogger(
 
 type IntakeMode = "health" | "queue" | "import" | "reconcile" | "ask";
 
+function TabBadge({ count }: { count: number | null }): JSX.Element | null {
+  if (!count) return null;
+  return <span className="eq-intake-tab__badge">{count}</span>;
+}
+
 export function IntakeModule(props: IntakeModuleProps): JSX.Element {
   const onDestinationChange = useMemo(
     () => props.onDestinationChange ?? defaultRouteLogger,
@@ -121,11 +126,38 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
   const [destId, setDestId] = useState<string>(INTO_EQ_ID);
   const [mode, setMode] = useState<IntakeMode>("health");
   const [drillEntity, setDrillEntity] = useState<string | null>(null);
+  const [drillFilters, setDrillFilters] = useState<{ filters: AskFilter[]; label: string } | null>(null);
 
   // Reset drill-down when switching away from health tab
   useEffect(() => {
-    if (mode !== "health") setDrillEntity(null);
+    if (mode !== "health") { setDrillEntity(null); setDrillFilters(null); }
   }, [mode]);
+
+  // Lightweight tab badges — how much is waiting in Health (duplicates caught
+  // at the write, pending a human) and Queue (steward remediation items).
+  // Fetched once independent of each tab's own richer load, so the tab bar
+  // itself signals where attention is needed before you click in.
+  const [healthPending, setHealthPending] = useState<number | null>(null);
+  const [queuePending, setQueuePending] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!props.supabase) return;
+    let cancelled = false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = props.supabase as any;
+
+    readSiteAdvisory(sb)
+      .then((s) => { if (!cancelled) setHealthPending(s.pending); })
+      .catch(() => { /* non-critical — badge just stays hidden */ });
+
+    sb.rpc("eq_queue_list")
+      .then(({ data }: { data: unknown }) => {
+        if (!cancelled) setQueuePending(Array.isArray(data) ? data.length : null);
+      })
+      .catch(() => { /* non-critical — badge just stays hidden */ });
+
+    return () => { cancelled = true; };
+  }, [props.supabase]);
 
   const exportDest = useMemo(
     () => QUICK_DESTINATIONS.find((d) => `${QUICK_PREFIX}${d.id}` === destId),
@@ -149,6 +181,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
           onClick={() => setMode("health")}
         >
           Health
+          <TabBadge count={healthPending} />
         </button>
         <button
           type="button"
@@ -158,6 +191,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
           onClick={() => { setDrillEntity(null); setMode("queue"); }}
         >
           Queue
+          <TabBadge count={queuePending} />
         </button>
         <button
           type="button"
@@ -195,14 +229,16 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
             supabase={props.supabase}
             tenantId={props.tenantId}
             initialMode="tidy"
-            onBack={() => setDrillEntity(null)}
+            initialFilters={drillFilters?.filters}
+            initialFilterLabel={drillFilters?.label}
+            onBack={() => { setDrillEntity(null); setDrillFilters(null); }}
             canMergeSites={props.canMergeSites}
           />
         ) : (
           <IntakeHealthHome
             supabase={props.supabase}
             tenantId={props.tenantId}
-            onEntityClick={(e) => setDrillEntity(e)}
+            onEntityClick={(e) => { setDrillEntity(e); setDrillFilters(null); }}
             canMergeSites={props.canMergeSites}
           />
         )
@@ -211,7 +247,11 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
       ) : mode === "ask" ? (
         <AskCanonical
           supabase={props.supabase}
-          onEntityClick={(e) => { setDrillEntity(e); setMode("health"); }}
+          onEntityClick={(e, filters, label) => {
+            setDrillEntity(e);
+            setDrillFilters(filters && filters.length > 0 ? { filters, label: label ?? "" } : null);
+            setMode("health");
+          }}
         />
       ) : mode === "reconcile" ? (
         <ReconcileModule

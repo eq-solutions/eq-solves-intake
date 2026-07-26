@@ -156,7 +156,7 @@ export type {
 export { suggestGaps } from "./gap-suggest.js";
 export type { GapSuggestion, GapSuggestResult } from "./gap-suggest.js";
 
-export { askCanonical } from "./ask-canonical.js";
+export { askCanonical, applyFilters } from "./ask-canonical.js";
 export type {
   AskFilter,
   AskIntent,

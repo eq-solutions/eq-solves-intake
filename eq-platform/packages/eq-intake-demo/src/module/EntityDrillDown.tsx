@@ -6,6 +6,7 @@ import {
   suggestGaps,
   flagSitePairForMerge,
   getSiteDupeUsage,
+  applyFilters,
 } from "@eq/intake";
 import type {
   CanonicalFetchClient,
@@ -19,6 +20,7 @@ import type {
   GapSuggestion,
   EdgeFnCaller,
   SiteDupeUsage,
+  AskFilter,
 } from "@eq/intake";
 import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
 import { fieldLabel } from "../shared/entity-label.js";
@@ -31,6 +33,15 @@ export interface EntityDrillDownProps {
   tenantId?: string;
   /** Which filter tab to open on mount. Defaults to "all". */
   initialMode?: FilterMode;
+  /**
+   * Filters carried over from an Ask question (see AskCanonical's "Open
+   * {entity} →" button) — applied on top of whatever filterMode is active,
+   * so the drill-down actually shows the rows that answered the question
+   * instead of silently reverting to every row. Clearable in the header.
+   */
+  initialFilters?: AskFilter[];
+  /** Human-readable description of initialFilters, shown in the clearable chip. */
+  initialFilterLabel?: string;
   onBack?: () => void;
   onBulkFix?: (csvBlob: Blob, filename: string) => void;
   /**
@@ -175,6 +186,8 @@ export function EntityDrillDown({
   supabase,
   tenantId,
   initialMode,
+  initialFilters,
+  initialFilterLabel,
   onBack,
   onBulkFix,
   canMergeSites,
@@ -204,6 +217,9 @@ export function EntityDrillDown({
       : (initialMode ?? "all");
 
   const [filterMode, setFilterMode] = useState<FilterMode>(resolvedInitialMode);
+  const [askFilters, setAskFilters] = useState<AskFilter[] | null>(
+    initialFilters && initialFilters.length > 0 ? initialFilters : null,
+  );
   const [editState, setEditState] = useState<EditState | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [hasLocalEdits, setHasLocalEdits] = useState(false);
@@ -493,11 +509,16 @@ export function EntityDrillDown({
     [supabase, flagBusy],
   );
 
-  const displayRows = useMemo<DrillRow[]>(() => {
+  const baseRows = useMemo<DrillRow[]>(() => {
     if (filterMode === "gaps") return rows.filter((r) => rowHasGap(r, gapFields));
     if (filterMode === "duplicates") return duplicateRows;
     return rows;
   }, [rows, filterMode, gapFields, duplicateRows]);
+
+  const displayRows = useMemo<DrillRow[]>(() => {
+    if (!askFilters || askFilters.length === 0) return baseRows;
+    return applyFilters(baseRows, askFilters) as DrillRow[];
+  }, [baseRows, askFilters]);
 
   const gapCount = useMemo(
     () => rows.filter((r) => rowHasGap(r, gapFields)).length,
@@ -897,11 +918,13 @@ export function EntityDrillDown({
   }
 
   const emptyMsg =
-    filterMode === "gaps"
-      ? `No gaps found — all ${formatLabel(entity).toLowerCase()} records are complete.`
-      : filterMode === "duplicates"
-        ? `No duplicates detected in ${formatLabel(entity).toLowerCase()}.`
-        : `No ${entity} records found — import some via the Import tab.`;
+    askFilters && askFilters.length > 0 && baseRows.length > 0
+      ? "No records match your question within this filter — try Clear to see the rest."
+      : filterMode === "gaps"
+        ? `No gaps found — all ${formatLabel(entity).toLowerCase()} records are complete.`
+        : filterMode === "duplicates"
+          ? `No duplicates detected in ${formatLabel(entity).toLowerCase()}.`
+          : `No ${entity} records found — import some via the Import tab.`;
 
   return (
     <div className="eq-drill">
@@ -964,6 +987,18 @@ export function EntityDrillDown({
               </button>
             )}
           </div>
+          {askFilters && askFilters.length > 0 && (
+            <span className="eq-drill__ask-filter">
+              Filtered: {initialFilterLabel ?? "matches your question"}
+              <button
+                type="button"
+                className="eq-drill__ask-filter-clear"
+                onClick={() => setAskFilters(null)}
+              >
+                Clear
+              </button>
+            </span>
+          )}
           {filterMode !== "tidy" && (
             <button
               className="eq-drill__download"
