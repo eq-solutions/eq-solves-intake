@@ -507,16 +507,12 @@ function MergePanel({
   if (item.verdict !== "same") return null;
 
   if (!canMerge) {
-    return (
-      <span style={{ fontSize: 12, color: "var(--eq-ink-soft, #64748b)" }}>
-        Ask a manager to merge these
-      </span>
-    );
+    return <span className="eq-merge-panel__hint">Ask a manager to merge these</span>;
   }
 
   if (merged) {
     return (
-      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--eq-ok, #16a34a)" }}>
+      <span className="eq-merge-panel__done">
         ✓ Merged — {merged.movedTotal} row{merged.movedTotal === 1 ? "" : "s"} moved
       </span>
     );
@@ -524,8 +520,8 @@ function MergePanel({
 
   if (preview) {
     return (
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 12, color: "var(--eq-ink-soft, #64748b)" }}>
+      <span className="eq-merge-panel__preview">
+        <span className="eq-merge-panel__preview-text">
           {preview.total_rows} row{preview.total_rows === 1 ? "" : "s"} across{" "}
           {preview.tables.filter((t) => t.count > 0).length} table{preview.tables.filter((t) => t.count > 0).length === 1 ? "" : "s"}{" "}
           will move into {preview.survivor_name ?? "the survivor site"}. The other row is retired, not deleted.
@@ -534,13 +530,7 @@ function MergePanel({
           type="button"
           disabled={mergeBusy}
           onClick={onConfirm}
-          style={{
-            fontSize: 12, padding: "1px 8px", borderRadius: 6,
-            border: "1px solid var(--eq-danger, #dc2626)",
-            background: "var(--eq-danger, #dc2626)", color: "#fff",
-            fontWeight: 600, cursor: mergeBusy ? "default" : "pointer",
-            opacity: mergeBusy ? 0.6 : 1,
-          }}
+          className="eq-merge-panel__confirm-btn"
         >
           {mergeBusy ? "Merging…" : "Confirm merge"}
         </button>
@@ -548,11 +538,7 @@ function MergePanel({
           type="button"
           disabled={mergeBusy}
           onClick={onCancelPreview}
-          style={{
-            fontSize: 12, padding: "1px 8px", borderRadius: 6,
-            border: "1px solid var(--eq-line, #e2e8f0)", background: "transparent",
-            color: "var(--eq-ink-soft, #64748b)", cursor: mergeBusy ? "default" : "pointer",
-          }}
+          className="eq-merge-panel__cancel-btn"
         >
           Cancel
         </button>
@@ -561,24 +547,17 @@ function MergePanel({
   }
 
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+    <span className="eq-merge-panel__actions">
       <button
         type="button"
         disabled={previewBusy}
         onClick={onPreview}
         title="See exactly what will move before merging"
-        style={{
-          fontSize: 12, padding: "1px 8px", borderRadius: 6,
-          border: "1px solid var(--eq-line, #e2e8f0)", background: "transparent",
-          color: "var(--eq-ink, #1a1a2e)", cursor: previewBusy ? "default" : "pointer",
-          opacity: previewBusy ? 0.6 : 1,
-        }}
+        className="eq-merge-panel__preview-btn"
       >
         {previewBusy ? "Checking…" : "Preview merge"}
       </button>
-      {mergeErr && (
-        <span style={{ fontSize: 12, color: "var(--eq-danger, #dc2626)" }}>{mergeErr}</span>
-      )}
+      {mergeErr && <span className="eq-merge-panel__err">{mergeErr}</span>}
     </span>
   );
 }
@@ -650,12 +629,12 @@ function SiteAdvisoryPanel({
           </span>
         )}
       </div>
-      <ul style={{ listStyle: "none", margin: "8px 0 0", padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+      <ul className="eq-advisory-list">
         {visibleItems.map((it) => (
-          <li key={it.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 13 }}>
-            <span style={{ fontWeight: 500 }}>{it.candidate_name ?? it.candidate_code ?? "New site"}</span>
-            <span aria-hidden="true" style={{ opacity: 0.5 }}>→</span>
-            <span style={{ color: "var(--eq-ink-soft, #64748b)" }}>
+          <li key={it.id} className="eq-advisory-item">
+            <span className="eq-advisory-item__name">{it.candidate_name ?? it.candidate_code ?? "New site"}</span>
+            <span aria-hidden="true" className="eq-advisory-item__arrow">→</span>
+            <span className="eq-advisory-item__matched">
               {it.matched_name ?? "existing site"}{it.matched_active === false ? " (retired)" : ""}
             </span>
             <span className={`eq-health-badge eq-health-badge--${it.outcome === "match" ? "warning" : "info"}`}>
@@ -663,7 +642,7 @@ function SiteAdvisoryPanel({
             </span>
             {it.verdict ? (
               <>
-                <span style={{ fontSize: 12, fontWeight: 500, color: "var(--eq-ink-soft, #64748b)" }}>
+                <span className="eq-advisory-item__verdict-note">
                   · you said: {VERDICT_LABEL[it.verdict]}
                 </span>
                 <MergePanel
@@ -681,7 +660,7 @@ function SiteAdvisoryPanel({
               </>
             ) : (
               <>
-                <span style={{ display: "inline-flex", gap: 4 }}>
+                <span className="eq-advisory-item__verdict-btns">
                   {(["same", "different", "unsure"] as SiteVerdict[]).map((v) => {
                     const suggested = aiSuggest[it.id]?.verdict === v;
                     return (
@@ -691,17 +670,7 @@ function SiteAdvisoryPanel({
                         disabled={!!saving[it.id]}
                         onClick={() => onAdjudicate(it.id, v)}
                         title={suggested ? `Claude suggests: ${VERDICT_LABEL[v]}` : `Record: ${VERDICT_LABEL[v]}`}
-                        style={{
-                          fontSize: 12,
-                          padding: "1px 8px",
-                          borderRadius: 6,
-                          border: suggested ? "1px solid var(--eq-sky, #3DA8D8)" : "1px solid var(--eq-line, #e2e8f0)",
-                          background: suggested ? "var(--eq-ice, #EAF5FB)" : "var(--eq-surface, #ffffff)",
-                          color: "var(--eq-ink, #1a1a2e)",
-                          fontWeight: suggested ? 700 : 400,
-                          cursor: saving[it.id] ? "default" : "pointer",
-                          opacity: saving[it.id] ? 0.5 : 1,
-                        }}
+                        className={`eq-advisory-item__verdict-btn${suggested ? " eq-advisory-item__verdict-btn--suggested" : ""}`}
                       >
                         {VERDICT_LABEL[v]}
                       </button>
@@ -709,8 +678,8 @@ function SiteAdvisoryPanel({
                   })}
                 </span>
                 {aiSuggest[it.id] ? (
-                  <span style={{ fontSize: 12, color: "var(--eq-ink-soft, #64748b)" }}>
-                    <span style={{ color: "var(--eq-deep, #2986B4)", fontWeight: 600 }}>✨ Claude:</span>{" "}
+                  <span className="eq-advisory-item__ai-reason">
+                    <span className="eq-advisory-item__ai-label">✨ Claude:</span>{" "}
                     {aiSuggest[it.id].reasoning}
                   </span>
                 ) : (
@@ -719,28 +688,15 @@ function SiteAdvisoryPanel({
                     onClick={() => onAskAi(it)}
                     disabled={!!aiBusy[it.id]}
                     title="Ask Claude for a suggested answer with a reason"
-                    style={{
-                      fontSize: 12,
-                      padding: "1px 8px",
-                      borderRadius: 6,
-                      border: "1px solid var(--eq-sky, #3DA8D8)",
-                      background: "transparent",
-                      color: "var(--eq-deep, #2986B4)",
-                      cursor: aiBusy[it.id] ? "default" : "pointer",
-                      opacity: aiBusy[it.id] ? 0.6 : 1,
-                    }}
+                    className="eq-advisory-item__ai-btn"
                   >
                     {aiBusy[it.id] ? "Asking Claude…" : "✨ Ask Claude"}
                   </button>
                 )}
-                {aiErr[it.id] && (
-                  <span style={{ fontSize: 12, color: "var(--eq-danger, #dc2626)" }}>AI unavailable</span>
-                )}
+                {aiErr[it.id] && <span className="eq-advisory-item__err">AI unavailable</span>}
               </>
             )}
-            {errors[it.id] && (
-              <span style={{ fontSize: 12, color: "var(--eq-danger, #dc2626)" }}>couldn&rsquo;t save — try again</span>
-            )}
+            {errors[it.id] && <span className="eq-advisory-item__err">couldn&rsquo;t save — try again</span>}
           </li>
         ))}
       </ul>
@@ -887,6 +843,11 @@ export function IntakeHealthHome({
   const [decayBusy,  setDecayBusy]  = useState(false);
   const [loading,    setLoading]    = useState(false);
   const [error,      setError]      = useState<string | null>(null);
+  // Bumped by the Refresh button to re-run the load effect on demand — the
+  // numbers here go stale after adjudicating/merging/approving elsewhere,
+  // and previously the only way to see updated ones was leaving the tab and
+  // coming back (which remounts the component).
+  const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => {
     if (!supabase) return;
@@ -957,7 +918,7 @@ export function IntakeHealthHome({
     });
 
     return () => { cancelled = true; };
-  }, [supabase, resolvedTenantId]);
+  }, [supabase, resolvedTenantId, refreshTick]);
 
   // Record a human verdict on a flagged row, then reflect it optimistically:
   // the item shows the verdict and the pending/decided counts shift. If the
@@ -1157,6 +1118,21 @@ export function IntakeHealthHome({
 
   return (
     <section className="eq-health-home">
+
+      {/* Re-runs the load effect on demand — the scores/counts below go stale
+          after adjudicating, merging, or approving a queue item elsewhere,
+          and the only other way to see updated ones is leaving this tab and
+          coming back. */}
+      <div className="eq-health-refresh-row">
+        <button
+          type="button"
+          className="eq-intake-btn-ghost"
+          onClick={() => setRefreshTick((t) => t + 1)}
+          disabled={loading}
+        >
+          {loading ? "Refreshing…" : "↻ Refresh"}
+        </button>
+      </div>
 
       {/* The 5 checks run in parallel (Promise.allSettled) and already tolerate
           each other failing independently — so each section below reveals
