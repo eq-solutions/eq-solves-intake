@@ -12,7 +12,7 @@
  * CSS classes are defined in styles.css under the .eq-reconcile namespace.
  */
 
-import { useState, useCallback, type JSX } from "react";
+import { useState, useCallback, useEffect, type JSX } from "react";
 import { parseFile, classifySheet, reconcileSheets, fetchCanonicalRows, scoreRows, normaliseAbn, normalisePhone, type ParsedSheet } from "@eq/intake";
 import type { ReconcileResult, ReconcileRow, Resolution, RowConfidence, EntityConfidenceSummary } from "@eq/intake";
 import {
@@ -29,6 +29,14 @@ import { entityLabel } from "../shared/entity-label.js";
 export interface ReconcileModuleProps {
   supabase?: SupabaseLikeClient | null;
   tenantId?: string;
+  /**
+   * Skip the drop zone and reconcile this already-classified sheet directly —
+   * used when invoked per-slot from Bring Data In (which already parsed +
+   * classified it) instead of as its own screen.
+   */
+  initialSlot?: { sheet: ParsedSheet; entity: string };
+  /** Present only in scoped (initialSlot) mode — closes this panel instead of resetting to an empty drop zone. */
+  onClose?: () => void;
 }
 
 const DEFAULT_TENANT_ID = "00000000-0000-4000-8000-000000000001";
@@ -63,9 +71,44 @@ function normaliseRow(entity: string, row: Record<string, unknown>): Record<stri
   return r;
 }
 
-export function ReconcileModule({ supabase, tenantId }: ReconcileModuleProps): JSX.Element {
+export function ReconcileModule({ supabase, tenantId, initialSlot, onClose }: ReconcileModuleProps): JSX.Element {
   const [step, setStep] = useState<Step>({ tag: "idle" });
   const [resolutions, setResolutions] = useState<Map<number, Resolution>>(new Map());
+  const finish = onClose ?? (() => { setStep({ tag: "idle" }); setResolutions(new Map()); });
+
+  // Scoped invocation (per-slot from Bring Data In): the sheet is already
+  // parsed + classified, so skip straight to fetch-canonical + reconcile —
+  // no drop zone, and no re-deriving a classification that might disagree
+  // with what the slot card already showed.
+  useEffect(() => {
+    if (!initialSlot) return;
+    let cancelled = false;
+    (async () => {
+      setStep({ tag: "loading", label: `Fetching ${entityLabel(initialSlot.entity)} from canonical…` });
+      let canonicalRows: Record<string, unknown>[] = [];
+      if (supabase) {
+        try {
+          canonicalRows = await fetchCanonicalRows(
+            supabase as unknown as Parameters<typeof fetchCanonicalRows>[0],
+            initialSlot.entity,
+          );
+        } catch {
+          canonicalRows = [];
+        }
+      }
+      if (cancelled) return;
+      setStep({ tag: "loading", label: "Reconciling…" });
+      const result = reconcileSheets(initialSlot.sheet, canonicalRows);
+      const scores = scoreRows(initialSlot.entity, result.onlyInSource.map((r) => r.sourceRow ?? {}));
+      if (cancelled) return;
+      setResolutions(new Map());
+      setStep({ tag: "ready", entity: initialSlot.entity, sheet: initialSlot.sheet, result, scores });
+    })().catch((e) => {
+      if (!cancelled) setStep({ tag: "error", message: e instanceof Error ? e.message : String(e) });
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSlot, supabase]);
 
   const handleFiles = useCallback(
     async (files: File[]) => {
@@ -192,20 +235,19 @@ export function ReconcileModule({ supabase, tenantId }: ReconcileModuleProps): J
     }
   }, [step, resolutions, supabase, tenantId]);
 
-  const reset = () => {
-    setStep({ tag: "idle" });
-    setResolutions(new Map());
-  };
-
   return (
     <section className="eq-reconcile">
-      <h2 className="eq-reconcile__title">Reconcile against canonical</h2>
-      <p className="eq-reconcile__subtitle">
-        Drop a file to see what's new, what conflicts with what's already in EQ,
-        and what already matches. Resolve conflicts before committing.
-      </p>
+      {!initialSlot && (
+        <>
+          <h2 className="eq-reconcile__title">Reconcile against canonical</h2>
+          <p className="eq-reconcile__subtitle">
+            Drop a file to see what's new, what conflicts with what's already in EQ,
+            and what already matches. Resolve conflicts before committing.
+          </p>
+        </>
+      )}
 
-      {(step.tag === "idle" || step.tag === "error") && (
+      {!initialSlot && (step.tag === "idle" || step.tag === "error") && (
         <ReconcileDropZone onFiles={handleFiles} />
       )}
 
@@ -233,7 +275,8 @@ export function ReconcileModule({ supabase, tenantId }: ReconcileModuleProps): J
           onSetResolution={setResolution}
           onResolveAll={resolveAll}
           onCommit={supabase ? handleCommit : undefined}
-          onReset={reset}
+          onReset={finish}
+          resetLabel={initialSlot ? "Close" : "Start over"}
         />
       )}
 
@@ -263,8 +306,8 @@ export function ReconcileModule({ supabase, tenantId }: ReconcileModuleProps): J
               </span>
             )}
           </div>
-          <button type="button" onClick={reset}>
-            Reconcile another file
+          <button type="button" onClick={finish}>
+            {initialSlot ? "Close" : "Reconcile another file"}
           </button>
         </div>
       )}
@@ -324,6 +367,7 @@ interface ReconcileReviewProps {
   onResolveAll: (resolution: Resolution) => void;
   onCommit?: () => void;
   onReset: () => void;
+  resetLabel?: string;
 }
 
 function ReconcileReview({
@@ -335,6 +379,7 @@ function ReconcileReview({
   onResolveAll,
   onCommit,
   onReset,
+  resetLabel = "Start over",
 }: ReconcileReviewProps): JSX.Element {
   const unresolvedCount = result.conflicts.filter(
     (_, i) => !resolutions.has(i),
@@ -470,7 +515,7 @@ function ReconcileReview({
           </span>
         )}
         <button type="button" onClick={onReset}>
-          Start over
+          {resetLabel}
         </button>
       </div>
     </div>

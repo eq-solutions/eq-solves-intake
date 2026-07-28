@@ -22,7 +22,7 @@
 
 import { useMemo, useState, useEffect, type JSX } from "react";
 import { type ParsedSheet, readSiteAdvisory, type AskFilter } from "@eq/intake";
-import { useIntakeBundle, roleLabel, ROLE_REGISTRY, type IntakeBundle } from "../shared/intake-bundle.js";
+import { useIntakeBundle, roleLabel, ROLE_REGISTRY, type IntakeBundle, type FileSlot } from "../shared/intake-bundle.js";
 import { IntakeDropZone } from "../shared/IntakeDropZone.js";
 import { MappingPreviewPanel } from "../shared/MappingPreviewPanel.js";
 import { RowsDisclosure } from "../shared/RowsDisclosure.js";
@@ -120,7 +120,7 @@ function defaultRouteLogger(
   }
 }
 
-type IntakeMode = "health" | "queue" | "import" | "reconcile" | "ask";
+type IntakeMode = "health" | "queue" | "import" | "ask";
 
 function TabBadge({ count }: { count: number | null }): JSX.Element | null {
   if (!count) return null;
@@ -138,6 +138,10 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
   const [mode, setMode] = useState<IntakeMode>("health");
   const [drillEntity, setDrillEntity] = useState<string | null>(null);
   const [drillFilters, setDrillFilters] = useState<{ filters: AskFilter[]; label: string } | null>(null);
+  // Bring Data In's per-slot "Check for conflicts" panel — which slot (by
+  // reference, see the render guard below) currently has ReconcileModule
+  // open inline, or null when closed.
+  const [reconcileSlot, setReconcileSlot] = useState<FileSlot | null>(null);
 
   // Reset drill-down when switching away from health tab
   useEffect(() => {
@@ -216,15 +220,6 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
         <button
           type="button"
           role="tab"
-          aria-selected={mode === "reconcile"}
-          className={"eq-intake-tab" + (mode === "reconcile" ? " eq-intake-tab--active" : "")}
-          onClick={() => { setDrillEntity(null); setMode("reconcile"); }}
-        >
-          Reconcile
-        </button>
-        <button
-          type="button"
-          role="tab"
           aria-selected={mode === "ask"}
           className={"eq-intake-tab" + (mode === "ask" ? " eq-intake-tab--active" : "")}
           onClick={() => { setDrillEntity(null); setMode("ask"); }}
@@ -264,20 +259,33 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
             setMode("health");
           }}
         />
-      ) : mode === "reconcile" ? (
-        <ReconcileModule
-          supabase={props.supabase}
-          tenantId={props.tenantId}
-        />
       ) : (
         <>
           <h2>Bring a file in</h2>
           <p>
-            Drop a SimPRO export — we'll work out what it is, then you choose where
+            Drop a file — we'll work out what it is, then you choose where
             it goes. One drop, no retyping.
           </p>
 
-          <IntakeDropZone bundle={bundle} />
+          <IntakeDropZone
+            bundle={bundle}
+            onCheckConflicts={(slot) => setReconcileSlot(slot)}
+          />
+
+          {/* Tracked by object reference, not index — removing an earlier
+              slot shifts indices, and a stale index could silently point at
+              the wrong file. bundle.slots.includes() drops the panel if the
+              slot it was opened for gets removed while open. */}
+          {reconcileSlot && bundle.slots.includes(reconcileSlot) && reconcileSlot.sheet && (
+            <div className="eq-intake-reconcile-panel">
+              <ReconcileModule
+                supabase={props.supabase}
+                tenantId={props.tenantId}
+                initialSlot={{ sheet: reconcileSlot.sheet, entity: reconcileSlot.role }}
+                onClose={() => setReconcileSlot(null)}
+              />
+            </div>
+          )}
 
           <FreeformIntakeInput ai={props.ai} />
 
@@ -307,7 +315,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
 
               <button
                 type="button"
-                onClick={() => bundle.reset()}
+                onClick={() => { bundle.reset(); setReconcileSlot(null); }}
                 disabled={bundle.busy}
                 className="eq-intake-btn-ghost"
               >

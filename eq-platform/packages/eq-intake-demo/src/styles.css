@@ -1629,6 +1629,16 @@ button.eq-primary:hover {
   color: var(--eq-err);
 }
 
+/* "Check for conflicts" action on a slot — compact, inline in the flex row */
+.eq-intake-slot__check {
+  flex-shrink: 0;
+  margin-top: 0;
+  padding: 5px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+  border-color: var(--eq-line);
+}
+
 /* Remove button on slot */
 .eq-intake-slot__remove {
   flex-shrink: 0;
