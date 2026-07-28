@@ -23,6 +23,7 @@ import {
   commitBundleToCanonical,
   inferMapping,
   type SupabaseLikeClient,
+  type StageCommitFn,
 } from "../src/canonical/commit-canonical.js";
 
 // ---------------------------------------------------------------------------
@@ -348,5 +349,112 @@ describe("commitBundleToCanonical — FK resolution between customer and contact
     const contactRows = (contactCommit?.params as { p_rows: Array<Record<string, unknown>> }).p_rows;
     const resolved = contactRows.find((r) => r.customer_id === "11111111-2222-4333-8444-555566667777");
     expect(resolved).toBeDefined();
+  });
+});
+
+describe("commitBundleToCanonical — stageCommit (the /intake vs /intake/core parity fix)", () => {
+  it("routes rows through stageCommit instead of the direct RPC when supplied", async () => {
+    const state: MockState = { rpcCalls: [] };
+    const supabase = makeMockSupabase(state);
+    const stageCalls: Array<{ table: string; entity: string; rows: unknown[] }> = [];
+    const stageCommit: StageCommitFn = async ({ table, entity, rows }) => {
+      stageCalls.push({ table, entity, rows });
+      return { committed_count: rows.length, committed_ids: rows.map((_, i) => `uuid-${i}`), staged_count: 0 };
+    };
+
+    const result = await commitBundleToCanonical({
+      supabase,
+      bundle: { customer: CUSTOMER_SHEET as never },
+      tenantId: TENANT,
+      stageCommit,
+    });
+
+    expect(result.bundleSuccess).toBe(true);
+    expect(result.perEntity[0]?.committedCount).toBe(1);
+    expect(result.perEntity[0]?.stagedCount).toBe(0);
+    expect(stageCalls).toHaveLength(1);
+    expect(stageCalls[0]?.table).toBe("customers");
+    // The direct RPC must never fire once stageCommit is supplied — that's
+    // the whole point of the fix (no bypass of the staging gate).
+    expect(state.rpcCalls.some((c) => c.name === "eq_intake_commit_batch")).toBe(false);
+    // intake-stage.ts finalises the event itself — the client must not
+    // stomp that by also calling eq_finish_intake_event on success.
+    expect(state.rpcCalls.some((c) => c.name === "eq_finish_intake_event")).toBe(false);
+  });
+
+  it("does not treat staged rows as committed, and still finalises the event on total staging", async () => {
+    const state: MockState = { rpcCalls: [] };
+    const supabase = makeMockSupabase(state);
+    const stageCommit: StageCommitFn = async ({ rows }) => ({
+      committed_count: 0,
+      committed_ids: [],
+      staged_count: rows.length,
+    });
+
+    const result = await commitBundleToCanonical({
+      supabase,
+      bundle: { customer: CUSTOMER_SHEET as never },
+      tenantId: TENANT,
+      stageCommit,
+    });
+
+    expect(result.perEntity[0]?.committedCount).toBe(0);
+    expect(result.perEntity[0]?.stagedCount).toBe(1);
+    // Not a failure — everything landing in review is expected behaviour,
+    // not an error state.
+    expect(result.bundleSuccess).toBe(true);
+    expect(result.perEntity[0]?.fatalError).toBeUndefined();
+  });
+
+  it("a fully-staged customer batch does not silently pass its FK to dependent contacts", async () => {
+    // The exact gap this fix closes: if a customer row is flagged/conflicting
+    // and parked for review instead of committed, a contact row in the same
+    // bundle referencing that customer must NOT sail through with a null
+    // customer_id — it must come back as an explicit, visible rejection.
+    const state: MockState = {
+      rpcCalls: [],
+      customerLookupRows: [], // nothing committed yet — customer is still pending review
+    };
+    const supabase = makeMockSupabase(state);
+    const stageCommit: StageCommitFn = async ({ entity, rows }) => {
+      if (entity === "customer") return { committed_count: 0, committed_ids: [], staged_count: rows.length };
+      return { committed_count: rows.length, committed_ids: rows.map((_, i) => `uuid-${i}`), staged_count: 0 };
+    };
+
+    const CONTACT_SHEET = {
+      sheetName: "csv",
+      headerRow: ["simPRO Contact ID", "simPRO Customer ID", "First Name", "Last Name", "Email"],
+      rows: [
+        {
+          "simPRO Contact ID": "100",
+          "simPRO Customer ID": "31",
+          "First Name": "Ben",
+          "Last Name": "Dunn",
+          "Email": "bdunn@ap.equinix.com",
+        },
+      ],
+      meta: {
+        encoding: "utf-8", delimiter: ",", totalRows: 1,
+        emptyRowsSkipped: 0, malformedRows: 0, malformed: [], bomDetected: false,
+      },
+    };
+
+    const result = await commitBundleToCanonical({
+      supabase,
+      bundle: { customer: CUSTOMER_SHEET as never, contact: CONTACT_SHEET as never },
+      tenantId: TENANT,
+      stageCommit,
+    });
+
+    // The customer FK lookup ran (map building isn't skipped just because
+    // nothing committed) and came back empty, so the contact never resolves.
+    const fkReadCall = state.rpcCalls.find((c) => c.name === "eq_read_customers_by_intake");
+    expect(fkReadCall).toBeDefined();
+
+    const contactResult = result.perEntity.find((r) => r.entity === "contact");
+    expect(contactResult).toBeDefined();
+    expect(contactResult?.committedCount).toBe(0);
+    expect(contactResult?.rejectedCount).toBeGreaterThan(0);
+    expect(contactResult?.rejectedRows[0]?.reasons.join(" ")).toMatch(/fk_no_match|no customer found/);
   });
 });

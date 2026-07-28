@@ -82,6 +82,8 @@ export interface EntityCommitResult {
   table: string;
   intakeId: string | null;
   committedCount: number;
+  /** Rows a stageCommit call parked for human review instead of writing. 0 when no stageCommit is configured. */
+  stagedCount: number;
   flaggedCount: number;
   rejectedCount: number;
   /** Per-row rejection reasons for the operator to see. */
@@ -91,6 +93,33 @@ export interface EntityCommitResult {
   /** If the whole entity commit failed (RPC error, network, etc.), the message. */
   fatalError?: string;
 }
+
+export interface StageCommitResult {
+  /** Rows that landed immediately — clean, no conflict, no domain-rule flag. */
+  committed_count: number;
+  committed_ids: string[];
+  /** Rows parked in the review queue instead of written. */
+  staged_count: number;
+}
+
+/**
+ * Host-supplied hook that routes a chunk of rows through the same
+ * pre-commit health/conflict gate the EQ Shell "per-domain" importer uses
+ * (netlify/functions/intake-stage.ts + app_data.eq_intake_staging) instead
+ * of writing straight to the canonical table. When omitted, commit falls
+ * back to the direct eq_intake_commit_batch RPC — no staging, no conflict
+ * check beyond what validate() already flagged client-side. The standalone
+ * Vite demo has no backend to stage against, so it never supplies this; the
+ * EQ Shell host does.
+ */
+export type StageCommitFn = (args: {
+  table: string;
+  entity: CanonicalEntity;
+  rows: Record<string, unknown>[];
+  intakeId: string;
+  schemaVersion: string;
+  sourceFilename?: string;
+}) => Promise<StageCommitResult>;
 
 export interface CommitOptions {
   supabase: SupabaseLikeClient;
@@ -106,7 +135,14 @@ export interface CommitOptions {
    */
   onProgress?: (msg: string) => void;
   /**
-   * Max rows per RPC call to the commit batch function. Defaults to 500.
+   * When supplied, rows are routed through this instead of the direct
+   * eq_intake_commit_batch RPC — see StageCommitFn.
+   */
+  stageCommit?: StageCommitFn;
+  /**
+   * Max rows per RPC call to the commit batch function. Defaults to 500 on
+   * the direct-RPC path. Ignored when stageCommit is set — that path chunks
+   * at intake-stage's own 10,000-row cap instead (see STAGE_CHUNK_SIZE).
    * Smaller chunks mean a mid-import failure loses at most chunkSize rows
    * rather than the entire entity. Increase only if the DB connection can
    * reliably handle larger payloads.
@@ -500,11 +536,18 @@ interface CommitOneEntityArgs {
   sourceFilename?: string;
   customerIdMap?: Map<string, string>;
   staffIdMap?: Map<string, string>;
-  /** Max rows per RPC call. Defaults to 500. */
+  /** Max rows per RPC call. Defaults to 500 on the direct-RPC path. */
   chunkSize?: number;
   /** Progress callback forwarded from CommitOptions. */
   onProgress?: (msg: string) => void;
+  /** Forwarded from CommitOptions — see StageCommitFn. */
+  stageCommit?: StageCommitFn;
 }
+
+// intake-stage.ts hard-caps a single call at 10,000 rows (see intake-stage.ts's
+// batch_too_large check). Chunk to that instead of the direct-RPC path's
+// smaller default — a stage call is meant to be one shot per entity.
+const STAGE_CHUNK_SIZE = 10_000;
 
 async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitResult> {
   const table = args.schema["x-eq-table"] ?? ENTITY_TABLE[args.entity];
@@ -528,6 +571,7 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
       table,
       intakeId: null,
       committedCount: 0,
+      stagedCount: 0,
       flaggedCount: 0,
       rejectedCount: args.sheet.rows.length,
       rejectedRows: [],
@@ -632,6 +676,7 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
       table,
       intakeId,
       committedCount: 0,
+      stagedCount: 0,
       flaggedCount: 0,
       rejectedCount: args.sheet.rows.length,
       rejectedRows: [],
@@ -663,6 +708,7 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
       table,
       intakeId,
       committedCount: 0,
+      stagedCount: 0,
       flaggedCount: validationResult.summary.flagged,
       rejectedCount: validationResult.summary.rejected + fkMissedRejections.length,
       rejectedRows: [
@@ -679,16 +725,18 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
     };
   }
 
-  // Chunked RPC calls — split toCommit into batches of chunkSize (default 500).
-  // A failure in one chunk emits those rows as rejected and continues with the
-  // remaining chunks, preserving partial progress instead of rolling back everything.
-  const CHUNK_SIZE = args.chunkSize ?? 500;
+  // Chunked calls — split toCommit into batches. A failure in one chunk emits
+  // those rows as rejected and continues with the remaining chunks,
+  // preserving partial progress instead of rolling back everything.
+  const useStaging = !!args.stageCommit;
+  const CHUNK_SIZE = useStaging ? STAGE_CHUNK_SIZE : (args.chunkSize ?? 500);
   const chunks: Record<string, unknown>[][] = [];
   for (let i = 0; i < toCommit.length; i += CHUNK_SIZE) {
     chunks.push(toCommit.slice(i, i + CHUNK_SIZE));
   }
 
   let committedCount = 0;
+  let stagedCount = 0;
   const chunkFailRejections: Array<{ source_row_index: number; reasons: string[] }> = [];
   let firstFatalError: string | undefined;
 
@@ -700,6 +748,35 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
       progress(
         `Saving ${table} — chunk ${ci + 1} of ${chunks.length} (${chunk.length} rows)…`,
       );
+    }
+
+    if (useStaging) {
+      // Route through the same health/conflict gate the per-domain importer
+      // uses instead of writing straight to the table — flagged/conflicting
+      // rows park in the review queue rather than committing unreviewed.
+      try {
+        const staged = await args.stageCommit!({
+          table,
+          entity: args.entity,
+          rows: chunk,
+          intakeId,
+          schemaVersion,
+          sourceFilename: args.sourceFilename,
+        });
+        committedCount += staged.committed_count;
+        stagedCount += staged.staged_count;
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        if (!firstFatalError) firstFatalError = message;
+        const startIdx = ci * CHUNK_SIZE;
+        for (let ri = 0; ri < chunk.length; ri++) {
+          chunkFailRejections.push({
+            source_row_index: remapIdx(startIdx + ri),
+            reasons: [`Stage call failed: ${message}`],
+          });
+        }
+      }
+      continue;
     }
 
     const { data, error } = await args.supabase.rpc("eq_intake_commit_batch", {
@@ -734,20 +811,29 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
   const totalRejected =
     validationResult.summary.rejected + fkMissedRejections.length + totalChunkRejected;
 
-  await finishIntakeEvent({
-    supabase: args.supabase,
-    intakeId,
-    status: firstFatalError && committedCount === 0 ? "failed" : "completed",
-    rowsCommitted: committedCount,
-    rowsFlagged: validationResult.summary.flagged,
-    rowsRejected: totalRejected,
-    errorMessage: firstFatalError,
-  });
+  // On the staging path, intake-stage.ts already finalised the event
+  // (status: pending_review or completed) as part of the call that
+  // succeeded — calling eq_finish_intake_event again here would stomp that
+  // with a stale "completed". Only finalise ourselves when either the
+  // direct-RPC path was used, or every stage call actually failed (so
+  // intake-stage never got a chance to finalise it).
+  if (!useStaging || (firstFatalError && committedCount === 0 && stagedCount === 0)) {
+    await finishIntakeEvent({
+      supabase: args.supabase,
+      intakeId,
+      status: firstFatalError && committedCount === 0 && stagedCount === 0 ? "failed" : "completed",
+      rowsCommitted: committedCount,
+      rowsFlagged: validationResult.summary.flagged,
+      rowsRejected: totalRejected,
+      errorMessage: firstFatalError,
+    });
+  }
 
   return {
     entity: args.entity,
     table,
     intakeId,
+    stagedCount,
     committedCount,
     flaggedCount: validationResult.summary.flagged,
     rejectedCount: totalRejected,
@@ -818,6 +904,7 @@ export async function commitBundleToCanonical(opts: CommitOptions): Promise<Comm
       staffIdMap,
       chunkSize: opts.chunkSize,
       onProgress: opts.onProgress,
+      stageCommit: opts.stageCommit,
     });
     perEntity.push(result);
 
@@ -829,12 +916,22 @@ export async function commitBundleToCanonical(opts: CommitOptions): Promise<Comm
     }
 
     const parts: string[] = [`${result.committedCount} saved`];
+    if (result.stagedCount > 0) parts.push(`${result.stagedCount} waiting for review`);
     if (result.flaggedCount > 0) parts.push(`${result.flaggedCount} need checking`);
     if (result.rejectedCount > 0) parts.push(`${result.rejectedCount} rejected`);
     progress(`${label.charAt(0).toUpperCase() + label.slice(1)} done — ${parts.join(", ")}.`);
 
-    // If we just committed customers, build the FK lookup for sites + contacts.
-    if (entity === "customer" && result.committedCount > 0 && result.intakeId) {
+    // Build the FK lookup for sites + contacts whenever any customer row was
+    // attempted — not just when some committed. On the staging path a batch
+    // can land entirely in review (committedCount 0, stagedCount > 0); if we
+    // skipped this, customerIdMap would stay undefined, resolveCustomerFk
+    // would never run for the dependent rows below, and their raw
+    // external_customer_id would reach validate() unresolved — where
+    // x-eq-system-managed on customer_id could let a null FK pass as valid.
+    // Building the map here (even when it comes back empty) keeps that gate
+    // in force, so unresolvable dependents get an explicit fk_no_match
+    // rejection instead of a silent null FK.
+    if (entity === "customer" && (result.committedCount > 0 || result.stagedCount > 0) && result.intakeId) {
       progress("Building customer links for sites and contacts…");
       try {
         customerIdMap = await buildCustomerIdMap(
@@ -854,8 +951,9 @@ export async function commitBundleToCanonical(opts: CommitOptions): Promise<Comm
       }
     }
 
-    // If we just committed staff, build the FK lookup for licences.
-    if (entity === "staff" && result.committedCount > 0 && result.intakeId) {
+    // Same reasoning as the customer map above — build it whenever staff was
+    // attempted, not just when some committed.
+    if (entity === "staff" && (result.committedCount > 0 || result.stagedCount > 0) && result.intakeId) {
       progress("Building staff links for licences…");
       try {
         staffIdMap = await buildStaffIdMap(opts.supabase, result.intakeId);
