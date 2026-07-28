@@ -5,7 +5,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 //
 // Deployed to: sks-canonical (ehowgjardagevnrluult)
 // Requires:    ANTHROPIC_API_KEY secret set on the project
-// Actions:     suggest_gaps | ask_canonical
+// Actions:     suggest_gaps | ask_canonical | adjudicate_duplicate
 // ---------------------------------------------------------------------------
 
 const CORS = {
@@ -36,6 +36,12 @@ interface AskIntent {
   filters:         Array<{ field: string; op: string; value?: unknown }>;
   display_columns: string[];
   description:     string;
+}
+
+interface AdjudicateVerdict {
+  verdict:    'same' | 'different' | 'unsure';
+  confidence: 'high' | 'medium' | 'low';
+  reasoning:  string;
 }
 
 // ---------------------------------------------------------------------------
@@ -158,6 +164,82 @@ Rules:
 }
 
 // ---------------------------------------------------------------------------
+// Action: adjudicate_duplicate
+//
+// The write-time site resolver (eq-shell 0179) flags new-site writes that look
+// like an existing site. This asks Claude to make the call a trigram matcher
+// can't — using real-world knowledge (abbreviations, org/trading names, address
+// equivalence, and the "same street address but a different tenancy" trap) —
+// and to return a plain-English reason a non-technical operator can confirm.
+// The verdict vocabulary matches the human buttons (same/different/unsure), so
+// the answer can pre-fill the console. It NEVER merges anything — it advises.
+// ---------------------------------------------------------------------------
+
+async function handleAdjudicateDuplicate(
+  apiKey: string,
+  payload: Record<string, unknown>,
+): Promise<AdjudicateVerdict> {
+  const siteA = payload['site_a'] as Record<string, unknown> ?? {};
+  const siteB = payload['site_b'] as Record<string, unknown> ?? {};
+
+  if (Object.keys(siteA).length === 0 || Object.keys(siteB).length === 0) {
+    throw new Error('adjudicate_duplicate requires both site_a and site_b');
+  }
+
+  const system = `You are an expert data steward for EQ, a field-service platform used by Australian trades businesses. Your job: decide whether two SITE records refer to the SAME real-world physical location, or two DIFFERENT ones.
+
+Reason with real-world knowledge a string matcher cannot:
+- Abbreviations, acronyms and trading names ("SVHN" = "St Vincent's Health Network"; "DC" ≈ "Distribution Centre"; "Bldg 2" = "Building 2").
+- Address equivalence ("8 Egerton St" = "8 Egerton Street"; "Cnr High & Main" = the same corner).
+- A shared address does NOT always mean the same site: distinct tenancies, units, levels, docks or buildings at one street address are DIFFERENT sites (e.g. "Level 2, 8 Egerton St" vs "Loading Dock, 8 Egerton St").
+- A reused or shared site CODE with clearly different names/addresses is a red flag, not proof — weigh the names and addresses, not the code alone.
+- If the two belong to different customers, lean toward different unless the address and name clearly say otherwise.
+
+Choose ONE verdict:
+- "same": confident they are the same physical site.
+- "different": confident they are distinct sites.
+- "unsure": you genuinely cannot tell from the given fields. Do NOT guess — prefer "unsure" over a low-confidence "same"/"different".
+
+Return ONLY a JSON object — no markdown, no text outside it:
+{"verdict": "same" | "different" | "unsure", "confidence": "high" | "medium" | "low", "reasoning": "<one plain-English sentence>"}
+
+The reasoning must be a single sentence, name the specific clue you used, and avoid technical jargon.`;
+
+  const user = `Site A (newly created):
+${JSON.stringify(siteA, null, 2)}
+
+Site B (existing record it resembles):
+${JSON.stringify(siteB, null, 2)}
+
+Are these the same real-world site?`;
+
+  const text = await anthropicMessage(apiKey, system, user);
+
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('Could not parse AI response as verdict JSON');
+
+  let parsed: Partial<AdjudicateVerdict>;
+  try {
+    parsed = JSON.parse(match[0]) as Partial<AdjudicateVerdict>;
+  } catch {
+    throw new Error('AI returned malformed JSON for adjudicate_duplicate');
+  }
+
+  // Coerce to the strict vocabulary; anything unexpected degrades to "unsure".
+  const verdict = parsed.verdict === 'same' || parsed.verdict === 'different'
+    ? parsed.verdict
+    : 'unsure';
+  const confidence = parsed.confidence === 'high' || parsed.confidence === 'medium'
+    ? parsed.confidence
+    : 'low';
+  const reasoning = typeof parsed.reasoning === 'string' && parsed.reasoning.trim()
+    ? parsed.reasoning.trim()
+    : 'No reason returned.';
+
+  return { verdict, confidence, reasoning };
+}
+
+// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 
@@ -197,6 +279,14 @@ Deno.serve(async (req: Request) => {
 
     if (action === 'ask_canonical') {
       const data = await handleAskCanonical(apiKey, payload);
+      return new Response(
+        JSON.stringify({ data, error: null }),
+        { headers: { ...CORS, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    if (action === 'adjudicate_duplicate') {
+      const data = await handleAdjudicateDuplicate(apiKey, payload);
       return new Response(
         JSON.stringify({ data, error: null }),
         { headers: { ...CORS, 'Content-Type': 'application/json' } },

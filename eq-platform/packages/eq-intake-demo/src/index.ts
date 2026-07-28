@@ -13,6 +13,13 @@
 export { IntakeModule } from "./module/IntakeModule.js";
 export type { IntakeModuleProps } from "./module/IntakeModule.js";
 
+// Stage-aware commit plug-point — a host that has its own staging/review-
+// queue endpoint (e.g. EQ Shell's /intake-stage) supplies this via
+// IntakeModuleProps.stageCommit so the module's "Into EQ" commit routes
+// flagged/conflicting rows through it instead of writing straight to the
+// canonical table.
+export type { StageCommitFn, StageCommitResult } from "./canonical/commit-canonical.js";
+
 // Lower-level pieces, re-exported in case a host wants to compose its own
 // arrangement (e.g. embed just the bundle flow without the tabs).
 export { RollupDropZone } from "./rollup/RollupDropZone.js";

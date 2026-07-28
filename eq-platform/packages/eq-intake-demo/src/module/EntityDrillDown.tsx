@@ -4,6 +4,9 @@ import {
   runTidyPass,
   commitTidyFixes,
   suggestGaps,
+  flagSitePairForMerge,
+  getSiteDupeUsage,
+  applyFilters,
 } from "@eq/intake";
 import type {
   CanonicalFetchClient,
@@ -16,6 +19,8 @@ import type {
   GapSuggestResult,
   GapSuggestion,
   EdgeFnCaller,
+  SiteDupeUsage,
+  AskFilter,
 } from "@eq/intake";
 import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
 import { fieldLabel } from "../shared/entity-label.js";
@@ -28,8 +33,24 @@ export interface EntityDrillDownProps {
   tenantId?: string;
   /** Which filter tab to open on mount. Defaults to "all". */
   initialMode?: FilterMode;
+  /**
+   * Filters carried over from an Ask question (see AskCanonical's "Open
+   * {entity} →" button) — applied on top of whatever filterMode is active,
+   * so the drill-down actually shows the rows that answered the question
+   * instead of silently reverting to every row. Clearable in the header.
+   */
+  initialFilters?: AskFilter[];
+  /** Human-readable description of initialFilters, shown in the clearable chip. */
+  initialFilterLabel?: string;
   onBack?: () => void;
   onBulkFix?: (csvBlob: Blob, filename: string) => void;
+  /**
+   * Whether the caller may flag a Sites duplicate pair for merge review (same
+   * role model as IntakeModuleProps.canMergeSites — manager-only). Only used
+   * when entity === "sites"; ignored otherwise. The flag RPC is also gated
+   * server-side, so this only controls whether the button renders.
+   */
+  canMergeSites?: boolean;
 }
 
 type Row = Record<string, unknown>;
@@ -165,13 +186,28 @@ export function EntityDrillDown({
   supabase,
   tenantId,
   initialMode,
+  initialFilters,
+  initialFilterLabel,
   onBack,
   onBulkFix,
+  canMergeSites,
 }: EntityDrillDownProps): JSX.Element {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshCounter, setRefreshCounter] = useState(0);
+
+  // ── Flag-for-merge state (sites only) ──────────────────────────────────
+  const [flagBusy, setFlagBusy] = useState<Record<string, boolean>>({});
+  const [flagError, setFlagError] = useState<Record<string, string>>({});
+  const [flagged, setFlagged] = useState<Record<string, string[]>>({}); // groupKey -> advisoryId[] (one per loser)
+
+  // ── Usage counts (sites duplicates only) — decision support for survivor
+  // pick. See eq-shell 0187: a fast triage subset of the full merge-preview
+  // sweep, deep enough to tell a real site from an empty shell (the SY9 case
+  // — the "expected wrong" active row actually held every real record).
+  const [usage, setUsage] = useState<Record<string, SiteDupeUsage>>({});
+  const [usageLoading, setUsageLoading] = useState(false);
 
   // Honour initialMode only if the entity supports that mode (e.g. "tidy"
   // needs a tidy entity mapping; fall back to "all" if not).
@@ -181,6 +217,9 @@ export function EntityDrillDown({
       : (initialMode ?? "all");
 
   const [filterMode, setFilterMode] = useState<FilterMode>(resolvedInitialMode);
+  const [askFilters, setAskFilters] = useState<AskFilter[] | null>(
+    initialFilters && initialFilters.length > 0 ? initialFilters : null,
+  );
   const [editState, setEditState] = useState<EditState | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [hasLocalEdits, setHasLocalEdits] = useState(false);
@@ -338,11 +377,148 @@ export function EntityDrillDown({
     return m;
   }, [duplicateRows, filterMode]);
 
-  const displayRows = useMemo<DrillRow[]>(() => {
+  // ── Fetch usage counts for every site row in a "duplicates" view ────────
+  // One batched call per distinct set of duplicate rows — refetches whenever
+  // the underlying row set changes (e.g. after a refresh).
+  useEffect(() => {
+    if (entity !== "sites" || filterMode !== "duplicates" || !supabase) return;
+    const ids = Array.from(new Set(duplicateRows.map((r) => rowKey(entity, r)).filter(Boolean)));
+    if (ids.length === 0) return;
+
+    let cancelled = false;
+    setUsageLoading(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabase as any;
+    getSiteDupeUsage(sb, ids)
+      .then((result) => {
+        if (!cancelled) setUsage(result);
+      })
+      .catch((err: unknown) => {
+        // Non-critical — the merge cell falls back to the legacy heuristic
+        // when usage data is unavailable.
+        // eslint-disable-next-line no-console
+        console.warn("[EntityDrillDown] getSiteDupeUsage failed:", err instanceof Error ? err.message : err);
+      })
+      .finally(() => {
+        if (!cancelled) setUsageLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [entity, filterMode, supabase, duplicateRows]);
+
+  // ── Site groups eligible for "Flag for merge" ───────────────────────────
+  // Usage is the primary signal: a site with real records (assets/quotes/
+  // contract scopes/jobs/maintenance checks) beats an empty shell, regardless
+  // of active/customer status — the SY9 case: the "expected wrong" active row
+  // actually held every real record, an active+customer heuristic alone would
+  // have picked backwards. Rules, in order:
+  //   1. Exactly one row in the group has nonzero usage -> that's the
+  //      survivor, every other row is a loser. Works for ANY group size —
+  //      this is what unlocks 3+-row groups (the SY9-hospital-trio shape)
+  //      that used to be locked out entirely.
+  //   2. All rows have zero usage (or usage hasn't loaded yet) -> fall back
+  //      to the legacy active+customer heuristic, but ONLY for exact 2-row
+  //      groups — a 3+ group with no usage evidence is still a real human
+  //      decision (see North Shore/Port Macquarie/St George Private Hospital).
+  //   3. Two or more rows have nonzero usage -> a genuine multi-owner
+  //      conflict. For a 2-row group, still suggest the higher-total row
+  //      (it's only a suggestion; the human confirms via Same before merge
+  //      is reachable). For 3+ rows, leave for manual review.
+  const siteMergeCandidates = useMemo<Map<string, { survivorId: string; loserIds: string[] }>>(() => {
+    const m = new Map<string, { survivorId: string; loserIds: string[] }>();
+    if (entity !== "sites") return m;
+
+    const groups = new Map<string, DrillRow[]>();
+    for (const row of duplicateRows) {
+      const key = `${row._dupeField}:${row._dupeKey}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(row);
+    }
+
+    const legacyScore = (r: Row): [number, number] => [
+      r["active"] === true ? 1 : 0,
+      r["customer_id"] ? 1 : 0,
+    ];
+
+    for (const [key, group] of groups) {
+      if (group.length < 2) continue;
+      const ids = group.map((r) => rowKey(entity, r));
+      if (ids.some((id) => !id)) continue;
+
+      const totals = ids.map((id) => usage[id]?.total ?? 0);
+      const nonZero = totals.filter((t) => t > 0);
+
+      let survivorIdx: number | null = null;
+
+      if (nonZero.length === 1) {
+        survivorIdx = totals.findIndex((t) => t > 0);
+      } else if (nonZero.length === 0 && group.length === 2) {
+        const [a, b] = group;
+        const [aActive, aCust] = legacyScore(a);
+        const [bActive, bCust] = legacyScore(b);
+        if (bActive !== aActive) survivorIdx = bActive > aActive ? 1 : 0;
+        else if (bCust !== aCust) survivorIdx = bCust > aCust ? 1 : 0;
+        else survivorIdx = ids[1] < ids[0] ? 1 : 0;
+      } else if (nonZero.length >= 2 && group.length === 2) {
+        survivorIdx = totals[1] > totals[0] ? 1 : 0;
+      }
+      // nonZero.length >= 2 && group.length >= 3, or nonZero.length === 0 &&
+      // group.length >= 3: no auto pick, leave the group out of the map.
+
+      if (survivorIdx === null) continue;
+      const survivorId = ids[survivorIdx];
+      const loserIds = ids.filter((_, i) => i !== survivorIdx);
+      m.set(key, { survivorId, loserIds });
+    }
+
+    return m;
+  }, [duplicateRows, entity, usage]);
+
+  const handleFlagPair = useCallback(
+    async (groupKey: string, survivorId: string, loserIds: string[]) => {
+      if (!supabase || flagBusy[groupKey]) return;
+      setFlagBusy((prev) => ({ ...prev, [groupKey]: true }));
+      setFlagError((prev) => {
+        const next = { ...prev };
+        delete next[groupKey];
+        return next;
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sb = supabase as any;
+      const advisoryIds: string[] = [];
+      let firstError: string | null = null;
+      for (const loserId of loserIds) {
+        try {
+          const res = await flagSitePairForMerge(sb, { survivorSiteId: survivorId, loserSiteId: loserId });
+          advisoryIds.push(res.advisoryId);
+        } catch (err: unknown) {
+          firstError = err instanceof Error ? err.message : "Couldn't flag this pair.";
+          break;
+        }
+      }
+      if (advisoryIds.length > 0) {
+        setFlagged((prev) => ({ ...prev, [groupKey]: [...(prev[groupKey] ?? []), ...advisoryIds] }));
+      }
+      if (firstError) {
+        setFlagError((prev) => ({ ...prev, [groupKey]: firstError! }));
+      }
+      setFlagBusy((prev) => ({ ...prev, [groupKey]: false }));
+    },
+    [supabase, flagBusy],
+  );
+
+  const baseRows = useMemo<DrillRow[]>(() => {
     if (filterMode === "gaps") return rows.filter((r) => rowHasGap(r, gapFields));
     if (filterMode === "duplicates") return duplicateRows;
     return rows;
   }, [rows, filterMode, gapFields, duplicateRows]);
+
+  const displayRows = useMemo<DrillRow[]>(() => {
+    if (!askFilters || askFilters.length === 0) return baseRows;
+    return applyFilters(baseRows, askFilters) as DrillRow[];
+  }, [baseRows, askFilters]);
 
   const gapCount = useMemo(
     () => rows.filter((r) => rowHasGap(r, gapFields)).length,
@@ -551,6 +727,95 @@ export function EntityDrillDown({
       });
     }
 
+    if (filterMode === "duplicates" && entity === "sites") {
+      cols.push({
+        key: "_usage",
+        header: "Records",
+        sortable: false,
+        render: (row: DrillRow) => {
+          const rowId = rowKey(entity, row);
+          if (usageLoading && usage[rowId] === undefined) {
+            return <span className="eq-drill__dupe-hint">checking…</span>;
+          }
+          const total = usage[rowId]?.total ?? 0;
+          return (
+            <span className={total > 0 ? "eq-drill__usage-badge eq-drill__usage-badge--has-data" : "eq-drill__usage-badge"}>
+              {total.toLocaleString()} record{total === 1 ? "" : "s"}
+            </span>
+          );
+        },
+      });
+
+      cols.push({
+        key: "_merge",
+        header: "Merge",
+        sortable: false,
+        render: (row: DrillRow) => {
+          const groupKey = `${row._dupeField}:${row._dupeKey}`;
+          const candidate = siteMergeCandidates.get(groupKey);
+          const rowId = rowKey(entity, row);
+
+          if (!candidate) {
+            return usageLoading ? (
+              <span className="eq-drill__dupe-hint">checking usage…</span>
+            ) : (
+              <span className="eq-drill__dupe-hint">
+                more than one owns real data — review manually
+              </span>
+            );
+          }
+
+          if (rowId !== candidate.survivorId) {
+            // Only the survivor row carries the action; other rows in the
+            // group just say where they're headed so it isn't N buttons.
+            return <span className="eq-drill__dupe-hint">duplicate of survivor above</span>;
+          }
+
+          const flaggedIds = flagged[groupKey] ?? [];
+          if (flaggedIds.length >= candidate.loserIds.length) {
+            return (
+              <span className="eq-drill__dupe-flagged">
+                ✓ Flagged{onBack ? " — " : ""}
+                {onBack && (
+                  <button type="button" className="eq-drill__suggest-btn" onClick={(e) => { e.stopPropagation(); onBack(); }}>
+                    review on Health tab
+                  </button>
+                )}
+              </span>
+            );
+          }
+
+          if (!canMergeSites) {
+            return <span className="eq-drill__dupe-hint">Ask a manager to flag this for merging</span>;
+          }
+
+          const busy = !!flagBusy[groupKey];
+          const err = flagError[groupKey];
+          const remaining = candidate.loserIds.length - flaggedIds.length;
+          return (
+            <span className="eq-drill__merge-cell">
+              <button
+                type="button"
+                className="eq-drill__suggest-btn"
+                disabled={busy}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleFlagPair(groupKey, candidate.survivorId, candidate.loserIds);
+                }}
+              >
+                {busy
+                  ? "Flagging…"
+                  : candidate.loserIds.length > 1
+                    ? `Flag ${remaining} for merge`
+                    : "Flag for merge"}
+              </button>
+              {err && <span className="eq-drill__dupe-error">{err}</span>}
+            </span>
+          );
+        },
+      });
+    }
+
     if (filterMode === "gaps" && callEdgeFn) {
       cols.push({
         key: "_suggest",
@@ -584,6 +849,15 @@ export function EntityDrillDown({
     callEdgeFn,
     handleSuggest,
     entity,
+    siteMergeCandidates,
+    usage,
+    usageLoading,
+    flagged,
+    flagBusy,
+    flagError,
+    canMergeSites,
+    handleFlagPair,
+    onBack,
   ]);
 
   // ── CSV download ──────────────────────────────────────────────────────
@@ -644,11 +918,13 @@ export function EntityDrillDown({
   }
 
   const emptyMsg =
-    filterMode === "gaps"
-      ? `No gaps found — all ${formatLabel(entity).toLowerCase()} records are complete.`
-      : filterMode === "duplicates"
-        ? `No duplicates detected in ${formatLabel(entity).toLowerCase()}.`
-        : `No ${entity} records found — import some via the Import tab.`;
+    askFilters && askFilters.length > 0 && baseRows.length > 0
+      ? "No records match your question within this filter — try Clear to see the rest."
+      : filterMode === "gaps"
+        ? `No gaps found — all ${formatLabel(entity).toLowerCase()} records are complete.`
+        : filterMode === "duplicates"
+          ? `No duplicates detected in ${formatLabel(entity).toLowerCase()}.`
+          : `No ${entity} records found — import some via the Import tab.`;
 
   return (
     <div className="eq-drill">
@@ -711,6 +987,18 @@ export function EntityDrillDown({
               </button>
             )}
           </div>
+          {askFilters && askFilters.length > 0 && (
+            <span className="eq-drill__ask-filter">
+              Filtered: {initialFilterLabel ?? "matches your question"}
+              <button
+                type="button"
+                className="eq-drill__ask-filter-clear"
+                onClick={() => setAskFilters(null)}
+              >
+                Clear
+              </button>
+            </span>
+          )}
           {filterMode !== "tidy" && (
             <button
               className="eq-drill__download"

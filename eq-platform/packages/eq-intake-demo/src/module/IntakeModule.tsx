@@ -21,7 +21,7 @@
  */
 
 import { useMemo, useState, useEffect, type JSX } from "react";
-import { type ParsedSheet } from "@eq/intake";
+import { type ParsedSheet, readSiteAdvisory, type AskFilter } from "@eq/intake";
 import { useIntakeBundle, roleLabel, ROLE_REGISTRY, type IntakeBundle } from "../shared/intake-bundle.js";
 import { IntakeDropZone } from "../shared/IntakeDropZone.js";
 import { MappingPreviewPanel } from "../shared/MappingPreviewPanel.js";
@@ -38,6 +38,7 @@ import {
   commitBundleToCanonical,
   type SupabaseLikeClient,
   type CommitResult,
+  type StageCommitFn,
 } from "../canonical/commit-canonical.js";
 import type { RoleName } from "../rollup/roles.js";
 import { BUILTIN_TEMPLATES } from "../rollup/templates.js";
@@ -72,6 +73,23 @@ export interface IntakeModuleProps {
     value: string | undefined,
     source: "suggested" | "free_text",
   ) => void;
+  /**
+   * Whether the caller may flag a Sites duplicate pair for merge review (e.g.
+   * from the Sites "Dupes" tab) — manager-only in eq-shell's role model. Only
+   * affects the EntityDrillDown Sites view; the flag RPC is also gated
+   * server-side, so this only controls whether the button renders.
+   */
+  canMergeSites?: boolean;
+  /**
+   * When supplied, the "Into EQ" commit routes flagged/conflicting rows
+   * through the host's staging/review-queue gate instead of writing them
+   * straight to the canonical table — see StageCommitFn. The EQ Shell host
+   * wires this to its /intake-stage function so this module's commit path
+   * gets the same pre-commit check the per-domain importer already has. The
+   * standalone Vite demo has no backend to stage against, so it omits this
+   * and keeps the direct-RPC behaviour.
+   */
+  stageCommit?: StageCommitFn;
 }
 
 const INTO_EQ_ID = "into-eq";
@@ -104,6 +122,11 @@ function defaultRouteLogger(
 
 type IntakeMode = "health" | "queue" | "import" | "reconcile" | "ask";
 
+function TabBadge({ count }: { count: number | null }): JSX.Element | null {
+  if (!count) return null;
+  return <span className="eq-intake-tab__badge">{count}</span>;
+}
+
 export function IntakeModule(props: IntakeModuleProps): JSX.Element {
   const onDestinationChange = useMemo(
     () => props.onDestinationChange ?? defaultRouteLogger,
@@ -114,11 +137,38 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
   const [destId, setDestId] = useState<string>(INTO_EQ_ID);
   const [mode, setMode] = useState<IntakeMode>("health");
   const [drillEntity, setDrillEntity] = useState<string | null>(null);
+  const [drillFilters, setDrillFilters] = useState<{ filters: AskFilter[]; label: string } | null>(null);
 
   // Reset drill-down when switching away from health tab
   useEffect(() => {
-    if (mode !== "health") setDrillEntity(null);
+    if (mode !== "health") { setDrillEntity(null); setDrillFilters(null); }
   }, [mode]);
+
+  // Lightweight tab badges — how much is waiting in Health (duplicates caught
+  // at the write, pending a human) and Queue (steward remediation items).
+  // Fetched once independent of each tab's own richer load, so the tab bar
+  // itself signals where attention is needed before you click in.
+  const [healthPending, setHealthPending] = useState<number | null>(null);
+  const [queuePending, setQueuePending] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!props.supabase) return;
+    let cancelled = false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = props.supabase as any;
+
+    readSiteAdvisory(sb)
+      .then((s) => { if (!cancelled) setHealthPending(s.pending); })
+      .catch(() => { /* non-critical — badge just stays hidden */ });
+
+    sb.rpc("eq_queue_list")
+      .then(({ data }: { data: unknown }) => {
+        if (!cancelled) setQueuePending(Array.isArray(data) ? data.length : null);
+      })
+      .catch(() => { /* non-critical — badge just stays hidden */ });
+
+    return () => { cancelled = true; };
+  }, [props.supabase]);
 
   const exportDest = useMemo(
     () => QUICK_DESTINATIONS.find((d) => `${QUICK_PREFIX}${d.id}` === destId),
@@ -142,6 +192,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
           onClick={() => setMode("health")}
         >
           Health
+          <TabBadge count={healthPending} />
         </button>
         <button
           type="button"
@@ -151,6 +202,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
           onClick={() => { setDrillEntity(null); setMode("queue"); }}
         >
           Queue
+          <TabBadge count={queuePending} />
         </button>
         <button
           type="button"
@@ -188,13 +240,17 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
             supabase={props.supabase}
             tenantId={props.tenantId}
             initialMode="tidy"
-            onBack={() => setDrillEntity(null)}
+            initialFilters={drillFilters?.filters}
+            initialFilterLabel={drillFilters?.label}
+            onBack={() => { setDrillEntity(null); setDrillFilters(null); }}
+            canMergeSites={props.canMergeSites}
           />
         ) : (
           <IntakeHealthHome
             supabase={props.supabase}
             tenantId={props.tenantId}
-            onEntityClick={(e) => setDrillEntity(e)}
+            onEntityClick={(e) => { setDrillEntity(e); setDrillFilters(null); }}
+            canMergeSites={props.canMergeSites}
           />
         )
       ) : mode === "queue" ? (
@@ -202,7 +258,11 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
       ) : mode === "ask" ? (
         <AskCanonical
           supabase={props.supabase}
-          onEntityClick={(e) => { setDrillEntity(e); setMode("health"); }}
+          onEntityClick={(e, filters, label) => {
+            setDrillEntity(e);
+            setDrillFilters(filters && filters.length > 0 ? { filters, label: label ?? "" } : null);
+            setMode("health");
+          }}
         />
       ) : mode === "reconcile" ? (
         <ReconcileModule
@@ -237,6 +297,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
                   bundle={bundle}
                   supabase={props.supabase}
                   tenantId={props.tenantId ?? DEFAULT_TENANT_ID}
+                  stageCommit={props.stageCommit}
                 />
               ) : joinTemplate ? (
                 <TemplateExportView bundle={bundle} template={joinTemplate} />
@@ -634,10 +695,12 @@ function CommitView({
   bundle,
   supabase,
   tenantId,
+  stageCommit,
 }: {
   bundle: IntakeBundle;
   supabase?: SupabaseLikeClient | null;
   tenantId: string;
+  stageCommit?: StageCommitFn;
 }): JSX.Element {
   const enabled = !!supabase;
   const [busy, setBusy] = useState(false);
@@ -683,6 +746,7 @@ function CommitView({
           .map((s) => s.file.name)
           .join("+"),
         onProgress: (msg) => setProgressMsg(msg),
+        stageCommit,
       });
       setResult(commitResult);
       setProgressMsg(null);
@@ -738,11 +802,19 @@ function CommitView({
 
       {result && <CommitSummary result={result} />}
 
-      {/* Post-commit: per-row drill-downs for anything that needs eyes. */}
+      {/* Post-commit: per-row drill-downs for anything that needs eyes. When
+          staging is active we can't tell, per row, whether a flagged row
+          actually committed or got parked in the review queue instead — the
+          stage response only gives per-batch totals — so the hint stays
+          accurate either way rather than asserting "these are in EQ". */}
       {result?.perEntity.some((r) => r.flaggedRows.length > 0) && (
         <RowsDisclosure
-          label="Show rows that saved but need checking"
-          hint="These rows are in EQ, but something caught our eye. Review each one before relying on it."
+          label="Show rows that need checking"
+          hint={
+            result.perEntity.some((r) => r.stagedCount > 0)
+              ? "Something caught our eye on these rows. Some may have saved, others may be waiting in the review queue — check there if you don't see one here yet."
+              : "These rows are in EQ, but something caught our eye. Review each one before relying on it."
+          }
           accentColor="var(--eq-warn)"
           hintColor="var(--eq-ink)"
           perEntity={result.perEntity.map((r) => ({
@@ -776,6 +848,7 @@ function CommitView({
  */
 function CommitSummary({ result }: { result: CommitResult }): JSX.Element {
   const saved = result.perEntity.reduce((n, r) => n + r.committedCount, 0);
+  const staged = result.perEntity.reduce((n, r) => n + r.stagedCount, 0);
   const flagged = result.perEntity.reduce((n, r) => n + r.flaggedCount, 0);
   const rejected = result.perEntity.reduce((n, r) => n + r.rejectedCount, 0);
   const hasFatal = result.perEntity.some((r) => r.fatalError);
@@ -795,6 +868,11 @@ function CommitSummary({ result }: { result: CommitResult }): JSX.Element {
         <span className="eq-intake-summary__saved">
           {saved.toLocaleString()} record{saved === 1 ? "" : "s"} saved
         </span>
+        {staged > 0 && (
+          <span className="eq-intake-summary__flagged">
+            {staged.toLocaleString()} waiting in the review queue
+          </span>
+        )}
         {flagged > 0 && (
           <span className="eq-intake-summary__flagged">
             {flagged.toLocaleString()} need{flagged === 1 ? "s" : ""} checking

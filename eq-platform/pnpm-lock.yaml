@@ -93,6 +93,9 @@ importers:
       '@eq/validation':
         specifier: workspace:*
         version: link:../eq-validation
+      '@fontsource/plus-jakarta-sans':
+        specifier: ^5.2.8
+        version: 5.2.8
     devDependencies:
       '@types/node':
         specifier: 20.14.0
@@ -170,6 +173,9 @@ importers:
       '@eq/validation':
         specifier: workspace:*
         version: link:../eq-validation
+      '@fontsource/plus-jakarta-sans':
+        specifier: ^5.2.8
+        version: 5.2.8
     devDependencies:
       '@types/node':
         specifier: 20.14.0

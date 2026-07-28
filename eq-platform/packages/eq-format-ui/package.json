@@ -16,7 +16,8 @@
     "@eq-solutions/tokens": "github:eq-solutions/eq-design-tokens#v1.3.2",
     "@eq/schemas": "workspace:*",
     "@eq/validation": "workspace:*",
-    "@eq/ai": "workspace:*"
+    "@eq/ai": "workspace:*",
+    "@fontsource/plus-jakarta-sans": "^5.2.8"
   },
   "devDependencies": {
     "@types/node": "20.14.0",

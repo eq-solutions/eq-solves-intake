@@ -96,6 +96,14 @@ export type {
 export { runLicenceExpiryCheck } from "./licence-expiry-check.js";
 export type { LicenceExpiryAlertSummary } from "./licence-expiry-check.js";
 
+export { readSiteAdvisory, adjudicateSiteAdvisory } from "./read-site-advisory.js";
+export type {
+  SiteAdvisoryItem,
+  SiteAdvisorySummary,
+  SiteVerdict,
+  AdjudicateResult,
+} from "./read-site-advisory.js";
+
 export { computeHealthScores } from "./health-score.js";
 export type { HealthScore } from "./health-score.js";
 
@@ -133,10 +141,22 @@ export type {
 export { makeEdgeFnCaller } from "./ai-client.js";
 export type { EdgeFnCaller, EdgeFnResponse } from "./ai-client.js";
 
+export { adjudicateDuplicateWithAI } from "./adjudicate-duplicate-ai.js";
+export type { SiteAdjudicationInput, AiSiteVerdict } from "./adjudicate-duplicate-ai.js";
+
+export { previewSiteMerge, executeSiteMerge, flagSitePairForMerge, getSiteDupeUsage } from "./merge-duplicate-sites.js";
+export type {
+  SiteMergeTableCount,
+  SiteMergePreview,
+  SiteMergeResult,
+  SiteFlagPairResult,
+  SiteDupeUsage,
+} from "./merge-duplicate-sites.js";
+
 export { suggestGaps } from "./gap-suggest.js";
 export type { GapSuggestion, GapSuggestResult } from "./gap-suggest.js";
 
-export { askCanonical } from "./ask-canonical.js";
+export { askCanonical, applyFilters } from "./ask-canonical.js";
 export type {
   AskFilter,
   AskIntent,
