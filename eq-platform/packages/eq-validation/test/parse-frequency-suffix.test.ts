@@ -21,6 +21,12 @@ describe("FREQUENCY_SUFFIX_MAP", () => {
     expect(FREQUENCY_SUFFIX_MAP["10"]).toBe("10yr");
   });
 
+  it("maps the Maximo revision-lettered 5-year variant", () => {
+    // "LVACB-5A" on real SY3 exports — confirmed 2026-07-28 as 5-yearly,
+    // the "A" being a job-plan revision letter, not a second frequency.
+    expect(FREQUENCY_SUFFIX_MAP["5A"]).toBe("5yr");
+  });
+
   it("maps numeric monthly aliases to their letter equivalents", () => {
     expect(FREQUENCY_SUFFIX_MAP["3"]).toBe("quarterly");
     expect(FREQUENCY_SUFFIX_MAP["6"]).toBe("semi_annual");
@@ -44,6 +50,8 @@ describe("mapFrequencySuffix", () => {
     ["M", "monthly"],
     ["2", "2yr"],
     ["5", "5yr"],
+    ["5A", "5yr"],
+    ["5a", "5yr"],
     ["10", "10yr"],
     ["", null],
     [null, null],
@@ -66,7 +74,7 @@ describe("mapFrequencySuffix", () => {
 describe("knownFrequencySuffixes", () => {
   it("returns suffixes sorted for snapshot-stable assertions", () => {
     const out = knownFrequencySuffixes();
-    expect(out).toEqual(["10", "2", "3", "5", "6", "A", "M", "Q", "S", "W"]);
+    expect(out).toEqual(["10", "2", "3", "5", "5A", "6", "A", "M", "Q", "S", "W"]);
   });
 
   it("includes every key in the map", () => {

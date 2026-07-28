@@ -53,6 +53,10 @@ export const FREQUENCY_SUFFIX_MAP: Readonly<Record<string, FrequencyEnum>> = Obj
   W: "weekly",
   "2": "2yr",
   "5": "5yr",
+  // Maximo revision-lettered variant seen on real SY3 LVACB exports (e.g.
+  // "LVACB-5A") — confirmed 2026-07-28 as 5-yearly, the "A" being a job-plan
+  // revision letter rather than a second frequency indicator.
+  "5A": "5yr",
   "10": "10yr",
 });
 
