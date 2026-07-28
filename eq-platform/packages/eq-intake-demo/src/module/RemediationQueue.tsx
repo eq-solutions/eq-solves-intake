@@ -13,14 +13,19 @@
  *   email / format     text input, prefilled with the steward's suggestion
  *   link               select from the tenant's customers
  *   emergency_contact  dismiss only — collected from the worker, not typed here
- *   duplicate          dismiss only — records are never auto-merged
+ *   duplicate          dismiss only — a different signal from the write-time
+ *                       resolver's merge tool (DuplicateMergePanel, rendered
+ *                       above these groups) — these rows never auto-merge
  */
 
 import { useState, useEffect, useCallback, type JSX } from "react";
 import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
+import { DuplicateMergePanel } from "./DuplicateMergePanel.js";
 
 export interface RemediationQueueProps {
   supabase?: SupabaseLikeClient | null;
+  /** See IntakeModuleProps.canMergeSites — host-computed, manager-only by default. */
+  canMergeSites?: boolean;
 }
 
 interface QueueItem {
@@ -57,7 +62,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   email:             "Missing email",
   link:              "Unlinked contacts",
   format:            "Format flags",
-  duplicate:         "Possible duplicates",
+  duplicate:         "Other duplicate flags",
   emergency_contact: "Missing emergency contact",
 };
 
@@ -66,7 +71,7 @@ const CATEGORY_HINT: Record<string, string> = {
   email:             "Check the suggested mailbox actually exists before approving.",
   link:              "Pick the right customer — this drives invoicing and reporting.",
   format:            "Confirm the corrected value, or dismiss if the original is right.",
-  duplicate:         "Records are never auto-merged. Tidy these up in the entity screens, then dismiss here.",
+  duplicate:         "A separate signal from the merge tool above — not site pairs, and never auto-merged. Tidy these up in the entity screens, then dismiss here.",
   emergency_contact: "These come from the workers themselves — an EQ Cards prompt is the plan. Dismiss any that no longer apply.",
 };
 
@@ -76,7 +81,7 @@ function entityToEventLabel(entity: string): string {
   return entity === "contacts" ? "contact" : entity === "staff" ? "staff" : entity.replace(/s$/, "");
 }
 
-export function RemediationQueue({ supabase }: RemediationQueueProps): JSX.Element {
+export function RemediationQueue({ supabase, canMergeSites }: RemediationQueueProps): JSX.Element {
   const [items, setItems] = useState<QueueItem[] | null>(null);
   const [customers, setCustomers] = useState<CustomerOption[] | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -207,6 +212,8 @@ export function RemediationQueue({ supabase }: RemediationQueueProps): JSX.Eleme
       </div>
 
       {error && <div role="alert" className="eq-intake-alert">{error}</div>}
+
+      <DuplicateMergePanel supabase={supabase} canMergeSites={canMergeSites} />
 
       {(items ?? []).length === 0 && !error && (
         <div className="eq-queue__empty">Queue is clear. Nothing needs your eyes.</div>

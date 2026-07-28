@@ -144,12 +144,16 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
     if (mode !== "health") { setDrillEntity(null); setDrillFilters(null); }
   }, [mode]);
 
-  // Lightweight tab badges — how much is waiting in Health (duplicates caught
-  // at the write, pending a human) and Queue (steward remediation items).
-  // Fetched once independent of each tab's own richer load, so the tab bar
-  // itself signals where attention is needed before you click in.
-  const [healthPending, setHealthPending] = useState<number | null>(null);
+  // Lightweight To Do badge — how much is waiting across the two things that
+  // now live in that one tab: site-advisory merges (duplicates caught at the
+  // write, pending a human) and steward remediation queue items. Fetched
+  // once independent of the tab's own richer load, so the tab bar itself
+  // signals where attention is needed before you click in.
+  const [advisoryPending, setAdvisoryPending] = useState<number | null>(null);
   const [queuePending, setQueuePending] = useState<number | null>(null);
+  const todoPending = advisoryPending === null && queuePending === null
+    ? null
+    : (advisoryPending ?? 0) + (queuePending ?? 0);
 
   useEffect(() => {
     if (!props.supabase) return;
@@ -158,7 +162,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
     const sb = props.supabase as any;
 
     readSiteAdvisory(sb)
-      .then((s) => { if (!cancelled) setHealthPending(s.pending); })
+      .then((s) => { if (!cancelled) setAdvisoryPending(s.pending); })
       .catch(() => { /* non-critical — badge just stays hidden */ });
 
     sb.rpc("eq_queue_list")
@@ -182,7 +186,9 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
 
   return (
     <section className="eq-intake-module">
-      {/* Mode toggle — Health (default) / Import / Reconcile */}
+      {/* Mode toggle — Overview (default, was Health) / To Do (was Queue) /
+          Bring Data In (was Import) / Reconcile (folding into Bring Data In
+          in a follow-up pass) / Ask */}
       <div className="eq-intake-tabs" role="tablist">
         <button
           type="button"
@@ -191,8 +197,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
           className={"eq-intake-tab" + (mode === "health" ? " eq-intake-tab--active" : "")}
           onClick={() => setMode("health")}
         >
-          Health
-          <TabBadge count={healthPending} />
+          Overview
         </button>
         <button
           type="button"
@@ -201,8 +206,8 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
           className={"eq-intake-tab" + (mode === "queue" ? " eq-intake-tab--active" : "")}
           onClick={() => { setDrillEntity(null); setMode("queue"); }}
         >
-          Queue
-          <TabBadge count={queuePending} />
+          To Do
+          <TabBadge count={todoPending} />
         </button>
         <button
           type="button"
@@ -211,7 +216,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
           className={"eq-intake-tab" + (mode === "import" ? " eq-intake-tab--active" : "")}
           onClick={() => { setDrillEntity(null); setMode("import"); }}
         >
-          Import
+          Bring Data In
         </button>
         <button
           type="button"
@@ -250,11 +255,10 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
             supabase={props.supabase}
             tenantId={props.tenantId}
             onEntityClick={(e) => { setDrillEntity(e); setDrillFilters(null); }}
-            canMergeSites={props.canMergeSites}
           />
         )
       ) : mode === "queue" ? (
-        <RemediationQueue supabase={props.supabase} />
+        <RemediationQueue supabase={props.supabase} canMergeSites={props.canMergeSites} />
       ) : mode === "ask" ? (
         <AskCanonical
           supabase={props.supabase}
