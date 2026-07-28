@@ -38,6 +38,7 @@ import {
   commitBundleToCanonical,
   type SupabaseLikeClient,
   type CommitResult,
+  type StageCommitFn,
 } from "../canonical/commit-canonical.js";
 import type { RoleName } from "../rollup/roles.js";
 import { BUILTIN_TEMPLATES } from "../rollup/templates.js";
@@ -79,6 +80,16 @@ export interface IntakeModuleProps {
    * server-side, so this only controls whether the button renders.
    */
   canMergeSites?: boolean;
+  /**
+   * When supplied, the "Into EQ" commit routes flagged/conflicting rows
+   * through the host's staging/review-queue gate instead of writing them
+   * straight to the canonical table — see StageCommitFn. The EQ Shell host
+   * wires this to its /intake-stage function so this module's commit path
+   * gets the same pre-commit check the per-domain importer already has. The
+   * standalone Vite demo has no backend to stage against, so it omits this
+   * and keeps the direct-RPC behaviour.
+   */
+  stageCommit?: StageCommitFn;
 }
 
 const INTO_EQ_ID = "into-eq";
@@ -286,6 +297,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
                   bundle={bundle}
                   supabase={props.supabase}
                   tenantId={props.tenantId ?? DEFAULT_TENANT_ID}
+                  stageCommit={props.stageCommit}
                 />
               ) : joinTemplate ? (
                 <TemplateExportView bundle={bundle} template={joinTemplate} />
@@ -683,10 +695,12 @@ function CommitView({
   bundle,
   supabase,
   tenantId,
+  stageCommit,
 }: {
   bundle: IntakeBundle;
   supabase?: SupabaseLikeClient | null;
   tenantId: string;
+  stageCommit?: StageCommitFn;
 }): JSX.Element {
   const enabled = !!supabase;
   const [busy, setBusy] = useState(false);
@@ -732,6 +746,7 @@ function CommitView({
           .map((s) => s.file.name)
           .join("+"),
         onProgress: (msg) => setProgressMsg(msg),
+        stageCommit,
       });
       setResult(commitResult);
       setProgressMsg(null);
@@ -787,11 +802,19 @@ function CommitView({
 
       {result && <CommitSummary result={result} />}
 
-      {/* Post-commit: per-row drill-downs for anything that needs eyes. */}
+      {/* Post-commit: per-row drill-downs for anything that needs eyes. When
+          staging is active we can't tell, per row, whether a flagged row
+          actually committed or got parked in the review queue instead — the
+          stage response only gives per-batch totals — so the hint stays
+          accurate either way rather than asserting "these are in EQ". */}
       {result?.perEntity.some((r) => r.flaggedRows.length > 0) && (
         <RowsDisclosure
-          label="Show rows that saved but need checking"
-          hint="These rows are in EQ, but something caught our eye. Review each one before relying on it."
+          label="Show rows that need checking"
+          hint={
+            result.perEntity.some((r) => r.stagedCount > 0)
+              ? "Something caught our eye on these rows. Some may have saved, others may be waiting in the review queue — check there if you don't see one here yet."
+              : "These rows are in EQ, but something caught our eye. Review each one before relying on it."
+          }
           accentColor="var(--eq-warn)"
           hintColor="var(--eq-ink)"
           perEntity={result.perEntity.map((r) => ({
@@ -825,6 +848,7 @@ function CommitView({
  */
 function CommitSummary({ result }: { result: CommitResult }): JSX.Element {
   const saved = result.perEntity.reduce((n, r) => n + r.committedCount, 0);
+  const staged = result.perEntity.reduce((n, r) => n + r.stagedCount, 0);
   const flagged = result.perEntity.reduce((n, r) => n + r.flaggedCount, 0);
   const rejected = result.perEntity.reduce((n, r) => n + r.rejectedCount, 0);
   const hasFatal = result.perEntity.some((r) => r.fatalError);
@@ -844,6 +868,11 @@ function CommitSummary({ result }: { result: CommitResult }): JSX.Element {
         <span className="eq-intake-summary__saved">
           {saved.toLocaleString()} record{saved === 1 ? "" : "s"} saved
         </span>
+        {staged > 0 && (
+          <span className="eq-intake-summary__flagged">
+            {staged.toLocaleString()} waiting in the review queue
+          </span>
+        )}
         {flagged > 0 && (
           <span className="eq-intake-summary__flagged">
             {flagged.toLocaleString()} need{flagged === 1 ? "s" : ""} checking
