@@ -19,10 +19,10 @@ import { extractText } from "npm:unpdf@1.8.0";
 // configured — so this follows that proven path instead of standing up a
 // new Netlify site/background-function migration.
 //
-// Multi-file requests are parsed CONCURRENTLY (Promise.all) specifically to
-// keep wall-clock down — 4 sequential 60s vision calls would flirt with any
-// platform's function timeout; 4 concurrent ones cost ~one call's worth of
-// wall-clock instead.
+// Multi-file requests: text extraction runs SEQUENTIALLY per file, vision
+// fallback runs CONCURRENTLY across whichever files need it — see the
+// TEXT-FIRST, VISION-FALLBACK note below for why (memory, not wall-clock,
+// turned out to be the binding constraint for the fast path).
 //
 // This is a from-scratch HTTP-shaped port of the logic in
 // eq-platform/packages/eq-intake/src/skills/maximo-pdf-wo/ (extract.ts,
@@ -53,13 +53,19 @@ import { extractText } from "npm:unpdf@1.8.0";
 // long — the header is never split across pages). That means the header
 // fields we actually need can be pulled with a plain-text parse instead of
 // a vision call — no page-count cap, no token budget, no per-PDF Anthropic
-// cost, no 28-80s vision latency. extractWorkOrdersFromFile() below tries
-// the text parse first (extractWorkOrdersFromText, via unpdf) and only
-// falls back to the original chunked-vision path when the text layer is
-// missing (a scanned export) or the page doesn't match this known label
-// format (a different customer's template, or Maximo changes its export
-// layout) — so an unfamiliar PDF degrades to the slower/costlier path
-// instead of silently mis-parsing.
+// cost, no 28-80s vision latency. The Deno.serve handler below tries the
+// text parse first (extractWorkOrdersFromText, via unpdf) for every file and
+// only routes whichever files come back null (a scanned export, or a page
+// that doesn't match this known label format — a different customer's
+// template, or Maximo changing its export layout) through the original
+// chunked-vision path (extractWorkOrdersViaVision) — so an unfamiliar PDF
+// degrades to the slower/costlier path instead of silently mis-parsing.
+// Text extraction across a batch runs sequentially, not concurrently: each
+// file alone is fast, but running unpdf's pdf.js-based parser on several
+// large PDFs AT ONCE spiked memory past this function's resource limit
+// (WORKER_RESOURCE_LIMIT / 546, found live 2026-07-28 on a real 5-file
+// batch). Vision fallback stays concurrent since that subset is normally
+// empty or small.
 //
 // verify_jwt is OFF: this project's Functions gateway rejects the legacy-
 // format SUPABASE_SERVICE_ROLE_KEY JWT (UNAUTHORIZED_LEGACY_JWT, found live
@@ -516,19 +522,17 @@ async function extractWorkOrdersFromText(fileBytes: Uint8Array, fileName: string
 }
 
 /**
- * Extract work orders from one uploaded file, transparently splitting first
- * if it exceeds Anthropic's per-document page limit. Chunks of the SAME file
- * are also extracted concurrently — a 300-page PDF costs ~one chunk's worth
- * of wall-clock, not three sequential ones.
+ * Vision fallback for one file that text extraction couldn't handle (a
+ * scan, or an unrecognised template) — transparently splitting first if it
+ * exceeds Anthropic's per-document page limit. Chunks of the SAME file are
+ * also extracted concurrently — a 300-page PDF costs ~one chunk's worth of
+ * wall-clock, not three sequential ones.
  */
-async function extractWorkOrdersFromFile(
+async function extractWorkOrdersViaVision(
   apiKey: string,
   fileBytes: Uint8Array,
   fileName: string,
 ): Promise<{ records: RawWorkOrder[]; warning?: string }> {
-  const textResult = await extractWorkOrdersFromText(fileBytes, fileName);
-  if (textResult) return textResult;
-
   let chunks: Uint8Array[];
   try {
     chunks = await splitPdfIntoChunks(fileBytes, ANTHROPIC_MAX_PDF_PAGES);
@@ -711,15 +715,41 @@ Deno.serve(async (req: Request) => {
     const warnings: WireWarning[] = [];
     const sources: { fileName: string; workOrderCount: number }[] = [];
 
-    // Concurrent, not sequential — see file header. Wall-clock ≈ the
-    // slowest single file's vision call, not the sum of all of them.
-    const perFile = await Promise.all(
-      files.map(async (file) => {
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        const { records, warning } = await extractWorkOrdersFromFile(apiKey, bytes, file.name);
-        return { fileName: file.name, records, warning };
-      }),
+    const fileEntries = await Promise.all(
+      files.map(async (file) => ({ fileName: file.name, bytes: new Uint8Array(await file.arrayBuffer()) })),
     );
+
+    // Phase 1 (text): SEQUENTIAL on purpose. Each file's text parse alone is
+    // sub-5s, but running unpdf's pdf.js-based parser on several large PDFs
+    // CONCURRENTLY spiked memory past this function's limit — found live
+    // 2026-07-28 (WORKER_RESOURCE_LIMIT / 546) uploading 5 real files
+    // (BREAKER 133pp + TRNSFMR 90pp + SWCHGEAR 77pp + 2 more) in one request.
+    // One PDF's parse state in memory at a time keeps the peak bounded
+    // regardless of batch size, at negligible added wall-clock.
+    const textPhase: { fileName: string; bytes: Uint8Array; textResult: { records: RawWorkOrder[] } | null }[] = [];
+    for (const entry of fileEntries) {
+      textPhase.push({ ...entry, textResult: await extractWorkOrdersFromText(entry.bytes, entry.fileName) });
+    }
+
+    // Phase 2 (vision): CONCURRENT — only for files text extraction couldn't
+    // handle (a scan, or an unrecognised template). This subset is typically
+    // empty, so the memory/CPU cost of concurrent vision calls stays bounded
+    // by how many files actually need it, not how many were uploaded.
+    // Tracked by original array INDEX, not filename — two uploaded files can
+    // share a name (e.g. the same export re-attached), and a filename-keyed
+    // map would silently collapse them onto one result.
+    const needsVisionIndices: number[] = [];
+    textPhase.forEach((f, i) => { if (!f.textResult) needsVisionIndices.push(i); });
+    const visionResults = await Promise.all(
+      needsVisionIndices.map((i) => extractWorkOrdersViaVision(apiKey, textPhase[i]!.bytes, textPhase[i]!.fileName)),
+    );
+    const visionByIndex = new Map(needsVisionIndices.map((i, j) => [i, visionResults[j]!]));
+
+    const perFile = textPhase.map((f, i) => {
+      if (f.textResult) return { fileName: f.fileName, records: f.textResult.records, warning: undefined as string | undefined };
+      const v = visionByIndex.get(i)!;
+      return { fileName: f.fileName, records: v.records, warning: v.warning };
+    });
 
     for (const result of perFile) {
       sources.push({ fileName: result.fileName, workOrderCount: result.records.length });
