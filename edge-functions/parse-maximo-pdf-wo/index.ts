@@ -1,5 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { encodeBase64 } from "jsr:@std/encoding/base64";
+import { PDFDocument } from "npm:pdf-lib@1.17.1";
+import { extractText } from "npm:unpdf@1.8.0";
 
 // ---------------------------------------------------------------------------
 // parse-maximo-pdf-wo — real HTTP endpoint for the `maximo-pdf-wo` skill.
@@ -41,6 +43,33 @@ import { encodeBase64 } from "jsr:@std/encoding/base64";
 // wire shape stable here means eq-service's client + mapping code (already
 // merged, already tested) never needs to change when this endpoint swaps
 // in for the dev mock — only the env var does.
+//
+// TEXT-FIRST, VISION-FALLBACK (added 2026-07-28): every real Equinix Maximo
+// export inspected so far (ATS, ACB/breaker, PDU/transformer, switchgear,
+// emergency lighting — 5 job-plan families, 393 pages total) turned out to
+// be a real digitally-generated PDF, not a scan: every WO prints an
+// identical 19-label "Field: value" header block on its own page (one WO
+// per page, occasionally one extra continuation page when the task list is
+// long — the header is never split across pages). That means the header
+// fields we actually need can be pulled with a plain-text parse instead of
+// a vision call — no page-count cap, no token budget, no per-PDF Anthropic
+// cost, no 28-80s vision latency. extractWorkOrdersFromFile() below tries
+// the text parse first (extractWorkOrdersFromText, via unpdf) and only
+// falls back to the original chunked-vision path when the text layer is
+// missing (a scanned export) or the page doesn't match this known label
+// format (a different customer's template, or Maximo changes its export
+// layout) — so an unfamiliar PDF degrades to the slower/costlier path
+// instead of silently mis-parsing.
+//
+// verify_jwt is OFF: this project's Functions gateway rejects the legacy-
+// format SUPABASE_SERVICE_ROLE_KEY JWT (UNAUTHORIZED_LEGACY_JWT, found live
+// 2026-07-28) even though the same key works fine for normal Postgrest/DB
+// access. Matches the existing precedent of other functions in this project
+// (supervisor-digest, ts-reminder, tafe-weekly-fill, shift-events) that also
+// run with verify_jwt: false. Bounded blast radius: this function has no DB
+// access, so worst case is Anthropic-token abuse, not data exposure. A real
+// shared-secret header should replace this once Royce can add a new Supabase
+// secret via the dashboard (no MCP tool exists for setting secrets).
 // ---------------------------------------------------------------------------
 
 const CORS = {
@@ -50,6 +79,14 @@ const CORS = {
 
 const ANTHROPIC_MODEL = "claude-sonnet-4-5";
 const ANTHROPIC_MAX_TOKENS = 8192;
+// Anthropic's Messages API hard limit for a single PDF document block is 100
+// pages, but the binding constraint in practice is the 200k-token context
+// window: a dense scanned chunk of 100 pages measured at 217,359 tokens on
+// a real upload (ELEC TRNSFMR.pdf, found live 2026-07-28) — well over budget
+// once tool schema + output tokens are counted too. 40 pages/chunk keeps even
+// a worst-case-density chunk (~2,200 tokens/page observed) comfortably under
+// 200k with room to spare.
+const ANTHROPIC_MAX_PDF_PAGES = 40;
 
 // ============================================================================
 // WIRE TYPES (must match lib/import/maximo-pdf-client.ts in eq-solves-service)
@@ -336,6 +373,187 @@ async function extractWorkOrdersFromPdf(
   return { records: workOrders as RawWorkOrder[] };
 }
 
+/**
+ * Split a PDF into <= maxPages-page chunks. Returns [bytes] unchanged when
+ * the PDF is already within the limit — the common case.
+ *
+ * Known limitation: if a single WO's header table happens to straddle a
+ * chunk boundary (spans two pages), that WO may extract incompletely. Not
+ * handled — Maximo WO header tables are one-page-each in every fixture seen
+ * so far, so this is a theoretical edge case, not an observed one.
+ */
+async function splitPdfIntoChunks(bytes: Uint8Array, maxPages: number): Promise<Uint8Array[]> {
+  const doc = await PDFDocument.load(bytes);
+  const pageCount = doc.getPageCount();
+  if (pageCount <= maxPages) return [bytes];
+
+  const chunks: Uint8Array[] = [];
+  for (let start = 0; start < pageCount; start += maxPages) {
+    const end = Math.min(start + maxPages, pageCount);
+    const chunkDoc = await PDFDocument.create();
+    const indices = Array.from({ length: end - start }, (_, i) => start + i);
+    const copiedPages = await chunkDoc.copyPages(doc, indices);
+    for (const page of copiedPages) chunkDoc.addPage(page);
+    chunks.push(await chunkDoc.save());
+  }
+  return chunks;
+}
+
+// ============================================================================
+// TEXT-FIRST EXTRACTION (see file header — TEXT-FIRST, VISION-FALLBACK)
+// ============================================================================
+
+// The 19 fields every real Maximo WO export prints on its header page, as
+// "Label: value" pairs. Order in the PDF doesn't matter here — we require
+// ALL 19 to be found before trusting the page as a header (rather than a
+// task-list continuation page, which has none of them). This is a strict
+// binary check on purpose: partial matches (some labels present, some not)
+// were never observed across 393 real pages, so treating a partial match as
+// "not this template" and falling back to vision is safer than guessing at
+// which fields to trust.
+//
+// Matching is POSITION-based across the whole page, not line-based: unpdf's
+// text extraction (pdf.js under the hood) merges multiple "Label: value"
+// pairs from this PDF's 2-column header grid onto a single line (e.g.
+// "Site: AU01-SY3 Asset: 2615 - ..."), unlike PyMuPDF, which was used to
+// validate this format and preserves one field per line (found live
+// 2026-07-28 — the line-based version of this parser silently matched
+// nothing and fell back to vision on every real file). Slicing between
+// consecutive label match positions is agnostic to whichever line-wrapping
+// a given PDF-text-extraction library chooses.
+const HEADER_LABELS = [
+  "Site", "Asset", "Status", "Serial #", "Work Type", "Location", "Priority",
+  "Job Plan", "CrewID", "Target Start", "Target Finish", "Failure",
+  "Actual Start", "Actual Finish", "Problem", "Classification", "IR Scan p/f",
+  "Cause", "Remedy",
+] as const;
+
+const LABEL_RE = new RegExp(
+  `(${HEADER_LABELS.map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")}):\\s*`,
+  "g",
+);
+
+const WO_NUMBER_RE = /^\d{5,}$/;
+
+function parseHeaderPage(text: string): { wo_number: string; fields: Record<string, string> } | null {
+  const matches: { label: string; start: number; valueStart: number }[] = [];
+  LABEL_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = LABEL_RE.exec(text)) !== null) {
+    matches.push({ label: m[1]!, start: m.index, valueStart: m.index + m[0].length });
+  }
+  if (matches.length === 0) return null;
+
+  // "Tasks" is the section title immediately after the header block on every
+  // real page — bounds the last field's value so it doesn't swallow the
+  // entire task-list table that follows.
+  const tasksIdx = text.indexOf("\nTasks");
+  const hardEnd = tasksIdx === -1 ? text.length : tasksIdx;
+
+  const fields: Record<string, string> = {};
+  for (let i = 0; i < matches.length; i++) {
+    const cur = matches[i]!;
+    const end = i + 1 < matches.length ? Math.min(matches[i + 1]!.start, hardEnd) : hardEnd;
+    fields[cur.label] = text.slice(cur.valueStart, end).trim();
+  }
+  if (HEADER_LABELS.some((l) => !(l in fields))) return null;
+
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  const woLine = lines.find((l) => WO_NUMBER_RE.test(l));
+  if (!woLine) return null;
+
+  return { wo_number: woLine, fields };
+}
+
+/**
+ * Try to extract every WO on this file from its text layer alone — no
+ * Anthropic call. Returns null (not a failure — a signal to fall back to
+ * vision) when no page in the file matches the known header format, which
+ * covers both "this is a scanned PDF with no text layer" and "this is a
+ * template we don't recognise yet".
+ */
+async function extractWorkOrdersFromText(fileBytes: Uint8Array, fileName: string): Promise<{ records: RawWorkOrder[] } | null> {
+  let pageTexts: string[];
+  try {
+    const { text } = await extractText(fileBytes, { mergePages: false });
+    pageTexts = Array.isArray(text) ? text : [text];
+  } catch {
+    return null; // not a parseable PDF text stream — let vision take it
+  }
+
+  const records: RawWorkOrder[] = [];
+  for (const pageText of pageTexts) {
+    if (!pageText.includes("Work Order Details")) continue;
+    const parsed = parseHeaderPage(pageText);
+    if (!parsed) continue; // continuation/task-list page — no header data needed
+    const f = parsed.fields;
+    records.push({
+      wo_number: parsed.wo_number,
+      site: f["Site"]!,
+      asset: f["Asset"]!,
+      status: nullIfBlank(f["Status"]),
+      location: nullIfBlank(f["Location"]),
+      work_type: nullIfBlank(f["Work Type"]),
+      priority: nullIfBlank(f["Priority"]),
+      job_plan: f["Job Plan"]!,
+      crew_id: nullIfBlank(f["CrewID"]),
+      target_start: nullIfBlank(f["Target Start"]),
+      target_finish: nullIfBlank(f["Target Finish"]),
+      classification: nullIfBlank(f["Classification"]),
+      failure_code: nullIfBlank(f["Failure"]),
+      problem: nullIfBlank(f["Problem"]),
+      cause: nullIfBlank(f["Cause"]),
+      remedy: nullIfBlank(f["Remedy"]),
+      ir_scan_result: nullIfBlank(f["IR Scan p/f"]),
+    });
+  }
+
+  // Zero header pages found across the whole file means this isn't the known
+  // template (or has no text layer at all) — not a partial win worth keeping,
+  // fall back to vision for the whole file rather than return an empty result.
+  if (records.length === 0) return null;
+  return { records };
+}
+
+/**
+ * Extract work orders from one uploaded file, transparently splitting first
+ * if it exceeds Anthropic's per-document page limit. Chunks of the SAME file
+ * are also extracted concurrently — a 300-page PDF costs ~one chunk's worth
+ * of wall-clock, not three sequential ones.
+ */
+async function extractWorkOrdersFromFile(
+  apiKey: string,
+  fileBytes: Uint8Array,
+  fileName: string,
+): Promise<{ records: RawWorkOrder[]; warning?: string }> {
+  const textResult = await extractWorkOrdersFromText(fileBytes, fileName);
+  if (textResult) return textResult;
+
+  let chunks: Uint8Array[];
+  try {
+    chunks = await splitPdfIntoChunks(fileBytes, ANTHROPIC_MAX_PDF_PAGES);
+  } catch {
+    // pdf-lib couldn't parse it (encrypted/corrupt/etc.) — send as-is and
+    // let Anthropic return its own clear error rather than guessing here.
+    chunks = [fileBytes];
+  }
+
+  if (chunks.length === 1) {
+    return extractWorkOrdersFromPdf(apiKey, chunks[0]!, fileName);
+  }
+
+  const chunkResults = await Promise.all(
+    chunks.map((chunk, i) => extractWorkOrdersFromPdf(apiKey, chunk, `${fileName} (part ${i + 1}/${chunks.length})`)),
+  );
+
+  const records = chunkResults.flatMap((r) => r.records);
+  const chunkWarnings = chunkResults.map((r) => r.warning).filter((w): w is string => Boolean(w));
+  return {
+    records,
+    warning: chunkWarnings.length > 0 ? chunkWarnings.join(" ") : undefined,
+  };
+}
+
 // ============================================================================
 // MAPPING: raw WO -> wire check_asset + the group it belongs to
 // ============================================================================
@@ -498,7 +716,7 @@ Deno.serve(async (req: Request) => {
     const perFile = await Promise.all(
       files.map(async (file) => {
         const bytes = new Uint8Array(await file.arrayBuffer());
-        const { records, warning } = await extractWorkOrdersFromPdf(apiKey, bytes, file.name);
+        const { records, warning } = await extractWorkOrdersFromFile(apiKey, bytes, file.name);
         return { fileName: file.name, records, warning };
       }),
     );
