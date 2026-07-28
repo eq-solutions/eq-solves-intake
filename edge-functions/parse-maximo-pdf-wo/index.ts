@@ -592,7 +592,17 @@ function mapWorkOrder(raw: RawWorkOrder, fileName: string): MappedRow {
     warnings.push({ code: "missing_field", message: `WO ${wo}: could not parse job plan ('${raw.job_plan}').`, work_order_number: wo });
   }
 
-  const { suffix: prefixSuffix } = splitJobPlanCode(planParts.prefix);
+  // job_plans.code in EQ is the short mnemonic ("LVACB", "ATS", "SWBD") —
+  // NOT the E-number ("E1.25", "E1.8"), which lives in job_plans.name.
+  // Maximo prints "LVACB-A - E1.25 Low Voltage Air Circuit Breaker (ACB)",
+  // so the mnemonic is the PREFIX before the frequency suffix, not
+  // planParts.canonicalCode (which is the E-number). Using canonicalCode
+  // here made every real WO import show every plan as "not found in EQ",
+  // regardless of the plan actually existing — found live 2026-07-29.
+  // Falls back to canonicalCode only for the rare/theoretical case where
+  // the raw string has no " - " separator to split a prefix from at all.
+  const { code: prefixCode, suffix: prefixSuffix } = splitJobPlanCode(planParts.prefix);
+  const jobPlanMnemonic = prefixCode || planParts.canonicalCode;
   const frequency = mapFrequencySuffix(prefixSuffix);
   if (!frequency && prefixSuffix !== "") {
     warnings.push({
@@ -633,12 +643,12 @@ function mapWorkOrder(raw: RawWorkOrder, fileName: string): MappedRow {
   // both intake paths collapse identically-dated same-site-same-plan rows
   // into one maintenance_check.
   const groupStartDate = targetStartIso;
-  const groupKey = [siteCode, planParts.canonicalCode, frequency ?? "", groupStartDate ?? ""].join("|");
+  const groupKey = [siteCode, jobPlanMnemonic, frequency ?? "", groupStartDate ?? ""].join("|");
 
   return {
     groupKey,
     siteCode,
-    planCode: planParts.canonicalCode,
+    planCode: jobPlanMnemonic,
     planCodeRaw: planParts.prefix,
     frequency,
     groupStartDate,
