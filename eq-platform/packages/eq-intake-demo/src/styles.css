@@ -3178,7 +3178,7 @@ button.eq-primary:hover {
   }
 }
 
-/* ===== IntakeModule — top-level mode tabs (Import / Reconcile) ===== */
+/* ===== IntakeModule — top-level mode tabs (Overview / To Do / Bring Data In / Ask) ===== */
 .eq-intake-tabs {
   display: flex;
   gap: 4px;
@@ -3614,6 +3614,18 @@ button.eq-primary:hover {
 .eq-health-ring-num { font-size: 26px; font-weight: 700; color: var(--eq-ink); line-height: 1; }
 .eq-health-ring-sub { font-size: 11px; color: var(--eq-muted); }
 .eq-health-ring-status { font-size: 12px; font-weight: 600; }
+
+/* Six-metric breakdown — collapsed by default, the composite score + fix
+   list are what's actionable; the sub-metric weights are detail. */
+.eq-health-dims-disclosure { flex: 1; min-width: 220px; }
+.eq-health-dims-disclosure summary {
+  cursor: pointer; list-style: none; font-size: 12.5px; font-weight: 600;
+  color: var(--eq-sky); display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 0;
+}
+.eq-health-dims-disclosure summary::-webkit-details-marker { display: none; }
+.eq-health-dims-disclosure summary::before { content: "▸"; font-size: 10px; transition: transform 0.12s ease; }
+.eq-health-dims-disclosure[open] summary::before { transform: rotate(90deg); }
 
 /* Dimension bars */
 .eq-health-dims { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 10px; padding-top: 4px; }
