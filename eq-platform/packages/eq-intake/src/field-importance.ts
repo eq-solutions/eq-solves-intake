@@ -66,7 +66,13 @@ export const FIELD_IMPORTANCE: Record<string, FieldImportanceEntry[]> = {
     { field: 'warranty_expires',  tier: 'optional', why: 'Only matters at claim time, not day to day.' },
   ],
   sites: [
-    { field: 'customer_id',     tier: 'critical',  why: 'A site with no customer is orphaned in the CRM hierarchy.' },
+    // Verified against SKS live data 2026-07-29: 50% of real sites have no
+    // customer_id, by design (internal/unassigned/prospective sites) — not
+    // a data-quality defect. Originally tiered 'critical' on the assumption
+    // that a blank meant an orphaned record; Royce corrected that after
+    // seeing the real flagged-row count (101 -> 186 of 258 sites, mostly
+    // driven by this one field).
+    { field: 'customer_id',     tier: 'optional',  why: 'Often blank by design — internal or not-yet-assigned sites. Not itself a data problem.' },
     { field: 'address_line_1',  tier: 'important', why: 'Needed to actually dispatch a crew there.' },
     { field: 'suburb',          tier: 'important', why: 'Needed to actually dispatch a crew there.' },
     { field: 'postcode',        tier: 'important', why: 'Needed to actually dispatch a crew there.' },
