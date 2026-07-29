@@ -68,15 +68,16 @@ type FilterMode = "all" | "gaps" | "duplicates" | "tidy";
 
 const DEFAULT_TENANT_ID = "00000000-0000-4000-8000-000000000001";
 
-// staff/assets/licences/sites read from the shared field-importance
-// rulebook (see @eq/intake's field-importance.ts) so this list can't
-// quietly disagree with the Overview score's gap list again — that drift
-// (this list skipped `trade` and `emergency_contact_name`, which Overview
-// docked points for) is what prompted the rulebook. Only critical/important
+// Every entity reads from the shared field-importance rulebook (see
+// @eq/intake's field-importance.ts) so this list can't quietly disagree
+// with the Overview score's gap list again — that drift (this list once
+// skipped `trade` and `emergency_contact_name`, which Overview docked
+// points for) is what prompted the rulebook. Only critical/important
 // fields are pulled in — "optional"-tier fields never show as a gap here.
-// contacts/customers aren't migrated yet (see field-importance.ts's header
-// for why — a separate raw-vs-derived "phone" field mismatch) and keep
-// their own literal list.
+// Customers/Contacts' `phone` is a coalesced field (mobile_phone OR
+// primary/work_phone) — `row.phone` here is already the coalesced value
+// from `deriveRow()` below, so a plain blank-check on it is correct as
+// long as the rulebook's own `field: 'phone'` entry is what's being read.
 //
 // A function, not a module-level constant, so a tenant's field-importance
 // overrides (fetched once by IntakeModule, passed down as a prop) can shift
@@ -85,8 +86,8 @@ function buildGapFields(overrides?: FieldImportanceOverride[]): Record<string, s
   return {
     staff: getFlaggableFields("staff", overrides),
     sites: getFlaggableFields("sites", overrides),
-    contacts: ["email", "phone"],
-    customers: ["email", "phone", "abn"],
+    contacts: getFlaggableFields("contacts", overrides),
+    customers: getFlaggableFields("customers", overrides),
     assets: getFlaggableFields("assets", overrides),
     licences: getFlaggableFields("licences", overrides),
   };

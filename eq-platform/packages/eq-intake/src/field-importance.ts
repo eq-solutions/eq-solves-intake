@@ -30,13 +30,22 @@
  * tier win over its FIELD_IMPORTANCE default — the override never adds a
  * field the rulebook doesn't already know about, it only re-tiers one.
  *
- * Scope: Staff, Licences, Assets, Sites. Customers/Contacts are NOT migrated
- * yet — both entities check a synthesized `phone` field (mobile_phone ||
- * work_phone/primary_phone, built in EntityDrillDown's deriveRow()) that
- * doesn't exist as a real schema column, while health-score.ts checks the
- * raw columns directly. Those two already disagree on WHICH field name
- * means "phone" for these two entities — a second, separate bug found while
- * scoping this rulebook, flagged rather than silently worked around here.
+ * Scope: Staff, Licences, Assets, Sites, Customers, Contacts.
+ *
+ * Customers/Contacts' `phone` is a coalesced concept, not a single schema
+ * column — a customer's "phone" is `mobile_phone || primary_phone`, a
+ * contact's is `mobile_phone || work_phone`. Before this rulebook,
+ * EntityDrillDown.tsx derived that coalesced value pre-gap-check while
+ * health-score.ts checked only the single raw column (`primary_phone`/
+ * `work_phone`), so the two disagreed on whether a row with a mobile but no
+ * landline was "missing a phone" — confirmed live on ehow: 30 of 210
+ * contacts have a mobile on file but no work_phone, and were being wrongly
+ * flagged as gaps by the old raw-column check. `sourceFields` on a
+ * FieldImportanceEntry fixes this at the rulebook level: when present,
+ * `field` is a display/lookup key (not a literal column), and "blank" means
+ * every one of `sourceFields` is blank. `isFieldBlank()` is the one place
+ * that logic lives now — every consumer checks blank-ness through it
+ * instead of reimplementing the OR.
  */
 
 export type FieldTier = 'critical' | 'important' | 'optional';
@@ -45,6 +54,13 @@ export interface FieldImportanceEntry {
   field: string;
   tier:  FieldTier;
   why:   string;
+  /**
+   * When set, `field` is a coalesced concept spread across these raw
+   * columns (e.g. 'phone' = mobile_phone OR primary_phone) — blank means
+   * ALL of `sourceFields` are blank, not that a column literally named
+   * `field` is blank. Omit for a plain single-column field.
+   */
+  sourceFields?: string[];
 }
 
 export const FIELD_IMPORTANCE: Record<string, FieldImportanceEntry[]> = {
@@ -85,6 +101,15 @@ export const FIELD_IMPORTANCE: Record<string, FieldImportanceEntry[]> = {
     { field: 'suburb',          tier: 'important', why: 'Needed to actually dispatch a crew there.' },
     { field: 'postcode',        tier: 'important', why: 'Needed to actually dispatch a crew there.' },
     { field: 'state',           tier: 'important', why: 'Needed for state-based licence/compliance matching.' },
+  ],
+  customers: [
+    { field: 'email', tier: 'important', why: "Can't send invoices, quotes, or portal links without it." },
+    { field: 'phone',  tier: 'important', why: 'No way to reach them if email bounces.', sourceFields: ['mobile_phone', 'primary_phone'] },
+    { field: 'abn',   tier: 'important', why: 'Needed for compliant invoicing.' },
+  ],
+  contacts: [
+    { field: 'email', tier: 'important', why: "Can't send them anything directly without it." },
+    { field: 'phone',  tier: 'important', why: 'No way to reach them if email bounces.', sourceFields: ['mobile_phone', 'work_phone'] },
   ],
 };
 
@@ -138,4 +163,31 @@ export function getFlaggableFields(
     .map((e) => ({ field: e.field, tier: findOverrideTier(overrides, entity, e.field) ?? e.tier }))
     .filter((e) => e.tier !== 'optional')
     .map((e) => e.field);
+}
+
+function isBlankValue(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string' && value.trim() === '') return true;
+  return false;
+}
+
+/**
+ * Is this entity+field blank on `row`? For a plain rulebook entry, checks
+ * `row[field]` directly. For an entry with `sourceFields` (a coalesced
+ * concept like customers/contacts' `phone`), blank means every one of
+ * `sourceFields` is blank — the field itself may not exist as a literal
+ * column on `row` at all. Falls back to a direct `row[field]` check for
+ * anything not in the rulebook, so this is safe to call generically.
+ */
+export function isFieldBlank(
+  entity: string,
+  field: string,
+  row: Record<string, unknown>,
+): boolean {
+  const entry = FIELD_IMPORTANCE[entity]?.find((e) => e.field === field);
+  const sourceFields = entry?.sourceFields;
+  if (sourceFields && sourceFields.length > 0) {
+    return sourceFields.every((sf) => isBlankValue(row[sf]));
+  }
+  return isBlankValue(row[field]);
 }

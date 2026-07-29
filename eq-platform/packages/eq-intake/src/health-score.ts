@@ -22,7 +22,7 @@
 
 import type { SupabaseLikeClient } from './canonical/commit-canonical.js';
 import { isValidAbn, isValidAuPhone, isValidAuState, isValidAuPostcode } from './normalize.js';
-import { getFlaggableFields, type FieldImportanceOverride } from './field-importance.js';
+import { getFlaggableFields, isFieldBlank, type FieldImportanceOverride } from './field-importance.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -37,6 +37,7 @@ export interface HealthScore {
   validity:  number;       // 0–1 — fraction of format-checkable fields that pass, among rows that populated them (1 if nothing to check)
   freshness: number;       // 0–1 — fraction of rows updated within the last 365 days (1 if no rows, or no updated_at data to judge)
   gaps:      string[];     // field names with the most null/empty values (top 5)
+  gapCounts: Record<string, number>; // blank-row count for each field in `gaps` — lets a caller build "N of total missing X" copy without a second pass over the rows
 }
 
 // Required field lists per entity — mirrors NOT NULL columns in app_data schema.
@@ -48,20 +49,17 @@ const REQUIRED_FIELDS: Record<string, string[]> = {
   assets:    ['name', 'asset_type'],
 };
 
-// All fields to inspect for gap analysis (required + commonly-populated).
-// Column names verified against app_data schema 2026-06-24.
-//
-// staff/assets/sites read from field-importance.ts (the shared rulebook —
-// see that file for why, and for why customers/contacts aren't migrated
-// yet). Only critical/important fields are included — "optional"-tier
-// fields never count as a gap, anywhere. Computed per-call (not a module-
-// level constant) so a tenant's field-importance overrides — fetched fresh
-// by the caller — are reflected immediately, not just the code defaults.
+// All fields to inspect for gap analysis, read from field-importance.ts
+// (the shared rulebook) for every entity. Only critical/important fields
+// are included — "optional"-tier fields never count as a gap, anywhere.
+// Computed per-call (not a module-level constant) so a tenant's
+// field-importance overrides — fetched fresh by the caller — are reflected
+// immediately, not just the code defaults.
 function buildInspectedFields(overrides?: FieldImportanceOverride[]): Record<string, string[]> {
   return {
-    customers: ['company_name', 'email', 'primary_phone', 'abn'],
+    customers: getFlaggableFields('customers', overrides),
     sites:     getFlaggableFields('sites', overrides),
-    contacts:  ['first_name', 'last_name', 'email', 'work_phone'],
+    contacts:  getFlaggableFields('contacts', overrides),
     staff:     getFlaggableFields('staff', overrides),
     assets:    getFlaggableFields('assets', overrides),
   };
@@ -129,24 +127,29 @@ function daysSince(isoStr: unknown, now: Date): number | null {
 }
 
 function topGaps(
+  entity: string,
   rows: Record<string, unknown>[],
   fields: string[],
   limit = 5,
-): string[] {
+): { gaps: string[]; gapCounts: Record<string, number> } {
   const counts: Record<string, number> = {};
   for (const row of rows) {
     for (const f of fields) {
-      if (isBlank(row[f])) {
+      if (isFieldBlank(entity, f, row)) {
         counts[f] = (counts[f] ?? 0) + 1;
       }
     }
   }
 
-  return Object.entries(counts)
+  const top = Object.entries(counts)
     .sort(([, a], [, b]) => b - a)
     .slice(0, limit)
-    .filter(([, count]) => count > 0)
-    .map(([field]) => field);
+    .filter(([, count]) => count > 0);
+
+  return {
+    gaps: top.map(([field]) => field),
+    gapCounts: Object.fromEntries(top),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -178,7 +181,7 @@ export async function computeHealthScores(
     if (error) {
       return {
         entity, total: 0, complete: 0, score: 0, started: false,
-        validity: 1, freshness: 1, gaps: [`Error reading ${entity}: ${error.message}`],
+        validity: 1, freshness: 1, gaps: [`Error reading ${entity}: ${error.message}`], gapCounts: {},
       };
     }
 
@@ -187,7 +190,7 @@ export async function computeHealthScores(
     const complete = rows.filter((r) => isComplete(r, required)).length;
     const score    = total === 0 ? 1 : complete / total;
     const started  = total > 0;
-    const gaps     = topGaps(rows, inspected);
+    const { gaps, gapCounts } = topGaps(entity, rows, inspected);
 
     let checkedTotal = 0;
     let validTotal   = 0;
@@ -209,6 +212,6 @@ export async function computeHealthScores(
     const validity  = checkedTotal === 0 ? 1 : validTotal / checkedTotal;
     const freshness = judgeable === 0 ? 1 : freshCount / judgeable;
 
-    return { entity, total, complete, score, started, validity, freshness, gaps };
+    return { entity, total, complete, score, started, validity, freshness, gaps, gapCounts };
   });
 }
