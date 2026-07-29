@@ -7,6 +7,10 @@
  *
  * Kept separate from computeHealthScores() so the caller can fire all four
  * health-home queries in parallel.
+ *
+ * The four staff fields checked here (email, phone, trade,
+ * emergency_contact_name) are exactly field-importance.ts's staff entries —
+ * keep them in sync if that rulebook changes.
  */
 
 import type { SupabaseLikeClient } from './canonical/commit-canonical.js';

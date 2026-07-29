@@ -22,6 +22,7 @@
 
 import type { SupabaseLikeClient } from './canonical/commit-canonical.js';
 import { isValidAbn, isValidAuPhone, isValidAuState, isValidAuPostcode } from './normalize.js';
+import { getInspectedFields } from './field-importance.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -49,12 +50,16 @@ const REQUIRED_FIELDS: Record<string, string[]> = {
 
 // All fields to inspect for gap analysis (required + commonly-populated).
 // Column names verified against app_data schema 2026-06-24.
+//
+// staff/assets read from field-importance.ts (the shared rulebook — see that
+// file for why). customers/sites/contacts aren't migrated to the rulebook
+// yet and keep their own literal list here.
 const INSPECTED_FIELDS: Record<string, string[]> = {
   customers: ['company_name', 'email', 'primary_phone', 'abn'],
   sites:     ['name', 'address_line_1', 'suburb', 'postcode', 'customer_id'],
   contacts:  ['first_name', 'last_name', 'email', 'work_phone'],
-  staff:     ['first_name', 'last_name', 'email', 'phone', 'trade', 'emergency_contact_name'],
-  assets:    ['name', 'asset_type', 'serial_number', 'make', 'model'],
+  staff:     getInspectedFields('staff'),
+  assets:    getInspectedFields('assets'),
 };
 
 // Phone field name varies per entity — mirrors confidence-score.ts.

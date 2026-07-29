@@ -7,6 +7,7 @@ import {
   flagSitePairForMerge,
   getSiteDupeUsage,
   applyFilters,
+  getInspectedFields,
 } from "@eq/intake";
 import type {
   CanonicalFetchClient,
@@ -59,13 +60,19 @@ type FilterMode = "all" | "gaps" | "duplicates" | "tidy";
 
 const DEFAULT_TENANT_ID = "00000000-0000-4000-8000-000000000001";
 
+// staff/assets/licences read from the shared field-importance rulebook (see
+// @eq/intake's field-importance.ts) so this list can't quietly disagree with
+// the Overview score's gap list again — that drift (this list skipped
+// `trade` and `emergency_contact_name`, which Overview docked points for)
+// is what prompted the rulebook. sites/contacts/customers aren't migrated
+// yet and keep their own literal list here.
 const GAP_FIELDS: Record<string, string[]> = {
-  staff: ["email", "phone"],
+  staff: getInspectedFields("staff"),
   sites: ["address_line_1", "suburb", "state", "postcode"],
   contacts: ["email", "phone"],
   customers: ["email", "phone", "abn"],
-  assets: ["asset_type", "serial_number", "site_id"],
-  licences: ["expiry_date", "licence_number", "licence_type"],
+  assets: getInspectedFields("assets"),
+  licences: getInspectedFields("licences"),
 };
 
 const DUPE_KEYS: Record<string, string[]> = {

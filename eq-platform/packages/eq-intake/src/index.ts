@@ -110,6 +110,9 @@ export type { HealthScore } from "./health-score.js";
 export { computeComplianceMetrics } from "./compliance-metrics.js";
 export type { ComplianceMetrics } from "./compliance-metrics.js";
 
+export { FIELD_IMPORTANCE, getInspectedFields, getFieldTier } from "./field-importance.js";
+export type { FieldTier, FieldImportanceEntry } from "./field-importance.js";
+
 // ── AI data quality ────────────────────────────────────────────────────────
 export {
   normaliseAbn,
