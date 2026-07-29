@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type JSX } from "react";
+import { useState, useEffect, type JSX } from "react";
 import {
   computeHealthScores,
   runLicenceExpiryCheck,
