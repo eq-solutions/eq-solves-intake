@@ -79,9 +79,15 @@ function excelSerialToIso(serial: number): string | null {
 export function coerceDate(
   raw: unknown,
   opts: CoerceOptions
-): CoerceResult<string> {
+): CoerceResult<string | null> {
+  // Null/empty is "no value", not "wrong value" — most date fields are
+  // optional (end_date, expiry_date on a card that never expires, etc).
+  // Matches coerceNumber/coerceBoolean's contract: ok(null) unless the
+  // caller opts into strict mode. Whether an empty value actually matters
+  // is the required-field check's job, not the coercer's.
   if (raw === null || raw === undefined || raw === '') {
-    return err('value_null_or_empty', 'Date is empty.');
+    if (opts.strict) return err('value_null_or_empty', 'Date is empty.');
+    return ok(null, false);
   }
 
   // Already a Date object?
@@ -110,7 +116,10 @@ export function coerceDate(
   }
 
   let s = raw.trim();
-  if (s === '') return err('value_null_or_empty', 'Date is empty after trim.');
+  if (s === '') {
+    if (opts.strict) return err('value_null_or_empty', 'Date is empty after trim.');
+    return ok(null, true, 'whitespace-only, treated as empty');
+  }
 
   // Strip a trailing time component from slash/dash-formatted dates like
   // "01/05/2026 12:34" or "28-04-2026 09:00:00". Without this, the slash
