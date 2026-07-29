@@ -18,11 +18,7 @@ export interface FieldImportanceSettingsProps {
   onBack: () => void;
 }
 
-// Same scope as the rest of the rulebook migration — see field-importance.ts's
-// header for why customers/contacts aren't included yet (a raw-vs-derived
-// "phone" field-name mismatch between health-score.ts and EntityDrillDown).
-const ENABLED_ENTITIES = ["staff", "licences", "assets", "sites"] as const;
-const DISABLED_ENTITIES = ["customers", "contacts"] as const;
+const ENABLED_ENTITIES = ["staff", "licences", "assets", "sites", "customers", "contacts"] as const;
 
 const TIER_ORDER: FieldTier[] = ["critical", "important", "optional"];
 const TIER_LABEL: Record<FieldTier, string> = {
@@ -90,15 +86,6 @@ export function FieldImportanceSettings({
           >
             {entityLabel(e)}
           </button>
-        ))}
-        {DISABLED_ENTITIES.map((e) => (
-          <span
-            key={e}
-            className="eq-fis__entity-tab eq-fis__entity-tab--disabled"
-            title="Not yet available — the phone field is defined two different ways for this entity, so gap detection for it is being fixed first."
-          >
-            {entityLabel(e)}
-          </span>
         ))}
       </div>
 

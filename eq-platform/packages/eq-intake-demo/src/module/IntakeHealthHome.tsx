@@ -7,6 +7,7 @@ import {
   detectAllDuplicates,
   decayCheck,
   getFieldTier,
+  FIELD_IMPORTANCE,
 } from "@eq/intake";
 import type {
   HealthScore,
@@ -55,6 +56,8 @@ interface DimensionResult {
 
 interface ActionItem {
   id:          string;
+  /** Entity this action's onClick should drill into. */
+  entity:      string;
   title:       string;
   description: string;
   pts:         number;
@@ -153,64 +156,65 @@ function computeDimensions(
   return { completeness, compliance, serviceability, validity, consistency, timeliness, composite };
 }
 
+// Points-per-tier for sorting/display only — unrelated to the composite
+// score's WEIGHTS above (those are per-dimension; this just orders which
+// gaps surface first in the action list, critical always before important).
+const ACTION_PTS: Record<"critical" | "important", number> = { critical: 15, important: 5 };
+
 function deriveActions(
-  licences: LicenceExpiryAlertSummary | null,
-  cm:       ComplianceMetrics | null,
+  scores:    HealthScore[] | null,
+  licences:  LicenceExpiryAlertSummary | null,
+  cm:        ComplianceMetrics | null,
+  overrides?: FieldImportanceOverride[],
 ): ActionItem[] {
   const actions: ActionItem[] = [];
   const st = cm?.staff.total ?? 0;
 
+  // Two special cases the rulebook doesn't model — not "is this field blank
+  // on an existing row" but "does the whole record exist at all" and "is
+  // this a time-sensitive expiry," respectively.
   if (st > 0 && (licences?.records_total ?? 0) === 0) {
     actions.push({
       id:          "no_licences",
+      entity:      "licences",
       title:       `${st} active staff — no licence records on file`,
-      description: "White cards, yellow cards, electrical licences are all untracked. Adds ~25 pts to compliance.",
+      description: "White cards, yellow cards, electrical licences are all untracked.",
       pts:         25,
       severity:    "danger",
-    });
-  }
-
-  const missingTrade = st - (cm?.staff.has_trade ?? 0);
-  if (st > 0 && missingTrade > 0) {
-    actions.push({
-      id:          "no_trade",
-      title:       `${missingTrade} of ${st} staff have no trade classification`,
-      description: "Skill-based dispatch and PPM assignment require this field. Adds ~12 pts to serviceability.",
-      pts:         12,
-      severity:    "warning",
-    });
-  }
-
-  const missingEmergency = st - (cm?.staff.has_emergency_contact ?? 0);
-  if (st > 0 && missingEmergency > Math.floor(st * 0.1)) {
-    actions.push({
-      id:          "no_emergency",
-      title:       `${missingEmergency} of ${st} staff missing emergency contact`,
-      description: "Required for field dispatch under H&S compliance. Adds ~8 pts to compliance.",
-      pts:         8,
-      severity:    "warning",
     });
   }
 
   if ((licences?.total ?? 0) > 0) {
     actions.push({
       id:          "expiring",
+      entity:      "licences",
       title:       `${licences!.total} licence${licences!.total === 1 ? "" : "s"} expiring within 60 days`,
       description: `${licences!.critical > 0 ? `${licences!.critical} expired or critical. ` : ""}Renewal required before deployment.`,
-      pts:         4,
+      pts:         20,
       severity:    licences!.critical > 0 ? "danger" : "warning",
     });
   }
 
-  const missingEmail = st - (cm?.staff.has_email ?? 0);
-  if (missingEmail > 0) {
-    actions.push({
-      id:          "no_email",
-      title:       `${missingEmail} staff ${missingEmail === 1 ? "has" : "have"} no email address`,
-      description: "They won't receive roster notifications or shift confirmations. Adds ~3 pts to reachability.",
-      pts:         3,
-      severity:    "info",
-    });
+  // Everything else comes straight from the rulebook — a field's tier and
+  // "why" only ever need to change in field-importance.ts to change what
+  // shows up here, across every entity, not just staff.
+  for (const hs of scores ?? []) {
+    if (!hs.started) continue;
+    for (const field of hs.gaps) {
+      const count = hs.gapCounts[field] ?? 0;
+      if (count === 0) continue;
+      const tier = getFieldTier(hs.entity, field, overrides);
+      if (tier !== "critical" && tier !== "important") continue;
+      const why = FIELD_IMPORTANCE[hs.entity]?.find((e) => e.field === field)?.why ?? "";
+      actions.push({
+        id:          `${hs.entity}.${field}`,
+        entity:      hs.entity,
+        title:       `${count} of ${hs.total} ${entityLabel(hs.entity).toLowerCase()} missing ${fieldLabel(field)}`,
+        description: why,
+        pts:         ACTION_PTS[tier],
+        severity:    tier === "critical" ? "danger" : "warning",
+      });
+    }
   }
 
   return actions.sort((a, b) => b.pts - a.pts).slice(0, 4);
@@ -304,23 +308,11 @@ function DimensionBar({
 function ActionCard({
   action, onEntityClick,
 }: { action: ActionItem; onEntityClick?: (entity: string) => void }): JSX.Element {
-  const entityMap: Record<string, string> = {
-    no_licences:   "licences",
-    no_trade:      "staff",
-    no_emergency:  "staff",
-    no_email:      "staff",
-    expiring:      "licences",
-  };
-
   return (
     <button
       type="button"
       className={`eq-health-action eq-health-action--${action.severity}`}
-      onClick={
-        onEntityClick && entityMap[action.id]
-          ? () => onEntityClick(entityMap[action.id])
-          : undefined
-      }
+      onClick={onEntityClick ? () => onEntityClick(action.entity) : undefined}
     >
       <div className={`eq-health-action-icon eq-health-action-icon--${action.severity}`} aria-hidden="true">
         {action.severity === "danger" ? "!" : "→"}
@@ -681,7 +673,7 @@ export function IntakeHealthHome({
   }
 
   const dims    = computeDimensions(scores, licences, orphans, compliance);
-  const actions = deriveActions(licences, compliance);
+  const actions = deriveActions(scores, licences, compliance, fieldImportanceOverrides);
 
   const scanDuplicates = async () => {
     if (!supabase || dupesBusy) return;
