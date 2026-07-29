@@ -22,7 +22,7 @@
 
 import type { SupabaseLikeClient } from './canonical/commit-canonical.js';
 import { isValidAbn, isValidAuPhone, isValidAuState, isValidAuPostcode } from './normalize.js';
-import { getFlaggableFields } from './field-importance.js';
+import { getFlaggableFields, type FieldImportanceOverride } from './field-importance.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -54,14 +54,18 @@ const REQUIRED_FIELDS: Record<string, string[]> = {
 // staff/assets/sites read from field-importance.ts (the shared rulebook —
 // see that file for why, and for why customers/contacts aren't migrated
 // yet). Only critical/important fields are included — "optional"-tier
-// fields never count as a gap, anywhere.
-const INSPECTED_FIELDS: Record<string, string[]> = {
-  customers: ['company_name', 'email', 'primary_phone', 'abn'],
-  sites:     getFlaggableFields('sites'),
-  contacts:  ['first_name', 'last_name', 'email', 'work_phone'],
-  staff:     getFlaggableFields('staff'),
-  assets:    getFlaggableFields('assets'),
-};
+// fields never count as a gap, anywhere. Computed per-call (not a module-
+// level constant) so a tenant's field-importance overrides — fetched fresh
+// by the caller — are reflected immediately, not just the code defaults.
+function buildInspectedFields(overrides?: FieldImportanceOverride[]): Record<string, string[]> {
+  return {
+    customers: ['company_name', 'email', 'primary_phone', 'abn'],
+    sites:     getFlaggableFields('sites', overrides),
+    contacts:  ['first_name', 'last_name', 'email', 'work_phone'],
+    staff:     getFlaggableFields('staff', overrides),
+    assets:    getFlaggableFields('assets', overrides),
+  };
+}
 
 // Phone field name varies per entity — mirrors confidence-score.ts.
 const PHONE_FIELD: Record<string, string> = {
@@ -153,9 +157,11 @@ type RpcFn = (name: string, params: unknown) => Promise<{ data: unknown; error: 
 
 export async function computeHealthScores(
   supabase: SupabaseLikeClient,
+  overrides?: FieldImportanceOverride[],
 ): Promise<HealthScore[]> {
   const entities = Object.keys(REQUIRED_FIELDS) as EntityKey[];
   const rpc = (supabase as unknown as { rpc: RpcFn }).rpc.bind(supabase);
+  const inspectedFields = buildInspectedFields(overrides);
 
   const results = await Promise.all(
     entities.map((entity) =>
@@ -167,7 +173,7 @@ export async function computeHealthScores(
 
   return results.map(({ entity, data: rawData, error }) => {
     const required  = REQUIRED_FIELDS[entity] ?? [];
-    const inspected = INSPECTED_FIELDS[entity] ?? required;
+    const inspected = inspectedFields[entity] ?? required;
 
     if (error) {
       return {

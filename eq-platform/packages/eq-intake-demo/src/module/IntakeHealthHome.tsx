@@ -14,6 +14,7 @@ import type {
   ComplianceMetrics,
   DuplicateReport,
   DecaySummary,
+  FieldImportanceOverride,
 } from "@eq/intake";
 import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
 import { entityLabel, fieldLabel } from "../shared/entity-label.js";
@@ -26,6 +27,8 @@ export interface IntakeHealthHomeProps {
   supabase?: SupabaseLikeClient | null;
   tenantId?: string;
   onEntityClick?: (entity: string) => void;
+  /** Tenant's saved field-importance corrections — see IntakeModule's fetch. */
+  fieldImportanceOverrides?: FieldImportanceOverride[];
 }
 
 // ---------------------------------------------------------------------------
@@ -334,8 +337,8 @@ function ActionCard({
 }
 
 function HealthCard({
-  hs, onClick,
-}: { hs: HealthScore; onClick?: (entity: string) => void }): JSX.Element {
+  hs, onClick, overrides,
+}: { hs: HealthScore; onClick?: (entity: string) => void; overrides?: FieldImportanceOverride[] }): JSX.Element {
   const label = entityLabel(hs.entity);
 
   if (!hs.started) {
@@ -383,7 +386,7 @@ function HealthCard({
         <div className="eq-health-card__gaps">
           <span className="eq-health-card__gaps-label">Missing:</span>
           {hs.gaps.map((field) => {
-            const tier = getFieldTier(hs.entity, field);
+            const tier = getFieldTier(hs.entity, field, overrides);
             const tierClass = tier === "critical" ? "eq-health-badge--critical" : "eq-health-badge--warning";
             return (
               <span key={field} className={`eq-health-badge ${tierClass}`}>
@@ -579,6 +582,7 @@ export function IntakeHealthHome({
   supabase,
   tenantId,
   onEntityClick,
+  fieldImportanceOverrides,
 }: IntakeHealthHomeProps): JSX.Element {
   const resolvedTenantId = tenantId ?? DEFAULT_TENANT_ID;
 
@@ -616,7 +620,7 @@ export function IntakeHealthHome({
     const sb = supabase as any;
 
     Promise.allSettled([
-      computeHealthScores(sb),
+      computeHealthScores(sb, fieldImportanceOverrides),
       runLicenceExpiryCheck(sb, resolvedTenantId),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       runOrphanCheck({ supabase: supabase as any, tenantId: resolvedTenantId }),
@@ -658,7 +662,7 @@ export function IntakeHealthHome({
     });
 
     return () => { cancelled = true; };
-  }, [supabase, resolvedTenantId, refreshTick]);
+  }, [supabase, resolvedTenantId, refreshTick, fieldImportanceOverrides]);
 
   if (!supabase) {
     return (
@@ -769,7 +773,7 @@ export function IntakeHealthHome({
       {scores !== null && (
         <div className="eq-health-grid">
           {scores.map((hs) => (
-            <HealthCard key={hs.entity} hs={hs} onClick={onEntityClick} />
+            <HealthCard key={hs.entity} hs={hs} onClick={onEntityClick} overrides={fieldImportanceOverrides} />
           ))}
         </div>
       )}

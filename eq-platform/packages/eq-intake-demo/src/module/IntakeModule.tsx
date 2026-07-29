@@ -33,6 +33,8 @@ import { IntakeHealthHome } from "./IntakeHealthHome.js";
 import { EntityDrillDown } from "./EntityDrillDown.js";
 import { AskCanonical } from "./AskCanonical.js";
 import { RemediationQueue } from "./RemediationQueue.js";
+import { FieldImportanceSettings } from "./FieldImportanceSettings.js";
+import { useFieldImportanceOverrides } from "../shared/use-field-importance-overrides.js";
 import { QUICK_DESTINATIONS, encodeCsv, type QuickDestination } from "../quick-export/destinations.js";
 import {
   commitBundleToCanonical,
@@ -138,14 +140,19 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
   const [mode, setMode] = useState<IntakeMode>("health");
   const [drillEntity, setDrillEntity] = useState<string | null>(null);
   const [drillFilters, setDrillFilters] = useState<{ filters: AskFilter[]; label: string } | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  // Single fetch of the tenant's saved field-importance corrections — shared
+  // by Overview's score, the Gaps filter, and the settings screen itself, so
+  // changing a tier here is reflected everywhere without a page reload.
+  const fieldImportance = useFieldImportanceOverrides(props.supabase);
   // Bring Data In's per-slot "Check for conflicts" panel — which slot (by
   // reference, see the render guard below) currently has ReconcileModule
   // open inline, or null when closed.
   const [reconcileSlot, setReconcileSlot] = useState<FileSlot | null>(null);
 
-  // Reset drill-down when switching away from health tab
+  // Reset drill-down / settings when switching away from health tab
   useEffect(() => {
-    if (mode !== "health") { setDrillEntity(null); setDrillFilters(null); }
+    if (mode !== "health") { setDrillEntity(null); setDrillFilters(null); setShowSettings(false); }
   }, [mode]);
 
   // Lightweight To Do badge — how much is waiting across the two things that
@@ -231,10 +238,25 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
         >
           Ask
         </button>
+
+        <button
+          type="button"
+          className="eq-intake-tab__settings"
+          title="Field importance settings"
+          aria-label="Field importance settings"
+          onClick={() => { setMode("health"); setDrillEntity(null); setShowSettings(true); }}
+        >
+          ⚙
+        </button>
       </div>
 
       {mode === "health" ? (
-        drillEntity !== null ? (
+        showSettings ? (
+          <FieldImportanceSettings
+            overridesState={fieldImportance}
+            onBack={() => setShowSettings(false)}
+          />
+        ) : drillEntity !== null ? (
           <EntityDrillDown
             entity={drillEntity}
             supabase={props.supabase}
@@ -244,12 +266,14 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
             initialFilterLabel={drillFilters?.label}
             onBack={() => { setDrillEntity(null); setDrillFilters(null); }}
             canMergeSites={props.canMergeSites}
+            fieldImportanceOverrides={fieldImportance.overrides}
           />
         ) : (
           <IntakeHealthHome
             supabase={props.supabase}
             tenantId={props.tenantId}
             onEntityClick={(e) => { setDrillEntity(e); setDrillFilters(null); }}
+            fieldImportanceOverrides={fieldImportance.overrides}
           />
         )
       ) : mode === "queue" ? (
