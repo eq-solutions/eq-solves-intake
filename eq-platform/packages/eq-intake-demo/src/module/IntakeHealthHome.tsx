@@ -6,6 +6,7 @@ import {
   computeComplianceMetrics,
   detectAllDuplicates,
   decayCheck,
+  getFieldTier,
 } from "@eq/intake";
 import type {
   HealthScore,
@@ -15,7 +16,7 @@ import type {
   DecaySummary,
 } from "@eq/intake";
 import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
-import { entityLabel } from "../shared/entity-label.js";
+import { entityLabel, fieldLabel } from "../shared/entity-label.js";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -379,7 +380,18 @@ function HealthCard({
         <p className="eq-health-card__low-sample">Based on only {hs.total} record{hs.total === 1 ? "" : "s"} — treat this score as unproven.</p>
       )}
       {hs.gaps.length > 0 && (
-        <p className="eq-health-card__gaps">Missing: {hs.gaps.join(", ")}</p>
+        <div className="eq-health-card__gaps">
+          <span className="eq-health-card__gaps-label">Missing:</span>
+          {hs.gaps.map((field) => {
+            const tier = getFieldTier(hs.entity, field);
+            const tierClass = tier === "critical" ? "eq-health-badge--critical" : "eq-health-badge--warning";
+            return (
+              <span key={field} className={`eq-health-badge ${tierClass}`}>
+                {fieldLabel(field)}
+              </span>
+            );
+          })}
+        </div>
       )}
     </button>
   );
