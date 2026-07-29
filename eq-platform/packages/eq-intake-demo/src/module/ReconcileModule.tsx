@@ -54,14 +54,14 @@ type Step =
   | { tag: "error"; message: string };
 
 const PHONE_FIELDS: Record<string, string> = {
-  customers: 'primary_phone',
-  staff:     'phone',
-  contacts:  'work_phone',
+  customer: 'primary_phone',
+  staff:    'phone',
+  contact:  'work_phone',
 };
 
 function normaliseRow(entity: string, row: Record<string, unknown>): Record<string, unknown> {
   const r = { ...row };
-  if (entity === 'customers' && typeof r.abn === 'string' && r.abn) {
+  if (entity === 'customer' && typeof r.abn === 'string' && r.abn) {
     r.abn = normaliseAbn(r.abn);
   }
   const phoneField = PHONE_FIELDS[entity];
