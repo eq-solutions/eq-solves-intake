@@ -7,7 +7,8 @@ import {
   flagSitePairForMerge,
   getSiteDupeUsage,
   applyFilters,
-  getInspectedFields,
+  getFlaggableFields,
+  getFieldTier,
 } from "@eq/intake";
 import type {
   CanonicalFetchClient,
@@ -60,19 +61,22 @@ type FilterMode = "all" | "gaps" | "duplicates" | "tidy";
 
 const DEFAULT_TENANT_ID = "00000000-0000-4000-8000-000000000001";
 
-// staff/assets/licences read from the shared field-importance rulebook (see
-// @eq/intake's field-importance.ts) so this list can't quietly disagree with
-// the Overview score's gap list again — that drift (this list skipped
-// `trade` and `emergency_contact_name`, which Overview docked points for)
-// is what prompted the rulebook. sites/contacts/customers aren't migrated
-// yet and keep their own literal list here.
+// staff/assets/licences/sites read from the shared field-importance
+// rulebook (see @eq/intake's field-importance.ts) so this list can't
+// quietly disagree with the Overview score's gap list again — that drift
+// (this list skipped `trade` and `emergency_contact_name`, which Overview
+// docked points for) is what prompted the rulebook. Only critical/important
+// fields are pulled in — "optional"-tier fields never show as a gap here.
+// contacts/customers aren't migrated yet (see field-importance.ts's header
+// for why — a separate raw-vs-derived "phone" field mismatch) and keep
+// their own literal list.
 const GAP_FIELDS: Record<string, string[]> = {
-  staff: getInspectedFields("staff"),
-  sites: ["address_line_1", "suburb", "state", "postcode"],
+  staff: getFlaggableFields("staff"),
+  sites: getFlaggableFields("sites"),
   contacts: ["email", "phone"],
   customers: ["email", "phone", "abn"],
-  assets: getInspectedFields("assets"),
-  licences: getInspectedFields("licences"),
+  assets: getFlaggableFields("assets"),
+  licences: getFlaggableFields("licences"),
 };
 
 const DUPE_KEYS: Record<string, string[]> = {
@@ -688,9 +692,11 @@ export function EntityDrillDown({
             );
           }
 
+          const gapTier = blank ? getFieldTier(entity, col) : null;
           const cellClass = [
             "eq-drill__cell-value",
             blank ? "eq-drill__cell-value--gap" : "",
+            blank && gapTier === "critical" ? "eq-drill__cell-value--gap-critical" : "",
             isGapField && !blank ? "eq-drill__cell-value--filled" : "",
           ]
             .filter(Boolean)
