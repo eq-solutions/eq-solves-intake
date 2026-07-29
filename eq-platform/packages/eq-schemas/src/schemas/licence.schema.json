@@ -169,7 +169,7 @@
     },
     {
       "id": "state_required_for_state_licenced",
-      "rule": "state != null OR licence_type NOT IN ['driver_licence', 'forklift_hrwl', 'electrical_licence']",
+      "rule": "state != null OR (licence_type != 'driver_licence' AND licence_type != 'forklift_hrwl' AND licence_type != 'electrical_licence')",
       "message": "State is required for driver licence, forklift HRWL, and electrical licence — these are state-issued.",
       "severity": "warning"
     },
