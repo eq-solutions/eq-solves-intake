@@ -9,7 +9,7 @@
  */
 
 import { useRef, useState, type DragEvent, type JSX } from "react";
-import { roleLabel, type IntakeBundle } from "./intake-bundle.js";
+import { roleLabel, type IntakeBundle, type FileSlot } from "./intake-bundle.js";
 import { entityLabel } from "./entity-label.js";
 
 // ---------------------------------------------------------------------------
@@ -36,7 +36,13 @@ function UploadIcon({ size = 26 }: { size?: number }): JSX.Element {
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
-export function IntakeDropZone({ bundle }: { bundle: IntakeBundle }): JSX.Element {
+export interface IntakeDropZoneProps {
+  bundle: IntakeBundle;
+  /** Offers a "Check for conflicts" action per classified slot when provided. */
+  onCheckConflicts?: (slot: FileSlot, index: number) => void;
+}
+
+export function IntakeDropZone({ bundle, onCheckConflicts }: IntakeDropZoneProps): JSX.Element {
   const { slots, busy, ingestFiles, removeSlot } = bundle;
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -86,7 +92,7 @@ export function IntakeDropZone({ bundle }: { bundle: IntakeBundle }): JSX.Elemen
             <div className="eq-intake-dropzone__icon">
               <UploadIcon size={26} />
             </div>
-            <p className="eq-intake-dropzone__title">Drop a SimPRO file here</p>
+            <p className="eq-intake-dropzone__title">Drop a file here</p>
             <p className="eq-intake-dropzone__hint">CSV or Excel · We work out what it is</p>
           </>
         )}
@@ -168,6 +174,19 @@ export function IntakeDropZone({ bundle }: { bundle: IntakeBundle }): JSX.Elemen
                     </div>
                   )}
                 </div>
+
+                {/* Check against what's already there — only meaningful once
+                    the sheet classified cleanly */}
+                {onCheckConflicts && slot.sheet && slot.role !== "unknown" && !slot.error && (
+                  <button
+                    type="button"
+                    className="eq-intake-btn-ghost eq-intake-slot__check"
+                    onClick={() => onCheckConflicts(slot, i)}
+                    disabled={busy}
+                  >
+                    Check for conflicts
+                  </button>
+                )}
 
                 {/* Remove */}
                 <button
