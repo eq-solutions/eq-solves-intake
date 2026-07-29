@@ -111,7 +111,7 @@ export { computeComplianceMetrics } from "./compliance-metrics.js";
 export type { ComplianceMetrics } from "./compliance-metrics.js";
 
 export { FIELD_IMPORTANCE, getInspectedFields, getFlaggableFields, getFieldTier } from "./field-importance.js";
-export type { FieldTier, FieldImportanceEntry } from "./field-importance.js";
+export type { FieldTier, FieldImportanceEntry, FieldImportanceOverride } from "./field-importance.js";
 
 // ── AI data quality ────────────────────────────────────────────────────────
 export {

@@ -22,6 +22,14 @@
  * getInspectedFields() still returns them (all tiers) for anything that
  * wants the full rulebook, e.g. a future settings screen.
  *
+ * FieldImportanceOverride[] is an optional third argument on every reader
+ * below — a tenant's saved tier corrections (from the settings screen,
+ * backed by app_data.tenant_field_importance_overrides on eq-shell). It's
+ * additive: omit it and every function behaves exactly as before, reading
+ * only the code-level defaults above. Passing it lets one entity+field's
+ * tier win over its FIELD_IMPORTANCE default — the override never adds a
+ * field the rulebook doesn't already know about, it only re-tiers one.
+ *
  * Scope: Staff, Licences, Assets, Sites. Customers/Contacts are NOT migrated
  * yet — both entities check a synthesized `phone` field (mobile_phone ||
  * work_phone/primary_phone, built in EntityDrillDown's deriveRow()) that
@@ -80,24 +88,54 @@ export const FIELD_IMPORTANCE: Record<string, FieldImportanceEntry[]> = {
   ],
 };
 
+/** A tenant's saved correction to one field's default tier. */
+export interface FieldImportanceOverride {
+  entity: string;
+  field:  string;
+  tier:   FieldTier;
+}
+
+function findOverrideTier(
+  overrides: FieldImportanceOverride[] | undefined,
+  entity: string,
+  field: string,
+): FieldTier | undefined {
+  return overrides?.find((o) => o.entity === entity && o.field === field)?.tier;
+}
+
+/**
+ * The effective tier for one field — a tenant override if one exists for
+ * this entity+field, otherwise the code default. Returns null if the
+ * entity/field isn't in the rulebook at all (i.e. not currently inspected).
+ */
+export function getFieldTier(
+  entity: string,
+  field: string,
+  overrides?: FieldImportanceOverride[],
+): FieldTier | null {
+  const defaultEntry = FIELD_IMPORTANCE[entity]?.find((e) => e.field === field);
+  if (!defaultEntry) return null;
+  return findOverrideTier(overrides, entity, field) ?? defaultEntry.tier;
+}
+
 /** Every field the rulebook has an opinion on for this entity, any tier. */
 export function getInspectedFields(entity: string): string[] {
   return (FIELD_IMPORTANCE[entity] ?? []).map((e) => e.field);
 }
 
 /**
- * Fields worth flagging as a gap when blank — critical + important only.
- * This is what every gap-surfacing consumer (Overview's score, the live
- * "Gaps" filter) should call, never getInspectedFields directly, or an
- * "optional" field would still show up as a gap.
+ * Fields worth flagging as a gap when blank, after applying any tenant
+ * overrides — critical + important only. This is what every gap-surfacing
+ * consumer (Overview's score, the live "Gaps" filter) should call, never
+ * getInspectedFields directly, or an "optional"-tiered field would still
+ * show up as a gap.
  */
-export function getFlaggableFields(entity: string): string[] {
+export function getFlaggableFields(
+  entity: string,
+  overrides?: FieldImportanceOverride[],
+): string[] {
   return (FIELD_IMPORTANCE[entity] ?? [])
+    .map((e) => ({ field: e.field, tier: findOverrideTier(overrides, entity, e.field) ?? e.tier }))
     .filter((e) => e.tier !== 'optional')
     .map((e) => e.field);
-}
-
-/** null if the entity/field isn't in the rulebook (i.e. not currently inspected). */
-export function getFieldTier(entity: string, field: string): FieldTier | null {
-  return FIELD_IMPORTANCE[entity]?.find((e) => e.field === field)?.tier ?? null;
 }

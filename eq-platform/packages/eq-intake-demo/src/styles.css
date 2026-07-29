@@ -3191,9 +3191,29 @@ button.eq-primary:hover {
 /* ===== IntakeModule — top-level mode tabs (Overview / To Do / Bring Data In / Ask) ===== */
 .eq-intake-tabs {
   display: flex;
+  align-items: center;
   gap: 4px;
   margin-bottom: 20px;
   border-bottom: 2px solid var(--eq-line);
+}
+
+.eq-intake-tab__settings {
+  margin-left: auto;
+  align-self: center;
+  font-size: 16px;
+  line-height: 1;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--eq-muted);
+  cursor: pointer;
+}
+
+.eq-intake-tab__settings:hover {
+  color: var(--eq-ink);
+  background: var(--eq-ice);
+  border-color: var(--eq-line);
 }
 
 .eq-intake-tab {
@@ -4569,6 +4589,93 @@ button.eq-primary:hover {
 .eq-suggest-panel__accept {
   font-size: 12px;
   padding: 4px 12px;
+}
+
+/* ===== FieldImportanceSettings — tenant-editable field-importance tiers ===== */
+.eq-fis__header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.eq-fis__back { align-self: flex-start; margin-top: 0; }
+.eq-fis__title { font-size: 18px; font-weight: 600; color: var(--eq-ink); margin: 0 0 4px; }
+.eq-fis__subtitle { font-size: 13px; color: var(--eq-muted); margin: 0; max-width: 640px; }
+
+.eq-fis__entity-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--eq-line);
+}
+.eq-fis__entity-tab {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--eq-muted);
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+.eq-fis__entity-tab:hover { color: var(--eq-ink); }
+.eq-fis__entity-tab--active { color: var(--eq-deep); border-bottom-color: var(--eq-sky); font-weight: 600; }
+.eq-fis__entity-tab--disabled { color: var(--eq-line); cursor: not-allowed; }
+
+.eq-fis__field-list { display: flex; flex-direction: column; gap: 4px; }
+.eq-fis__field-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--eq-line);
+}
+.eq-fis__field-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.eq-fis__field-name { font-size: 14px; font-weight: 500; color: var(--eq-ink); }
+.eq-fis__field-why { font-size: 12px; color: var(--eq-muted); }
+
+.eq-fis__field-control { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
+.eq-fis__segmented { display: inline-flex; border: 1px solid var(--eq-line); border-radius: 6px; overflow: hidden; }
+.eq-fis__segment {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 12px;
+  background: white;
+  border: none;
+  border-left: 1px solid var(--eq-line);
+  color: var(--eq-muted);
+  cursor: pointer;
+}
+.eq-fis__segment:first-child { border-left: none; }
+.eq-fis__segment:hover:not(:disabled) { background: var(--eq-ice); }
+.eq-fis__segment:disabled { cursor: not-allowed; opacity: 0.6; }
+.eq-fis__segment--active.eq-fis__segment--critical { background: #fee2e2; color: #991b1b; }
+.eq-fis__segment--active.eq-fis__segment--important { background: #fef3c7; color: #92400e; }
+.eq-fis__segment--active.eq-fis__segment--optional { background: var(--eq-ice); color: var(--eq-deep); }
+
+.eq-fis__override-note { font-size: 11px; color: var(--eq-muted); }
+.eq-fis__override-note--muted { color: var(--eq-line); }
+.eq-fis__reset-link {
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--eq-sky);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.eq-fis__reset-link:hover:not(:disabled) { color: var(--eq-deep); }
+.eq-fis__reset-link:disabled { cursor: not-allowed; opacity: 0.6; }
+
+@media (max-width: 640px) {
+  .eq-fis__field-row { flex-direction: column; align-items: stretch; gap: 8px; }
+  .eq-fis__field-control { align-items: flex-start; }
 }
 
 .eq-suggest-panel__no-value {

@@ -23,6 +23,7 @@ import type {
   EdgeFnCaller,
   SiteDupeUsage,
   AskFilter,
+  FieldImportanceOverride,
 } from "@eq/intake";
 import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
 import { fieldLabel } from "../shared/entity-label.js";
@@ -53,6 +54,12 @@ export interface EntityDrillDownProps {
    * server-side, so this only controls whether the button renders.
    */
   canMergeSites?: boolean;
+  /**
+   * Tenant's saved field-importance corrections (from the settings screen).
+   * Additive — omit it and gaps/tiers fall back to the code defaults exactly
+   * as before. Passed down from IntakeModule, which owns the one fetch.
+   */
+  fieldImportanceOverrides?: FieldImportanceOverride[];
 }
 
 type Row = Record<string, unknown>;
@@ -70,14 +77,20 @@ const DEFAULT_TENANT_ID = "00000000-0000-4000-8000-000000000001";
 // contacts/customers aren't migrated yet (see field-importance.ts's header
 // for why — a separate raw-vs-derived "phone" field mismatch) and keep
 // their own literal list.
-const GAP_FIELDS: Record<string, string[]> = {
-  staff: getFlaggableFields("staff"),
-  sites: getFlaggableFields("sites"),
-  contacts: ["email", "phone"],
-  customers: ["email", "phone", "abn"],
-  assets: getFlaggableFields("assets"),
-  licences: getFlaggableFields("licences"),
-};
+//
+// A function, not a module-level constant, so a tenant's field-importance
+// overrides (fetched once by IntakeModule, passed down as a prop) can shift
+// which fields count as a gap without a page reload.
+function buildGapFields(overrides?: FieldImportanceOverride[]): Record<string, string[]> {
+  return {
+    staff: getFlaggableFields("staff", overrides),
+    sites: getFlaggableFields("sites", overrides),
+    contacts: ["email", "phone"],
+    customers: ["email", "phone", "abn"],
+    assets: getFlaggableFields("assets", overrides),
+    licences: getFlaggableFields("licences", overrides),
+  };
+}
 
 const DUPE_KEYS: Record<string, string[]> = {
   staff: ["email"],
@@ -202,6 +215,7 @@ export function EntityDrillDown({
   onBack,
   onBulkFix,
   canMergeSites,
+  fieldImportanceOverrides,
 }: EntityDrillDownProps): JSX.Element {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -251,7 +265,10 @@ export function EntityDrillDown({
   const [suggestResult, setSuggestResult] = useState<GapSuggestResult | null>(null);
   const [suggestError, setSuggestError] = useState<string | null>(null);
 
-  const gapFields = GAP_FIELDS[entity] ?? [];
+  const gapFields = useMemo(
+    () => buildGapFields(fieldImportanceOverrides)[entity] ?? [],
+    [entity, fieldImportanceOverrides],
+  );
   const displayColumns = DISPLAY_COLUMNS[entity] ?? [];
   const dupeKeys = DUPE_KEYS[entity] ?? [];
   const tidyEntity = ENTITY_TO_TIDY[entity] ?? null;
@@ -692,7 +709,7 @@ export function EntityDrillDown({
             );
           }
 
-          const gapTier = blank ? getFieldTier(entity, col) : null;
+          const gapTier = blank ? getFieldTier(entity, col, fieldImportanceOverrides) : null;
           const cellClass = [
             "eq-drill__cell-value",
             blank ? "eq-drill__cell-value--gap" : "",
