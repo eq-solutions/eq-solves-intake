@@ -61,6 +61,18 @@ const ENTITY_TABLES: Record<TidyEntity, string> = {
   asset:    'assets',
 };
 
+/**
+ * Schema-declared enum values for a field, if any. Used to render a closed
+ * dropdown instead of a free-text input — independent of whether a gap
+ * currently exists for that field (e.g. a blank required enum field should
+ * still get a dropdown, not just a value that failed enum validation).
+ */
+export function getFieldEnumValues(entity: TidyEntity, field: string): string[] | null {
+  const schema = SCHEMAS[entity] as { properties?: Record<string, { enum?: string[] }> } | undefined;
+  const enumValues = schema?.properties?.[field]?.enum;
+  return enumValues && enumValues.length > 0 ? enumValues : null;
+}
+
 // Fields used to build a human-readable row label for display.
 // Uses actual DB column names (not schema aliases).
 const ROW_LABEL_FIELDS: Record<TidyEntity, string[]> = {
@@ -356,6 +368,7 @@ async function scanEntity(
         field,
         gap_type: gapType,
         message:  describeValidationError(e),
+        allowed_values: e.kind === 'field_enum_invalid' ? e.allowed : getFieldEnumValues(entity, field) ?? undefined,
       });
     }
   }

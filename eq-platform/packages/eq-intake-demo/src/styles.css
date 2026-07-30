@@ -3767,8 +3767,11 @@ button.eq-primary:hover {
 /* Inline edit controls (same as before) */
 .eq-drill__inline-edit { display: flex; gap: 4px; align-items: center; }
 .eq-drill__inline-input { border: 1px solid var(--eq-sky); border-radius: 4px; padding: 3px 6px; font-size: 13px; width: 140px; }
+.eq-drill__inline-select { border: 1px solid var(--eq-sky); border-radius: 4px; padding: 3px 6px; font-size: 13px; width: 150px; background: white; }
 .eq-drill__inline-save { padding: 3px 8px; font-size: 12px; background: var(--eq-sky); color: white; border: none; border-radius: 4px; cursor: pointer; }
+.eq-drill__inline-save:disabled { opacity: 0.6; cursor: default; }
 .eq-drill__inline-cancel { padding: 3px 8px; font-size: 12px; background: none; border: 1px solid var(--eq-line); border-radius: 4px; cursor: pointer; }
+.eq-drill__inline-error { font-size: 11px; color: #991b1b; width: 100%; }
 .eq-drill__empty { text-align: center; padding: 32px; color: var(--eq-muted); font-size: 13px; }
 
 @media (max-width: 600px) {

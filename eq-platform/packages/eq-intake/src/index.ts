@@ -73,7 +73,7 @@ export { fetchCanonicalRows, entityToTable } from "./fetch-canonical.js";
 export type { CanonicalFetchClient, CanonicalEntity } from "./fetch-canonical.js";
 
 // ── Tidy Our Data ─────────────────────────────────────────────────────────
-export { runTidyPass, commitTidyFixes, TIDY_ENTITY_TABLES } from "./tidy-pass.js";
+export { runTidyPass, commitTidyFixes, getFieldEnumValues, TIDY_ENTITY_TABLES } from "./tidy-pass.js";
 export { runOrphanCheck } from "./orphan-check.js";
 export type {
   TidyEntity,

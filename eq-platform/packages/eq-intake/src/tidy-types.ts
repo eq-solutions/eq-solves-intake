@@ -70,6 +70,8 @@ export interface GapItem {
   field:     string;
   gap_type:  GapType;
   message:   string;
+  /** Present when the field is a closed enum (schema `enum: [...]`) — lets the UI render a dropdown of valid values instead of a free-text input. */
+  allowed_values?: string[];
 }
 
 // ---------------------------------------------------------------------------

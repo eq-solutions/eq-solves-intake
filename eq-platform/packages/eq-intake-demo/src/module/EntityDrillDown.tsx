@@ -9,6 +9,7 @@ import {
   applyFilters,
   getFlaggableFields,
   getFieldTier,
+  getFieldEnumValues,
 } from "@eq/intake";
 import type {
   CanonicalFetchClient,
@@ -161,6 +162,16 @@ function rowKey(entity: string, row: Row): string {
   return v !== null && v !== undefined ? String(v) : "";
 }
 
+// Display label for a row when committing a fix — only used for the audit
+// trail's row_label column, so a rough best-effort match is fine.
+function fallbackRowLabel(row: Row): string {
+  const candidates = ["company_name", "full_name", "name", "licence_number", "first_name"];
+  for (const c of candidates) {
+    const v = row[c];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return "record";
+}
 
 function isBlank(value: unknown): boolean {
   if (value === null || value === undefined) return true;
@@ -249,6 +260,8 @@ export function EntityDrillDown({
   const [editState, setEditState] = useState<EditState | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [hasLocalEdits, setHasLocalEdits] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editSaveError, setEditSaveError] = useState<string | null>(null);
 
   // Tidy pass state
   const [tidyReport, setTidyReport] = useState<TidyReport | null>(null);
@@ -567,22 +580,64 @@ export function EntityDrillDown({
     [rows, entity],
   );
 
-  const commitEdit = useCallback(() => {
+  const commitEdit = useCallback(async () => {
     if (!editState) return;
     const { rowId, field } = editState;
-    setRows((prev) =>
-      prev.map((r) =>
-        rowKey(entity, r) === rowId ? { ...r, [field]: editDraft } : r,
-      ),
-    );
-    setHasLocalEdits(true);
-    setEditState(null);
-    setEditDraft("");
-  }, [editState, editDraft, entity]);
+    const targetRow = rows.find((r) => rowKey(entity, r) === rowId);
+    const newValue = editDraft;
+
+    // No live client (e.g. a static preview) — nothing to save against, fall
+    // back to the old local-only behaviour rather than pretending to persist.
+    if (!supabase) {
+      setRows((prev) => prev.map((r) => (rowKey(entity, r) === rowId ? { ...r, [field]: newValue } : r)));
+      setHasLocalEdits(true);
+      setEditState(null);
+      setEditDraft("");
+      return;
+    }
+
+    const tidyEntity = ENTITY_TO_TIDY[entity];
+    if (!tidyEntity || !targetRow) return;
+
+    const gapMatch = tidyReport?.gaps.find((g) => g.row_id === rowId && g.field === field);
+    const oldValue = targetRow[field] == null ? "" : String(targetRow[field]);
+    const fix: TidyFix = {
+      entity:    tidyEntity,
+      table:     entity,
+      row_id:    rowId,
+      row_label: gapMatch?.row_label ?? fallbackRowLabel(targetRow),
+      field,
+      fix_type:  "other",
+      old_value: oldValue,
+      new_value: newValue,
+    };
+
+    setEditSaving(true);
+    setEditSaveError(null);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await commitTidyFixes({ supabase: supabase as any, tenantId: resolvedTenantId, fixes: [fix] });
+      if (result.applied > 0) {
+        setRows((prev) => prev.map((r) => (rowKey(entity, r) === rowId ? { ...r, [field]: newValue } : r)));
+        if (tidyReport) {
+          setTidyReport({ ...tidyReport, gaps: tidyReport.gaps.filter((g) => !(g.row_id === rowId && g.field === field)) });
+        }
+        setEditState(null);
+        setEditDraft("");
+      } else {
+        setEditSaveError(`"${fieldLabel(field)}" wasn't saved — the server doesn't allow editing this field yet.`);
+      }
+    } catch (err) {
+      setEditSaveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEditSaving(false);
+    }
+  }, [editState, editDraft, entity, rows, supabase, tidyReport, resolvedTenantId]);
 
   const cancelEdit = useCallback(() => {
     setEditState(null);
     setEditDraft("");
+    setEditSaveError(null);
   }, []);
 
   // ── Tidy fix commit ────────────────────────────────────────────────────
@@ -659,14 +714,51 @@ export function EntityDrillDown({
   );
 
   const acceptSuggestion = useCallback(
-    (field: string, value: string) => {
+    async (field: string, value: string) => {
       if (!suggestRowId) return;
-      setRows((prev) =>
-        prev.map((r) => rowKey(entity, r) === suggestRowId ? { ...r, [field]: value } : r),
-      );
-      setHasLocalEdits(true);
+      const targetRow = rows.find((r) => rowKey(entity, r) === suggestRowId);
+
+      if (!supabase) {
+        setRows((prev) => prev.map((r) => (rowKey(entity, r) === suggestRowId ? { ...r, [field]: value } : r)));
+        setHasLocalEdits(true);
+        return;
+      }
+
+      const tidyEntity = ENTITY_TO_TIDY[entity];
+      if (!tidyEntity || !targetRow) return;
+
+      const gapMatch = tidyReport?.gaps.find((g) => g.row_id === suggestRowId && g.field === field);
+      const oldValue = targetRow[field] == null ? "" : String(targetRow[field]);
+      const fix: TidyFix = {
+        entity:    tidyEntity,
+        table:     entity,
+        row_id:    suggestRowId,
+        row_label: gapMatch?.row_label ?? suggestRowLabel ?? fallbackRowLabel(targetRow),
+        field,
+        fix_type:  "other",
+        old_value: oldValue,
+        new_value: value,
+      };
+
+      setSuggestError(null);
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const result = await commitTidyFixes({ supabase: supabase as any, tenantId: resolvedTenantId, fixes: [fix] });
+        if (result.applied > 0) {
+          setRows((prev) => prev.map((r) => (rowKey(entity, r) === suggestRowId ? { ...r, [field]: value } : r)));
+          if (tidyReport) {
+            setTidyReport({ ...tidyReport, gaps: tidyReport.gaps.filter((g) => !(g.row_id === suggestRowId && g.field === field)) });
+          }
+          setSuggestRowId(null);
+          setSuggestResult(null);
+        } else {
+          setSuggestError(`"${fieldLabel(field)}" wasn't saved — the server doesn't allow editing this field yet.`);
+        }
+      } catch (err) {
+        setSuggestError(err instanceof Error ? err.message : String(err));
+      }
     },
-    [suggestRowId, entity],
+    [suggestRowId, suggestRowLabel, entity, rows, supabase, tidyReport, resolvedTenantId],
   );
 
   // ── Column definitions ────────────────────────────────────────────────
@@ -687,25 +779,42 @@ export function EntityDrillDown({
           const blank = isGapField && isBlank(row[col]);
 
           if (isEditing) {
+            const enumValues = getFieldEnumValues(ENTITY_TO_TIDY[entity] ?? "customer", col);
             return (
               <span className="eq-drill__inline-edit">
-                <input
-                  className="eq-drill__inline-input"
-                  value={editDraft}
-                  onChange={(e) => setEditDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") commitEdit();
-                    if (e.key === "Escape") cancelEdit();
-                  }}
-                  autoFocus
-                  aria-label={`Edit ${fieldLabel(col)}`}
-                />
-                <button className="eq-drill__inline-save" onClick={commitEdit} type="button">
-                  Save
+                {enumValues ? (
+                  <select
+                    className="eq-drill__inline-select"
+                    value={editDraft}
+                    onChange={(e) => setEditDraft(e.target.value)}
+                    autoFocus
+                    aria-label={`Edit ${fieldLabel(col)}`}
+                  >
+                    <option value="" disabled>Choose a value…</option>
+                    {enumValues.map((v) => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className="eq-drill__inline-input"
+                    value={editDraft}
+                    onChange={(e) => setEditDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void commitEdit();
+                      if (e.key === "Escape") cancelEdit();
+                    }}
+                    autoFocus
+                    aria-label={`Edit ${fieldLabel(col)}`}
+                  />
+                )}
+                <button className="eq-drill__inline-save" onClick={() => void commitEdit()} disabled={editSaving} type="button">
+                  {editSaving ? "Saving…" : "Save"}
                 </button>
                 <button className="eq-drill__inline-cancel" onClick={cancelEdit} type="button">
                   Cancel
                 </button>
+                {editSaveError && <span className="eq-drill__inline-error" role="alert">{editSaveError}</span>}
               </span>
             );
           }
@@ -1072,6 +1181,8 @@ export function EntityDrillDown({
             if (row) void handleSuggest(row, [field]);
           }}
           canSuggest={!!callEdgeFn}
+          editSaving={editSaving}
+          editSaveError={editSaveError}
         />
       ) : (
         <Table<DrillRow>
@@ -1129,6 +1240,8 @@ interface TidyPanelProps {
   onCancelEdit: () => void;
   onSuggest: (rowId: string, field: string) => void;
   canSuggest: boolean;
+  editSaving: boolean;
+  editSaveError: string | null;
 }
 
 const FIX_TYPE_LABELS: Record<string, string> = {
@@ -1174,6 +1287,8 @@ function TidyPanel({
   onCancelEdit,
   onSuggest,
   canSuggest,
+  editSaving,
+  editSaveError,
 }: TidyPanelProps): JSX.Element {
   if (loading) {
     return (
@@ -1272,23 +1387,39 @@ function TidyPanel({
         if (isEditing) {
           return (
             <span className="eq-drill__inline-edit">
-              <input
-                className="eq-drill__inline-input"
-                value={editDraft}
-                onChange={(e) => onEditDraftChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") onCommitEdit();
-                  if (e.key === "Escape") onCancelEdit();
-                }}
-                autoFocus
-                aria-label={`Edit ${fieldLabel(g.field)} for ${g.row_label}`}
-              />
-              <button className="eq-drill__inline-save" onClick={onCommitEdit} type="button">
-                Save
+              {g.allowed_values ? (
+                <select
+                  className="eq-drill__inline-select"
+                  value={editDraft}
+                  onChange={(e) => onEditDraftChange(e.target.value)}
+                  autoFocus
+                  aria-label={`Edit ${fieldLabel(g.field)} for ${g.row_label}`}
+                >
+                  <option value="" disabled>Choose a value…</option>
+                  {g.allowed_values.map((v) => (
+                    <option key={v} value={v}>{v}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="eq-drill__inline-input"
+                  value={editDraft}
+                  onChange={(e) => onEditDraftChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") onCommitEdit();
+                    if (e.key === "Escape") onCancelEdit();
+                  }}
+                  autoFocus
+                  aria-label={`Edit ${fieldLabel(g.field)} for ${g.row_label}`}
+                />
+              )}
+              <button className="eq-drill__inline-save" onClick={onCommitEdit} disabled={editSaving} type="button">
+                {editSaving ? "Saving…" : "Save"}
               </button>
               <button className="eq-drill__inline-cancel" onClick={onCancelEdit} type="button">
                 Cancel
               </button>
+              {editSaveError && <span className="eq-drill__inline-error" role="alert">{editSaveError}</span>}
             </span>
           );
         }
