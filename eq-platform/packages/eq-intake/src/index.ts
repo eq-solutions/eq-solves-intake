@@ -72,6 +72,9 @@ export type {
 export { fetchCanonicalRows, entityToTable } from "./fetch-canonical.js";
 export type { CanonicalFetchClient, CanonicalEntity } from "./fetch-canonical.js";
 
+export { archiveDuplicateRecord, isArchivableDuplicate } from "./archive-duplicate.js";
+export type { ArchiveDuplicateResult } from "./archive-duplicate.js";
+
 // ── Tidy Our Data ─────────────────────────────────────────────────────────
 export { runTidyPass, commitTidyFixes, getFieldEnumValues, TIDY_ENTITY_TABLES } from "./tidy-pass.js";
 export { runOrphanCheck } from "./orphan-check.js";
