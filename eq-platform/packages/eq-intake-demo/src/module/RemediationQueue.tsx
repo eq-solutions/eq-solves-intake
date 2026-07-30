@@ -13,12 +13,16 @@
  *   email / format     text input, prefilled with the steward's suggestion
  *   link               select from the tenant's customers
  *   emergency_contact  dismiss only — collected from the worker, not typed here
- *   duplicate          dismiss only — a different signal from the write-time
- *                       resolver's merge tool (DuplicateMergePanel, rendered
- *                       above these groups) — these rows never auto-merge
+ *   duplicate          a different signal from the write-time resolver's merge
+ *                       tool (DuplicateMergePanel, rendered above these groups)
+ *                       — these rows never auto-merge. Staff/contacts rows get
+ *                       an Archive action (eq_archive_duplicate_record); rows
+ *                       needing a field fixed elsewhere first (e.g. a mangled
+ *                       linked record) still fall back to dismiss-after-manual-fix.
  */
 
 import { useState, useEffect, useCallback, type JSX } from "react";
+import { archiveDuplicateRecord, isArchivableDuplicate } from "@eq/intake";
 import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
 import { DuplicateMergePanel } from "./DuplicateMergePanel.js";
 
@@ -71,7 +75,7 @@ const CATEGORY_HINT: Record<string, string> = {
   email:             "Check the suggested mailbox actually exists before approving.",
   link:              "Pick the right customer — this drives invoicing and reporting.",
   format:            "Confirm the corrected value, or dismiss if the original is right.",
-  duplicate:         "A separate signal from the merge tool above — not site pairs, and never auto-merged. Tidy these up in the entity screens, then dismiss here.",
+  duplicate:         "A separate signal from the merge tool above — not site pairs, and never auto-merged. Archive the flagged record directly, or read the reason first if it says to fix something elsewhere before archiving.",
   emergency_contact: "These come from the workers themselves — an EQ Cards prompt is the plan. Dismiss any that no longer apply.",
 };
 
@@ -174,6 +178,38 @@ export function RemediationQueue({ supabase, canMergeSites }: RemediationQueuePr
     try {
       const resolved = await rpc("eq_queue_resolve", {
         p_queue_id: item.queue_id, p_status: "dismissed", p_note: null,
+      });
+      if (resolved.error) throw new Error(resolved.error.message);
+      removeItem(item.queue_id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  // Duplicate flags: archive the flagged record directly (active=false, and
+  // for staff also on_roster=false — same fields eq-shell's own archive
+  // action sets) instead of sending the user to the Staff/Contacts page and
+  // back. Same open-event/commit/close-event/resolve lineage as approve().
+  const archiveDuplicate = async (item: QueueItem) => {
+    if (!rpc || busyId) return;
+    setBusyId(item.queue_id);
+    setError(null);
+    try {
+      const opened = await rpc("eq_queue_open_event", { p_entity: entityToEventLabel(item.entity) });
+      if (opened.error) throw new Error(opened.error.message);
+      const intakeId = String(opened.data);
+
+      const sb = supabase as unknown as Parameters<typeof archiveDuplicateRecord>[0];
+      const result = await archiveDuplicateRecord(sb, { table: item.entity, rowId: item.record_id });
+      if (result.applied < 1) {
+        throw new Error("Archive did not apply — the record may have already changed.");
+      }
+
+      await rpc("eq_queue_close_event", { p_intake_id: intakeId, p_committed: 1 });
+      const resolved = await rpc("eq_queue_resolve", {
+        p_queue_id: item.queue_id, p_status: "committed", p_note: `archived duplicate record (intake ${intakeId.slice(0, 8)})`,
       });
       if (resolved.error) throw new Error(resolved.error.message);
       removeItem(item.queue_id);
@@ -287,6 +323,17 @@ export function RemediationQueue({ supabase, canMergeSites }: RemediationQueuePr
                       disabled={busy || !(values[item.queue_id]?.trim())}
                     >
                       {busy ? "Saving…" : "Approve"}
+                    </button>
+                  )}
+                  {item.category === "duplicate" && isArchivableDuplicate(item.entity) && (
+                    <button
+                      type="button"
+                      className="eq-intake-btn-primary eq-queue__btn"
+                      onClick={() => archiveDuplicate(item)}
+                      disabled={busy}
+                      title="Set this record inactive — same action as archiving it on its own page"
+                    >
+                      {busy ? "Archiving…" : "Archive"}
                     </button>
                   )}
                   <button
