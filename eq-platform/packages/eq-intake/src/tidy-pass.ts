@@ -73,6 +73,19 @@ export function getFieldEnumValues(entity: TidyEntity, field: string): string[] 
   return enumValues && enumValues.length > 0 ? enumValues : null;
 }
 
+/**
+ * Schema-declared suggested values for a field, if any (`x-eq-suggested-
+ * values` — a free-text field with a controlled-but-not-enforced vocabulary,
+ * e.g. staff.trade). Unlike getFieldEnumValues this isn't a closed set the
+ * validator enforces, just a code-level default list a caller can offer as
+ * the starting point before any tenant customization.
+ */
+export function getFieldSuggestedValues(entity: TidyEntity, field: string): string[] | null {
+  const schema = SCHEMAS[entity] as { properties?: Record<string, { 'x-eq-suggested-values'?: string[] }> } | undefined;
+  const values = schema?.properties?.[field]?.['x-eq-suggested-values'];
+  return values && values.length > 0 ? values : null;
+}
+
 // Fields used to build a human-readable row label for display.
 // Uses actual DB column names (not schema aliases).
 const ROW_LABEL_FIELDS: Record<TidyEntity, string[]> = {

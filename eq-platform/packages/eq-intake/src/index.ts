@@ -76,7 +76,7 @@ export { archiveDuplicateRecord, isArchivableDuplicate } from "./archive-duplica
 export type { ArchiveDuplicateResult } from "./archive-duplicate.js";
 
 // ── Tidy Our Data ─────────────────────────────────────────────────────────
-export { runTidyPass, commitTidyFixes, getFieldEnumValues, TIDY_ENTITY_TABLES } from "./tidy-pass.js";
+export { runTidyPass, commitTidyFixes, getFieldEnumValues, getFieldSuggestedValues, TIDY_ENTITY_TABLES } from "./tidy-pass.js";
 export { runOrphanCheck } from "./orphan-check.js";
 export type {
   TidyEntity,

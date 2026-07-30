@@ -4676,10 +4676,14 @@ button.eq-primary:hover {
 }
 .eq-fis__reset-link:hover:not(:disabled) { color: var(--eq-deep); }
 .eq-fis__reset-link:disabled { cursor: not-allowed; opacity: 0.6; }
+.eq-fis__add-row { display: flex; gap: 8px; align-items: center; margin-top: 16px; }
+.eq-fis__add-row .eq-drill__inline-input { width: 220px; }
 
 @media (max-width: 640px) {
   .eq-fis__field-row { flex-direction: column; align-items: stretch; gap: 8px; }
   .eq-fis__field-control { align-items: flex-start; }
+  .eq-fis__add-row { flex-direction: column; align-items: stretch; }
+  .eq-fis__add-row .eq-drill__inline-input { width: auto; }
 }
 
 .eq-suggest-panel__no-value {

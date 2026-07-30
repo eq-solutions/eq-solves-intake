@@ -35,6 +35,8 @@ import { AskCanonical } from "./AskCanonical.js";
 import { RemediationQueue } from "./RemediationQueue.js";
 import { FieldImportanceSettings } from "./FieldImportanceSettings.js";
 import { useFieldImportanceOverrides } from "../shared/use-field-importance-overrides.js";
+import { TradesSettings } from "./TradesSettings.js";
+import { useTenantTrades } from "../shared/use-tenant-trades.js";
 import { QUICK_DESTINATIONS, encodeCsv, type QuickDestination } from "../quick-export/destinations.js";
 import {
   commitBundleToCanonical,
@@ -141,10 +143,14 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
   const [drillEntity, setDrillEntity] = useState<string | null>(null);
   const [drillFilters, setDrillFilters] = useState<{ filters: AskFilter[]; label: string } | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showTradesSettings, setShowTradesSettings] = useState(false);
   // Single fetch of the tenant's saved field-importance corrections — shared
   // by Overview's score, the Gaps filter, and the settings screen itself, so
   // changing a tier here is reflected everywhere without a page reload.
   const fieldImportance = useFieldImportanceOverrides(props.supabase);
+  // Same one-fetch pattern for the tenant's added trades — shared by the
+  // Trades settings screen and the Review Queue's trade dropdown.
+  const tenantTrades = useTenantTrades(props.supabase);
   // Bring Data In's per-slot "Check for conflicts" panel — which slot (by
   // reference, see the render guard below) currently has ReconcileModule
   // open inline, or null when closed.
@@ -152,7 +158,12 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
 
   // Reset drill-down / settings when switching away from health tab
   useEffect(() => {
-    if (mode !== "health") { setDrillEntity(null); setDrillFilters(null); setShowSettings(false); }
+    if (mode !== "health") {
+      setDrillEntity(null);
+      setDrillFilters(null);
+      setShowSettings(false);
+      setShowTradesSettings(false);
+    }
   }, [mode]);
 
   // Lightweight To Do badge — how much is waiting across the two things that
@@ -244,9 +255,18 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
           className="eq-intake-tab__settings"
           title="Field importance settings"
           aria-label="Field importance settings"
-          onClick={() => { setMode("health"); setDrillEntity(null); setShowSettings(true); }}
+          onClick={() => { setMode("health"); setDrillEntity(null); setShowTradesSettings(false); setShowSettings(true); }}
         >
           ⚙
+        </button>
+        <button
+          type="button"
+          className="eq-intake-tab__settings"
+          title="Trades settings"
+          aria-label="Trades settings"
+          onClick={() => { setMode("health"); setDrillEntity(null); setShowSettings(false); setShowTradesSettings(true); }}
+        >
+          🔧
         </button>
       </div>
 
@@ -255,6 +275,11 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
           <FieldImportanceSettings
             overridesState={fieldImportance}
             onBack={() => setShowSettings(false)}
+          />
+        ) : showTradesSettings ? (
+          <TradesSettings
+            tradesState={tenantTrades}
+            onBack={() => setShowTradesSettings(false)}
           />
         ) : drillEntity !== null ? (
           <EntityDrillDown
@@ -277,7 +302,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
           />
         )
       ) : mode === "queue" ? (
-        <RemediationQueue supabase={props.supabase} canMergeSites={props.canMergeSites} />
+        <RemediationQueue supabase={props.supabase} canMergeSites={props.canMergeSites} tenantTrades={tenantTrades.trades} />
       ) : mode === "ask" ? (
         <AskCanonical
           supabase={props.supabase}

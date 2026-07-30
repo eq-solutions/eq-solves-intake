@@ -261,6 +261,12 @@ export function EntityDrillDown({
   const [archiveBusy, setArchiveBusy] = useState<Record<string, boolean>>({});
   const [archiveError, setArchiveError] = useState<Record<string, string>>({});
 
+  // ── "Not a duplicate" dismiss state (non-sites entities — Sites already
+  // has its own Same/Different/Unsure verdict flow) ──────────────────────
+  const [dismissedGroups, setDismissedGroups] = useState<Set<string>>(new Set());
+  const [dismissBusy, setDismissBusy] = useState<Record<string, boolean>>({});
+  const [dismissError, setDismissError] = useState<Record<string, string>>({});
+
   // ── Usage counts (sites duplicates only) — decision support for survivor
   // pick. See eq-shell 0187: a fast triage subset of the full merge-preview
   // sweep, deep enough to tell a real site from an empty shell (the SY9 case
@@ -412,23 +418,29 @@ export function EntityDrillDown({
         if (!byValue.has(normalized)) byValue.set(normalized, []);
         byValue.get(normalized)!.push(row);
       }
-      for (const group of byValue.values()) {
+      for (const [normalized, group] of byValue) {
         if (group.length < 2) continue;
         const fresh = group.filter((r) => !seenIds.has(rowKey(entity, r)));
         if (fresh.length < 2) continue;
+        // The normalized value is the group key used everywhere a caller
+        // needs to identify "this group" (merge candidates, dismiss) — using
+        // each row's own raw value here would let two differently-cased
+        // members of the same group (e.g. "John@x.com" / "john@x.com")
+        // silently disagree on their own group's key.
+        if (dismissedGroups.has(`${keyField}:${normalized}`)) continue;
         fresh.forEach((r) => seenIds.add(rowKey(entity, r)));
         allGroups.push(
           fresh.map((r) => ({
             ...r,
             _dupeField: keyField,
-            _dupeKey: String(r[keyField]),
+            _dupeKey: normalized,
           })),
         );
       }
     }
 
     return allGroups.flat();
-  }, [rows, dupeKeys]);
+  }, [rows, dupeKeys, dismissedGroups]);
 
   const dupeGroupIndex = useMemo<Map<string, number>>(() => {
     if (filterMode !== "duplicates") return new Map();
@@ -471,6 +483,28 @@ export function EntityDrillDown({
       cancelled = true;
     };
   }, [entity, filterMode, supabase, duplicateRows]);
+
+  // ── Fetch previously-dismissed "not a duplicate" groups (non-sites) ─────
+  // Independent of duplicateRows (which filters against this) to avoid a
+  // fetch loop — keyed only on entity/mode/refresh.
+  useEffect(() => {
+    if (entity === "sites" || filterMode !== "duplicates" || !supabase) return;
+    let cancelled = false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabase as any;
+    sb.rpc("eq_duplicate_dismissals_list", { p_entity: entity })
+      .then(({ data, error: rpcError }: { data: unknown; error: { message: string } | null }) => {
+        if (cancelled || rpcError) return;
+        const rows = (data as { dupe_field: string; dupe_key: string }[] | null) ?? [];
+        setDismissedGroups(new Set(rows.map((r) => `${r.dupe_field}:${r.dupe_key}`)));
+      })
+      .catch(() => {
+        // Non-critical — dismissed groups just won't be pre-filtered this load.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [entity, filterMode, supabase, refreshCounter]);
 
   // ── Site groups eligible for "Flag for merge" ───────────────────────────
   // Usage is the primary signal: a site with real records (assets/quotes/
@@ -597,6 +631,51 @@ export function EntityDrillDown({
       }
     },
     [supabase, archiveBusy, entity],
+  );
+
+  // First row_id encountered per dupe group, in duplicateRows order — the
+  // dismiss action renders once per group (dismissing applies to the whole
+  // group, not one row), same "action on one row, hint on the rest" shape
+  // Sites' merge cell already uses.
+  const groupFirstRowId = useMemo<Map<string, string>>(() => {
+    const m = new Map<string, string>();
+    for (const row of duplicateRows) {
+      const key = `${row._dupeField}:${row._dupeKey}`;
+      if (!m.has(key)) m.set(key, rowKey(entity, row));
+    }
+    return m;
+  }, [duplicateRows, entity]);
+
+  const handleDismissDuplicate = useCallback(
+    async (dupeField: string, dupeKey: string) => {
+      const groupKey = `${dupeField}:${dupeKey}`;
+      if (!supabase || dismissBusy[groupKey]) return;
+      setDismissBusy((prev) => ({ ...prev, [groupKey]: true }));
+      setDismissError((prev) => {
+        const next = { ...prev };
+        delete next[groupKey];
+        return next;
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sb = supabase as any;
+      try {
+        const { error: rpcError } = await sb.rpc("eq_duplicate_dismiss", {
+          p_entity: entity,
+          p_dupe_field: dupeField,
+          p_dupe_key: dupeKey,
+        });
+        if (rpcError) throw new Error(rpcError.message);
+        setDismissedGroups((prev) => new Set(prev).add(groupKey));
+      } catch (err: unknown) {
+        setDismissError((prev) => ({
+          ...prev,
+          [groupKey]: err instanceof Error ? err.message : "Couldn't dismiss this group.",
+        }));
+      } finally {
+        setDismissBusy((prev) => ({ ...prev, [groupKey]: false }));
+      }
+    },
+    [supabase, dismissBusy, entity],
   );
 
   // Full row lookup by PK — lets the Tidy tab's gap table show real context
@@ -1013,6 +1092,39 @@ export function EntityDrillDown({
       });
     }
 
+    if (filterMode === "duplicates" && entity !== "sites") {
+      cols.push({
+        key: "_dismiss",
+        header: "Not a duplicate",
+        sortable: false,
+        render: (row: DrillRow) => {
+          const groupKey = `${row._dupeField}:${row._dupeKey}`;
+          const rowId = rowKey(entity, row);
+          if (groupFirstRowId.get(groupKey) !== rowId) {
+            return <span className="eq-drill__dupe-hint">part of the group above</span>;
+          }
+          const busy = !!dismissBusy[groupKey];
+          const err = dismissError[groupKey];
+          return (
+            <span className="eq-drill__merge-cell">
+              <button
+                type="button"
+                className="eq-drill__suggest-btn"
+                disabled={busy}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleDismissDuplicate(row._dupeField ?? "", row._dupeKey ?? "");
+                }}
+              >
+                {busy ? "Dismissing…" : "Not a duplicate"}
+              </button>
+              {err && <span className="eq-drill__dupe-error">{err}</span>}
+            </span>
+          );
+        },
+      });
+    }
+
     if (filterMode === "duplicates" && entity !== "sites" && isArchivableDuplicate(entity)) {
       cols.push({
         key: "_archive",
@@ -1086,6 +1198,10 @@ export function EntityDrillDown({
     archiveBusy,
     archiveError,
     handleArchiveDuplicate,
+    groupFirstRowId,
+    dismissBusy,
+    dismissError,
+    handleDismissDuplicate,
     onBack,
   ]);
 

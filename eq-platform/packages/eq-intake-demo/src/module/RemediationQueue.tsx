@@ -21,8 +21,8 @@
  *                       linked record) still fall back to dismiss-after-manual-fix.
  */
 
-import { useState, useEffect, useCallback, type JSX } from "react";
-import { archiveDuplicateRecord, isArchivableDuplicate } from "@eq/intake";
+import { useState, useEffect, useCallback, useMemo, type JSX } from "react";
+import { archiveDuplicateRecord, isArchivableDuplicate, getFieldSuggestedValues } from "@eq/intake";
 import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
 import { DuplicateMergePanel } from "./DuplicateMergePanel.js";
 
@@ -30,6 +30,12 @@ export interface RemediationQueueProps {
   supabase?: SupabaseLikeClient | null;
   /** See IntakeModuleProps.canMergeSites — host-computed, manager-only by default. */
   canMergeSites?: boolean;
+  /**
+   * Tenant-added trades (from app_data.tenant_trades, via the Trades
+   * settings screen) — merged on top of the EQ default vocabulary for the
+   * trade dropdown below. Omit or pass an empty array to use defaults only.
+   */
+  tenantTrades?: string[];
 }
 
 interface QueueItem {
@@ -53,11 +59,11 @@ interface CustomerOption {
 
 type Rpc = (name: string, params?: unknown) => Promise<{ data: unknown; error: { message: string } | null }>;
 
-// Canonical trade vocabulary — mirrors staff.schema.json x-eq-suggested-values.
-const TRADE_VOCAB = [
-  "electrical", "mechanical", "fire", "hydraulic", "civil",
-  "data", "carpentry", "plumbing", "communications",
-];
+// EQ's default trade vocabulary — staff.schema.json's x-eq-suggested-values
+// for the trade field, read directly rather than re-hardcoded here so it
+// can't drift from the schema. Tenant additions (tenantTrades prop) merge
+// on top in the component below.
+const DEFAULT_TRADE_VOCAB = getFieldSuggestedValues("staff", "trade") ?? [];
 
 const CATEGORY_ORDER = ["trade", "email", "link", "format", "duplicate", "emergency_contact"];
 
@@ -85,13 +91,25 @@ function entityToEventLabel(entity: string): string {
   return entity === "contacts" ? "contact" : entity === "staff" ? "staff" : entity.replace(/s$/, "");
 }
 
-export function RemediationQueue({ supabase, canMergeSites }: RemediationQueueProps): JSX.Element {
+export function RemediationQueue({ supabase, canMergeSites, tenantTrades }: RemediationQueueProps): JSX.Element {
   const [items, setItems] = useState<QueueItem[] | null>(null);
   const [customers, setCustomers] = useState<CustomerOption[] | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [doneCount, setDoneCount] = useState(0);
+
+  const tradeOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const list: string[] = [];
+    for (const t of [...DEFAULT_TRADE_VOCAB, ...(tenantTrades ?? [])]) {
+      const key = t.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      list.push(t);
+    }
+    return list;
+  }, [tenantTrades]);
 
   const rpc: Rpc | null = supabase
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -287,7 +305,7 @@ export function RemediationQueue({ supabase, canMergeSites }: RemediationQueuePr
                       aria-label={`Trade for ${item.record_label}`}
                     >
                       <option value="">Pick a trade…</option>
-                      {TRADE_VOCAB.map((t) => <option key={t} value={t}>{t}</option>)}
+                      {tradeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
                     </select>
                   )}
                   {committable && item.category === "link" && (
