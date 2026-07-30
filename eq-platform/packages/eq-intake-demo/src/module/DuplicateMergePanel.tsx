@@ -91,6 +91,7 @@ function MergePanel({
         >
           Cancel
         </button>
+        {mergeErr && <span className="eq-merge-panel__err" role="alert">{mergeErr}</span>}
       </span>
     );
   }
