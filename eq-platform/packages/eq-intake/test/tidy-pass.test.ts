@@ -84,4 +84,44 @@ describe("runTidyPass — required-field gaps", () => {
     expect(gap!.message).toContain("Direct");
     expect(gap!.message).not.toBe("field_enum_invalid");
   });
+
+  it("carries the schema's enum values on an invalid-value gap, so the UI can render a dropdown", async () => {
+    const client = fakeClient([
+      {
+        staff_id: "s-1",
+        tenant_id: TENANT,
+        first_name: "Tom",
+        last_name: "Ivicevic",
+        employment_type: "Direct",
+        active: true,
+      },
+    ]);
+
+    const report = await runTidyPass({ supabase: client, tenantId: TENANT, entities: ["staff"] });
+    const gap = report.gaps.find((g) => g.field === "employment_type");
+
+    expect(gap!.allowed_values).toBeDefined();
+    expect(gap!.allowed_values!.length).toBeGreaterThan(0);
+    expect(gap!.allowed_values).not.toContain("Direct");
+  });
+
+  it("still carries allowed_values on a blank (required_missing) enum field, not just an invalid-value one", async () => {
+    const client = fakeClient([
+      {
+        staff_id: "s-1",
+        tenant_id: TENANT,
+        first_name: "Tom",
+        last_name: "Ivicevic",
+        employment_type: null,
+        active: true,
+      },
+    ]);
+
+    const report = await runTidyPass({ supabase: client, tenantId: TENANT, entities: ["staff"] });
+    const gap = report.gaps.find((g) => g.field === "employment_type");
+
+    expect(gap!.gap_type).toBe("required_missing");
+    expect(gap!.allowed_values).toBeDefined();
+    expect(gap!.allowed_values!.length).toBeGreaterThan(0);
+  });
 });
