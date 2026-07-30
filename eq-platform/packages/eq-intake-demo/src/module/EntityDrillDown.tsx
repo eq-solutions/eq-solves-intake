@@ -10,6 +10,8 @@ import {
   getFlaggableFields,
   getFieldTier,
   getFieldEnumValues,
+  archiveDuplicateRecord,
+  isArchivableDuplicate,
 } from "@eq/intake";
 import type {
   CanonicalFetchClient,
@@ -173,6 +175,21 @@ function fallbackRowLabel(row: Row): string {
   return "record";
 }
 
+// A gap row's own row_label is often bare ("Accounts", "Rafael" — a company
+// name or first name with nothing else) — this pulls one more identifying
+// value from the full row so the Tidy tab's "Record" column isn't a dead
+// end for telling two same-labelled rows apart.
+function gapContextLine(row: Row | undefined): string | null {
+  if (!row) return null;
+  const email = row["email"];
+  if (typeof email === "string" && email.trim()) return email.trim();
+  const phone = row["phone"] ?? row["mobile_phone"] ?? row["work_phone"] ?? row["primary_phone"];
+  if (typeof phone === "string" && phone.trim()) return phone.trim();
+  const company = row["company_name"];
+  if (typeof company === "string" && company.trim()) return company.trim();
+  return null;
+}
+
 function isBlank(value: unknown): boolean {
   if (value === null || value === undefined) return true;
   if (typeof value === "string" && value.trim() === "") return true;
@@ -238,6 +255,11 @@ export function EntityDrillDown({
   const [flagBusy, setFlagBusy] = useState<Record<string, boolean>>({});
   const [flagError, setFlagError] = useState<Record<string, string>>({});
   const [flagged, setFlagged] = useState<Record<string, string[]>>({}); // groupKey -> advisoryId[] (one per loser)
+
+  // ── Archive-duplicate state (staff/contacts — the entities eq_archive_
+  // duplicate_record supports) ────────────────────────────────────────────
+  const [archiveBusy, setArchiveBusy] = useState<Record<string, boolean>>({});
+  const [archiveError, setArchiveError] = useState<Record<string, string>>({});
 
   // ── Usage counts (sites duplicates only) — decision support for survivor
   // pick. See eq-shell 0187: a fast triage subset of the full merge-preview
@@ -549,6 +571,41 @@ export function EntityDrillDown({
       setFlagBusy((prev) => ({ ...prev, [groupKey]: false }));
     },
     [supabase, flagBusy],
+  );
+
+  const handleArchiveDuplicate = useCallback(
+    async (rowId: string) => {
+      if (!supabase || archiveBusy[rowId] || !rowId) return;
+      setArchiveBusy((prev) => ({ ...prev, [rowId]: true }));
+      setArchiveError((prev) => {
+        const next = { ...prev };
+        delete next[rowId];
+        return next;
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sb = supabase as any;
+      try {
+        await archiveDuplicateRecord(sb, { table: entity, rowId });
+        setRefreshCounter((c) => c + 1);
+      } catch (err: unknown) {
+        setArchiveError((prev) => ({
+          ...prev,
+          [rowId]: err instanceof Error ? err.message : "Couldn't archive this record.",
+        }));
+      } finally {
+        setArchiveBusy((prev) => ({ ...prev, [rowId]: false }));
+      }
+    },
+    [supabase, archiveBusy, entity],
+  );
+
+  // Full row lookup by PK — lets the Tidy tab's gap table show real context
+  // (email/phone/company) for a bare row_label without a second fetch or a
+  // GapItem type change; the tidy pass engine's own row_label logic stays
+  // untouched, this is purely a display join inside the demo module.
+  const rowContext = useMemo<Map<string, Row>>(
+    () => new Map(rows.map((r) => [rowKey(entity, r), r])),
+    [rows, entity],
   );
 
   const baseRows = useMemo<DrillRow[]>(() => {
@@ -956,6 +1013,35 @@ export function EntityDrillDown({
       });
     }
 
+    if (filterMode === "duplicates" && entity !== "sites" && isArchivableDuplicate(entity)) {
+      cols.push({
+        key: "_archive",
+        header: "Archive",
+        sortable: false,
+        render: (row: DrillRow) => {
+          const rowId = rowKey(entity, row);
+          const busy = !!archiveBusy[rowId];
+          const err = archiveError[rowId];
+          return (
+            <span className="eq-drill__merge-cell">
+              <button
+                type="button"
+                className="eq-drill__suggest-btn"
+                disabled={busy}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleArchiveDuplicate(rowId);
+                }}
+              >
+                {busy ? "Archiving…" : "Archive"}
+              </button>
+              {err && <span className="eq-drill__dupe-error">{err}</span>}
+            </span>
+          );
+        },
+      });
+    }
+
     if (filterMode === "gaps" && callEdgeFn) {
       cols.push({
         key: "_suggest",
@@ -997,6 +1083,9 @@ export function EntityDrillDown({
     flagError,
     canMergeSites,
     handleFlagPair,
+    archiveBusy,
+    archiveError,
+    handleArchiveDuplicate,
     onBack,
   ]);
 
@@ -1183,6 +1272,7 @@ export function EntityDrillDown({
           canSuggest={!!callEdgeFn}
           editSaving={editSaving}
           editSaveError={editSaveError}
+          rowContext={rowContext}
         />
       ) : (
         <Table<DrillRow>
@@ -1242,6 +1332,8 @@ interface TidyPanelProps {
   canSuggest: boolean;
   editSaving: boolean;
   editSaveError: string | null;
+  /** row_id -> full canonical row, for showing real context (email/phone/company) next to a bare row_label. */
+  rowContext: Map<string, Row>;
 }
 
 const FIX_TYPE_LABELS: Record<string, string> = {
@@ -1289,6 +1381,7 @@ function TidyPanel({
   canSuggest,
   editSaving,
   editSaveError,
+  rowContext,
 }: TidyPanelProps): JSX.Element {
   if (loading) {
     return (
@@ -1356,6 +1449,17 @@ function TidyPanel({
       header: "Record",
       sortAccessor: (g) => g.row_label,
       filterable: "text",
+      render: (g) => {
+        const context = gapContextLine(rowContext.get(g.row_id));
+        return (
+          <span>
+            {g.row_label}
+            {context && context !== g.row_label && (
+              <span className="eq-tidy__row-context"> · {context}</span>
+            )}
+          </span>
+        );
+      },
     },
     {
       key: "field",
