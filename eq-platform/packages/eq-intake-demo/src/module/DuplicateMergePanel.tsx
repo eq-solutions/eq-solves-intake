@@ -55,10 +55,6 @@ function MergePanel({
   // server-side gate (eq_site_merge_execute requires a recorded 'same' verdict).
   if (item.verdict !== "same") return null;
 
-  if (!canMerge) {
-    return <span className="eq-merge-panel__hint">Ask a manager to merge these</span>;
-  }
-
   if (merged) {
     return (
       <span className="eq-merge-panel__done">
@@ -67,6 +63,9 @@ function MergePanel({
     );
   }
 
+  // Preview (eq_site_merge_preview) carries no role gate server-side — only
+  // eq_site_merge_execute does (manager-only, eq-shell 0185/0228). So anyone
+  // can see exactly what would move; only a manager can pull the trigger.
   if (preview) {
     return (
       <span className="eq-merge-panel__preview">
@@ -75,21 +74,25 @@ function MergePanel({
           {preview.tables.filter((t) => t.count > 0).length} table{preview.tables.filter((t) => t.count > 0).length === 1 ? "" : "s"}{" "}
           will move into {preview.survivor_name ?? "the survivor site"}. The other row is retired, not deleted.
         </span>
-        <button
-          type="button"
-          disabled={mergeBusy}
-          onClick={onConfirm}
-          className="eq-merge-panel__confirm-btn"
-        >
-          {mergeBusy ? "Merging…" : "Confirm merge"}
-        </button>
+        {canMerge ? (
+          <button
+            type="button"
+            disabled={mergeBusy}
+            onClick={onConfirm}
+            className="eq-merge-panel__confirm-btn"
+          >
+            {mergeBusy ? "Merging…" : "Confirm merge"}
+          </button>
+        ) : (
+          <span className="eq-merge-panel__hint">Ask a manager to confirm this merge</span>
+        )}
         <button
           type="button"
           disabled={mergeBusy}
           onClick={onCancelPreview}
           className="eq-merge-panel__cancel-btn"
         >
-          Cancel
+          {canMerge ? "Cancel" : "Close"}
         </button>
         {mergeErr && <span className="eq-merge-panel__err" role="alert">{mergeErr}</span>}
       </span>
@@ -118,7 +121,7 @@ function SiteAdvisoryPanel({
   onPreviewMerge, onCancelPreviewMerge, onConfirmMerge,
 }: {
   summary: SiteAdvisorySummary;
-  onAdjudicate: (advisoryId: string, verdict: SiteVerdict) => void;
+  onAdjudicate: (advisoryId: string, verdict: SiteVerdict, note?: string) => void;
   saving: Record<string, boolean>;
   errors: Record<string, boolean>;
   onAskAi: (item: SiteAdvisoryItem) => void;
@@ -139,6 +142,11 @@ function SiteAdvisoryPanel({
   // anything to show, so the "Watching — nothing flagged yet" early return
   // below stays a valid early return rather than a Rules-of-Hooks violation.
   const [expanded, setExpanded] = useState(false);
+  // "Unsure" gets an inline note step instead of firing immediately — the
+  // advisory_adjudicate RPC has always accepted a note, the UI just never
+  // offered one. Only one row's note field is open at a time.
+  const [notingId, setNotingId] = useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
 
   if (summary.total === 0) {
     return (
@@ -189,6 +197,7 @@ function SiteAdvisoryPanel({
               <>
                 <span className="eq-advisory-item__verdict-note">
                   · you said: {VERDICT_LABEL[it.verdict]}
+                  {it.verdict_note ? <> — &ldquo;{it.verdict_note}&rdquo;</> : null}
                 </span>
                 <MergePanel
                   item={it}
@@ -213,7 +222,12 @@ function SiteAdvisoryPanel({
                         key={v}
                         type="button"
                         disabled={!!saving[it.id]}
-                        onClick={() => onAdjudicate(it.id, v)}
+                        onClick={() => {
+                          // Unsure opens an inline note instead of firing
+                          // immediately — same/different need no follow-up.
+                          if (v === "unsure") { setNotingId(it.id); setNoteDraft(""); }
+                          else onAdjudicate(it.id, v);
+                        }}
                         title={suggested ? `Claude suggests: ${VERDICT_LABEL[v]}` : `Record: ${VERDICT_LABEL[v]}`}
                         className={`eq-advisory-item__verdict-btn${suggested ? " eq-advisory-item__verdict-btn--suggested" : ""}`}
                       >
@@ -222,6 +236,39 @@ function SiteAdvisoryPanel({
                     );
                   })}
                 </span>
+                {notingId === it.id && (
+                  <span className="eq-advisory-item__note-row">
+                    <input
+                      type="text"
+                      className="eq-queue__input"
+                      placeholder="What's unclear? (optional — helps whoever looks next)"
+                      value={noteDraft}
+                      onChange={(e) => setNoteDraft(e.target.value)}
+                      disabled={!!saving[it.id]}
+                      aria-label={`Note for ${it.candidate_name ?? "this row"}`}
+                    />
+                    <button
+                      type="button"
+                      className="eq-intake-btn-primary eq-queue__btn"
+                      disabled={!!saving[it.id]}
+                      onClick={() => {
+                        onAdjudicate(it.id, "unsure", noteDraft.trim() || undefined);
+                        setNotingId(null);
+                        setNoteDraft("");
+                      }}
+                    >
+                      {saving[it.id] ? "Saving…" : "Record: Unsure"}
+                    </button>
+                    <button
+                      type="button"
+                      className="eq-intake-btn-ghost eq-queue__btn"
+                      disabled={!!saving[it.id]}
+                      onClick={() => { setNotingId(null); setNoteDraft(""); }}
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                )}
                 {aiSuggest[it.id] ? (
                   <span className="eq-advisory-item__ai-reason">
                     <span className="eq-advisory-item__ai-label">✨ Claude:</span>{" "}
@@ -303,7 +350,7 @@ export function DuplicateMergePanel({ supabase, canMergeSites }: DuplicateMergeP
   // write fails (e.g. a tenant not yet on migration 0183, so the RPC is
   // missing) we flag it inline and leave the buttons — nothing else breaks.
   const handleAdjudicate = useCallback(
-    async (advisoryId: string, verdict: SiteVerdict) => {
+    async (advisoryId: string, verdict: SiteVerdict, note?: string) => {
       if (!supabase) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sb = supabase as any;
@@ -315,14 +362,14 @@ export function DuplicateMergePanel({ supabase, canMergeSites }: DuplicateMergeP
         return next;
       });
       try {
-        await adjudicateSiteAdvisory(sb, { advisoryId, verdict });
+        await adjudicateSiteAdvisory(sb, { advisoryId, verdict, note });
         setAdvisory((prev) => {
           if (!prev) return prev;
           let wasPending = false;
           const items = prev.items.map((it) => {
             if (it.id !== advisoryId) return it;
             wasPending = it.verdict == null;
-            return { ...it, verdict, decided_at: new Date().toISOString() };
+            return { ...it, verdict, verdict_note: note ?? it.verdict_note ?? null, decided_at: new Date().toISOString() };
           });
           return {
             ...prev,
