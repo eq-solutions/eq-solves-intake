@@ -3560,6 +3560,7 @@ button.eq-primary:hover {
 .eq-advisory-item__matched { color: var(--eq-muted); }
 .eq-advisory-item__verdict-note { font-size: 12px; font-weight: 500; color: var(--eq-muted); }
 .eq-advisory-item__err { font-size: 12px; color: var(--eq-err); }
+.eq-advisory-item__note-row { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; width: 100%; margin-top: 2px; }
 
 .eq-advisory-item__verdict-btns { display: inline-flex; gap: 4px; }
 .eq-advisory-item__verdict-btn {
