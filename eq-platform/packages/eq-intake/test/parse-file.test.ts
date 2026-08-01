@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { parseFile } from "../src/parse-file.js";
 import type { AIProvider, ExtractResult, MapResult } from "@eq/ai";
 
@@ -15,15 +15,14 @@ function csvBytes(text: string): Uint8Array {
   return new TextEncoder().encode(text);
 }
 
-function xlsxBytes(): Uint8Array {
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([
-    ["a", "b"],
-    [1, 2],
-    [3, 4],
-  ]);
-  XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-  return XLSX.write(wb, { type: "array", bookType: "xlsx" }) as Uint8Array;
+async function xlsxBytes(): Promise<Uint8Array> {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Sheet1");
+  ws.addRow(["a", "b"]);
+  ws.addRow([1, 2]);
+  ws.addRow([3, 4]);
+  const buffer = await wb.xlsx.writeBuffer();
+  return new Uint8Array(buffer);
 }
 
 const SIMPLE_CSV = "first_name,last_name\nJames,Patel\nSarah,O'Brien\n";
@@ -42,7 +41,7 @@ describe("parseFile — format detection", () => {
 
   it("routes an .xlsx file to the XLSX reader by extension", async () => {
     const result = await parseFile({
-      bytes: xlsxBytes(),
+      bytes: await xlsxBytes(),
       fileName: "data.xlsx",
     });
     expect(result.format).toBe("xlsx");
@@ -52,7 +51,7 @@ describe("parseFile — format detection", () => {
   });
 
   it("detects XLSX by magic bytes when name is unknown", async () => {
-    const result = await parseFile({ bytes: xlsxBytes() });
+    const result = await parseFile({ bytes: await xlsxBytes() });
     expect(result.format).toBe("xlsx");
     expect(result.meta.detectedFrom).toBe("magic_bytes");
   });

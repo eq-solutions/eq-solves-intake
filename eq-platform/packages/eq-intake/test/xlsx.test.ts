@@ -1,8 +1,9 @@
 /**
  * XLSX reader tests.
  *
- * Builds the test workbooks programmatically with SheetJS so we don't have to
- * commit binary fixtures. Three scenarios:
+ * Builds the test workbooks programmatically with ExcelJS (the same library
+ * the reader itself uses) so we don't have to commit binary fixtures. Three
+ * scenarios:
  *   1. Clean single-sheet workbook → all rows parse, headers detected at row 0
  *   2. Multi-sheet workbook → each sheet returned in order
  *   3. Workbook with a title row + blank row above the headers → header
@@ -10,35 +11,31 @@
  */
 
 import { describe, it, expect } from "vitest";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { parseXlsx } from "../src/readers/xlsx.js";
 import { validate } from "@eq/validation";
 
 type Merge = { s: { r: number; c: number }; e: { r: number; c: number } };
 
 /** Build an XLSX buffer from an array-of-arrays. */
-function buildXlsx(
+async function buildXlsx(
   sheets: Array<{ name: string; rows: unknown[][]; hidden?: boolean; merges?: Merge[] }>,
-): Uint8Array {
-  const wb = XLSX.utils.book_new();
+): Promise<Uint8Array> {
+  const wb = new ExcelJS.Workbook();
   for (const s of sheets) {
-    const ws = XLSX.utils.aoa_to_sheet(s.rows);
-    if (s.merges?.length) ws["!merges"] = s.merges;
-    XLSX.utils.book_append_sheet(wb, ws, s.name);
+    const ws = wb.addWorksheet(s.name, { state: s.hidden ? "hidden" : "visible" });
+    for (const row of s.rows) ws.addRow(row);
+    for (const m of s.merges ?? []) {
+      ws.mergeCells(m.s.r + 1, m.s.c + 1, m.e.r + 1, m.e.c + 1);
+    }
   }
-  if (sheets.some((s) => s.hidden)) {
-    wb.Workbook = wb.Workbook ?? { Sheets: [] };
-    wb.Workbook.Sheets = sheets.map((s) => ({
-      name: s.name,
-      Hidden: s.hidden ? 1 : 0,
-    }));
-  }
-  return XLSX.write(wb, { type: "array", bookType: "xlsx" }) as Uint8Array;
+  const buffer = await wb.xlsx.writeBuffer();
+  return new Uint8Array(buffer);
 }
 
 describe("parseXlsx — clean single-sheet workbook", () => {
   it("parses headers and rows from row 0", async () => {
-    const buf = buildXlsx([
+    const buf = await buildXlsx([
       {
         name: "Staff",
         rows: [
@@ -78,7 +75,7 @@ describe("parseXlsx — clean single-sheet workbook", () => {
 
 describe("parseXlsx — multi-sheet workbook", () => {
   it("returns one ParsedSheet per worksheet in workbook order", async () => {
-    const buf = buildXlsx([
+    const buf = await buildXlsx([
       {
         name: "Staff",
         rows: [
@@ -109,7 +106,7 @@ describe("parseXlsx — multi-sheet workbook", () => {
   });
 
   it("filters by sheetName when supplied", async () => {
-    const buf = buildXlsx([
+    const buf = await buildXlsx([
       { name: "Staff", rows: [["a"], ["1"]] },
       { name: "Sites", rows: [["b"], ["2"]] },
     ]);
@@ -121,7 +118,7 @@ describe("parseXlsx — multi-sheet workbook", () => {
 
 describe("parseXlsx — auto-detects header row past title rows", () => {
   it("skips title + blank row and picks the real header row", async () => {
-    const buf = buildXlsx([
+    const buf = await buildXlsx([
       {
         name: "Staff Export 2026",
         rows: [
@@ -149,7 +146,7 @@ describe("parseXlsx — auto-detects header row past title rows", () => {
 
 describe("parseXlsx — merged banner row does not fool header detection", () => {
   it("treats a merged title banner as one cell (ExcelJS/SheetJS parity)", async () => {
-    const buf = buildXlsx([
+    const buf = await buildXlsx([
       {
         name: "Working Job List",
         rows: [
@@ -177,7 +174,7 @@ describe("parseXlsx — merged banner row does not fool header detection", () =>
 
 describe("parseXlsx — hidden sheets", () => {
   it("skips hidden sheets by default", async () => {
-    const buf = buildXlsx([
+    const buf = await buildXlsx([
       { name: "Public", rows: [["a"], ["1"]] },
       { name: "Secret", rows: [["b"], ["2"]], hidden: true },
     ]);
@@ -187,7 +184,7 @@ describe("parseXlsx — hidden sheets", () => {
   });
 
   it("includes hidden sheets when includeHidden:true", async () => {
-    const buf = buildXlsx([
+    const buf = await buildXlsx([
       { name: "Public", rows: [["a"], ["1"]] },
       { name: "Secret", rows: [["b"], ["2"]], hidden: true },
     ]);
@@ -198,7 +195,7 @@ describe("parseXlsx — hidden sheets", () => {
 
 describe("parseXlsx → @eq/validation smoke test", () => {
   it("produces rows that validate() accepts as canonical staff data", async () => {
-    const buf = buildXlsx([
+    const buf = await buildXlsx([
       {
         name: "Staff",
         rows: [
