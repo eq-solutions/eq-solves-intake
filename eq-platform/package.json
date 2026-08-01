@@ -27,6 +27,11 @@
     "@fontsource/plus-jakarta-sans": "^5.2.8",
     "tsx": "4.19.2",
     "typescript": "5.6.3",
-    "vitest": "2.1.5"
+    "vitest": "3.2.6"
+  },
+  "pnpm": {
+    "overrides": {
+      "vite": ">=6.4.3 <7.0.0"
+    }
   }
 }

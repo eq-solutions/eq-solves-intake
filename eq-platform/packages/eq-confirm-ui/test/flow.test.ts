@@ -8,7 +8,7 @@
 import { describe, it, expect } from "vitest";
 import { createConfirmFlow } from "../src/index.js";
 import type { FlowConfig } from "../src/index.js";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import type {
   AIProvider,
   MapResult,
@@ -16,6 +16,19 @@ import type {
   MapInput,
   ExtractInput,
 } from "@eq/ai";
+
+/** Build an XLSX buffer from one or more sheets of array-of-arrays rows. */
+async function buildXlsx(
+  sheets: Array<{ name: string; rows: unknown[][] }>,
+): Promise<Uint8Array> {
+  const wb = new ExcelJS.Workbook();
+  for (const s of sheets) {
+    const ws = wb.addWorksheet(s.name);
+    for (const row of s.rows) ws.addRow(row);
+  }
+  const buffer = await wb.xlsx.writeBuffer();
+  return new Uint8Array(buffer);
+}
 
 const PERMISSIVE_STAFF_SCHEMA = {
   $id: "https://schemas.eq.solutions/test/staff-minimal.json",
@@ -272,14 +285,16 @@ describe("createConfirmFlow — XLSX / image format routing", () => {
     });
 
     // Build an XLSX in-memory
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet([
-      ["first_name", "last_name", "employment_type", "active"],
-      ["James", "Patel", "employee", true],
-      ["Sarah", "O'Brien", "subcontractor", true],
+    const xlsxBytes = await buildXlsx([
+      {
+        name: "Staff",
+        rows: [
+          ["first_name", "last_name", "employment_type", "active"],
+          ["James", "Patel", "employee", true],
+          ["Sarah", "O'Brien", "subcontractor", true],
+        ],
+      },
     ]);
-    XLSX.utils.book_append_sheet(wb, ws, "Staff");
-    const xlsxBytes = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as Uint8Array;
 
     await flow.driver.runToConfirmMapping({
       name: "staff.xlsx",
@@ -418,44 +433,37 @@ describe("createConfirmFlow — XLSX / image format routing", () => {
 });
 
 describe("createConfirmFlow — multi-sheet XLSX picker", () => {
-  function multiSheetXlsx(): Uint8Array {
-    const wb = XLSX.utils.book_new();
-
-    // Sheet 1 — looks like jobs, not what we want
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.aoa_to_sheet([
-        ["job_number", "client", "status"],
-        ["J-001", "Acme", "open"],
-        ["J-002", "Beta Pty", "closed"],
-      ]),
-      "Jobs",
-    );
-
-    // Sheet 2 — the staff sheet, what we actually want
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.aoa_to_sheet([
-        ["first_name", "last_name", "employment_type", "active"],
-        ["James", "Patel", "employee", true],
-        ["Sarah", "O'Brien", "subcontractor", true],
-        ["Michael", "Henderson", "employee", true],
-      ]),
-      "Staff",
-    );
-
-    // Sheet 3 — totals summary, also not what we want
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.aoa_to_sheet([
-        ["metric", "value"],
-        ["total_hours", 162],
-        ["total_jobs", 8],
-      ]),
-      "Summary",
-    );
-
-    return XLSX.write(wb, { type: "array", bookType: "xlsx" }) as Uint8Array;
+  function multiSheetXlsx(): Promise<Uint8Array> {
+    return buildXlsx([
+      // Sheet 1 — looks like jobs, not what we want
+      {
+        name: "Jobs",
+        rows: [
+          ["job_number", "client", "status"],
+          ["J-001", "Acme", "open"],
+          ["J-002", "Beta Pty", "closed"],
+        ],
+      },
+      // Sheet 2 — the staff sheet, what we actually want
+      {
+        name: "Staff",
+        rows: [
+          ["first_name", "last_name", "employment_type", "active"],
+          ["James", "Patel", "employee", true],
+          ["Sarah", "O'Brien", "subcontractor", true],
+          ["Michael", "Henderson", "employee", true],
+        ],
+      },
+      // Sheet 3 — totals summary, also not what we want
+      {
+        name: "Summary",
+        rows: [
+          ["metric", "value"],
+          ["total_hours", 162],
+          ["total_jobs", 8],
+        ],
+      },
+    ]);
   }
 
   it("stops at confirm_sheet when the workbook has more than one sheet", async () => {
@@ -469,7 +477,7 @@ describe("createConfirmFlow — multi-sheet XLSX picker", () => {
 
     await flow.driver.runToConfirmMapping({
       name: "simpro-export.xlsx",
-      bytes: multiSheetXlsx(),
+      bytes: await multiSheetXlsx(),
     });
 
     const state = flow.useStore.getState();
@@ -496,7 +504,7 @@ describe("createConfirmFlow — multi-sheet XLSX picker", () => {
 
     await flow.driver.runToConfirmMapping({
       name: "simpro-export.xlsx",
-      bytes: multiSheetXlsx(),
+      bytes: await multiSheetXlsx(),
     });
     expect(flow.useStore.getState().status.kind).toBe("confirm_sheet");
 
@@ -537,7 +545,7 @@ describe("createConfirmFlow — multi-sheet XLSX picker", () => {
     });
     await flow.driver.runToConfirmMapping({
       name: "simpro-export.xlsx",
-      bytes: multiSheetXlsx(),
+      bytes: await multiSheetXlsx(),
     });
 
     await expect(flow.driver.pickSheet(99)).rejects.toThrow(/only has 3 sheets/);
@@ -546,16 +554,15 @@ describe("createConfirmFlow — multi-sheet XLSX picker", () => {
   it("single-sheet XLSX skips confirm_sheet entirely", async () => {
     // Regression: a one-sheet workbook should flow straight through to
     // confirm_mapping the way it always has.
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.aoa_to_sheet([
-        ["first_name", "last_name", "employment_type", "active"],
-        ["James", "Patel", "employee", true],
-      ]),
-      "OnlySheet",
-    );
-    const bytes = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as Uint8Array;
+    const bytes = await buildXlsx([
+      {
+        name: "OnlySheet",
+        rows: [
+          ["first_name", "last_name", "employment_type", "active"],
+          ["James", "Patel", "employee", true],
+        ],
+      },
+    ]);
 
     const flow = createConfirmFlow();
     flow.driver.configure({
