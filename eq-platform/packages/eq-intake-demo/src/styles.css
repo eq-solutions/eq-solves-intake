@@ -3627,6 +3627,7 @@ button.eq-primary:hover {
 .eq-queue__item-current { font-size: 12px; color: var(--eq-muted); text-decoration: line-through; }
 .eq-queue__item-reason { font-size: 13px; color: var(--eq-ink); margin: 4px 0 0; }
 .eq-queue__item-evidence { font-size: 12px; color: var(--eq-muted); margin: 2px 0 0; }
+.eq-queue__item-ai-reason { font-size: 12px; color: var(--eq-ink); max-width: 280px; text-align: right; }
 .eq-queue__item-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; max-width: 320px; }
 .eq-queue__input { font-size: 13px; padding: 6px 8px; border: 1px solid var(--eq-line); border-radius: 6px; min-width: 180px; }
 .eq-queue__btn { white-space: nowrap; }
