@@ -13,22 +13,27 @@
  *   email / format     text input, prefilled with the steward's suggestion
  *   link               select from the tenant's customers
  *   emergency_contact  dismiss only — collected from the worker, not typed here
- *   duplicate          a different signal from the write-time resolver's merge
- *                       tool (DuplicateMergePanel, rendered above these groups)
- *                       — these rows never auto-merge. Staff/contacts rows get
- *                       an Archive action (eq_archive_duplicate_record); rows
- *                       needing a field fixed elsewhere first (e.g. a mangled
- *                       linked record) still fall back to dismiss-after-manual-fix.
- *                       Contacts rows also get an "Ask Claude" sanity-check
- *                       before archiving (Staff intentionally not wired yet —
- *                       a real staff merge touches Field-owned tables, that's
- *                       a separate scoped build, see eq-context pending.md).
- *                       Unlike Sites, there's no structured matched-record here
- *                       — eq_remediation_queue's duplicate rows carry only the
- *                       flagged record's own fields + a free-text `reason`
- *                       naming the suspected match, so the AI call sanity-
- *                       checks the detector's own reasoning rather than
- *                       comparing two records.
+ *   duplicate          a different signal from the write-time resolvers' merge
+ *                       tools (DuplicateMergePanel for sites, ContactDuplicate
+ *                       MergePanel for contacts — both rendered above these
+ *                       groups) — these rows never auto-merge. Staff/contacts
+ *                       rows get an Archive action (eq_archive_duplicate_record);
+ *                       rows needing a field fixed elsewhere first (e.g. a
+ *                       mangled linked record) still fall back to
+ *                       dismiss-after-manual-fix. Contacts rows also get an
+ *                       "Ask Claude" sanity-check before archiving (Staff
+ *                       intentionally not wired yet — a real staff merge
+ *                       touches Field-owned tables, that's a separate scoped
+ *                       build, see eq-context pending.md). Unlike Sites/the
+ *                       new Contacts resolver (eq-shell 0233), there's no
+ *                       structured matched-record here — eq_remediation_queue's
+ *                       duplicate rows carry only the flagged record's own
+ *                       fields + a free-text `reason` naming the suspected
+ *                       match, so the AI call sanity-checks the detector's own
+ *                       reasoning rather than comparing two records. This
+ *                       queue category covers the OLDER, pre-resolver
+ *                       batch-detected contacts duplicates; new ones are
+ *                       caught at the write by ContactDuplicateMergePanel.
  */
 
 import { useState, useEffect, useCallback, useMemo, type JSX } from "react";
@@ -42,6 +47,7 @@ import {
 import type { AiQueueDuplicateVerdict } from "@eq/intake";
 import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
 import { DuplicateMergePanel } from "./DuplicateMergePanel.js";
+import { ContactDuplicateMergePanel } from "./ContactDuplicateMergePanel.js";
 
 // Entities the "Ask Claude" sanity-check is wired for. Staff intentionally
 // excluded — see the module doc comment above.
@@ -343,6 +349,7 @@ export function RemediationQueue({ supabase, canMergeSites, tenantTrades }: Reme
       {error && <div role="alert" className="eq-intake-alert">{error}</div>}
 
       <DuplicateMergePanel supabase={supabase} canMergeSites={canMergeSites} />
+      <ContactDuplicateMergePanel supabase={supabase} canMergeContacts={canMergeSites} />
 
       {(items ?? []).length === 0 && !error && (
         <div className="eq-queue__empty">Queue is clear. Nothing needs your eyes.</div>

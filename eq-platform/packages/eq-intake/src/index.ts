@@ -107,6 +107,14 @@ export type {
   AdjudicateResult,
 } from "./read-site-advisory.js";
 
+export { readContactAdvisory, adjudicateContactAdvisory } from "./read-contact-advisory.js";
+export type {
+  ContactAdvisoryItem,
+  ContactAdvisorySummary,
+  ContactVerdict,
+  ContactAdjudicateResult,
+} from "./read-contact-advisory.js";
+
 export { computeHealthScores } from "./health-score.js";
 export type { HealthScore } from "./health-score.js";
 
@@ -157,6 +165,9 @@ export type {
   AiQueueDuplicateVerdict,
 } from "./adjudicate-queue-duplicate-ai.js";
 
+export { adjudicateContactDuplicateWithAI } from "./adjudicate-duplicate-contact-ai.js";
+export type { ContactAdjudicationInput, AiContactVerdict } from "./adjudicate-duplicate-contact-ai.js";
+
 export { previewSiteMerge, executeSiteMerge, flagSitePairForMerge, getSiteDupeUsage } from "./merge-duplicate-sites.js";
 export type {
   SiteMergeTableCount,
@@ -165,6 +176,13 @@ export type {
   SiteFlagPairResult,
   SiteDupeUsage,
 } from "./merge-duplicate-sites.js";
+
+export { previewContactMerge, executeContactMerge } from "./merge-duplicate-contacts.js";
+export type {
+  ContactMergeTableCount,
+  ContactMergePreview,
+  ContactMergeResult,
+} from "./merge-duplicate-contacts.js";
 
 export { suggestGaps } from "./gap-suggest.js";
 export type { GapSuggestion, GapSuggestResult } from "./gap-suggest.js";
