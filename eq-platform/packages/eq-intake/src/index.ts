@@ -150,6 +150,13 @@ export type { EdgeFnCaller, EdgeFnResponse } from "./ai-client.js";
 export { adjudicateDuplicateWithAI } from "./adjudicate-duplicate-ai.js";
 export type { SiteAdjudicationInput, AiSiteVerdict } from "./adjudicate-duplicate-ai.js";
 
+export { adjudicateQueueDuplicateWithAI } from "./adjudicate-queue-duplicate-ai.js";
+export type {
+  QueueDuplicateRecord,
+  QueueDuplicateContext,
+  AiQueueDuplicateVerdict,
+} from "./adjudicate-queue-duplicate-ai.js";
+
 export { previewSiteMerge, executeSiteMerge, flagSitePairForMerge, getSiteDupeUsage } from "./merge-duplicate-sites.js";
 export type {
   SiteMergeTableCount,

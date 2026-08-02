@@ -19,12 +19,33 @@
  *                       an Archive action (eq_archive_duplicate_record); rows
  *                       needing a field fixed elsewhere first (e.g. a mangled
  *                       linked record) still fall back to dismiss-after-manual-fix.
+ *                       Contacts rows also get an "Ask Claude" sanity-check
+ *                       before archiving (Staff intentionally not wired yet —
+ *                       a real staff merge touches Field-owned tables, that's
+ *                       a separate scoped build, see eq-context pending.md).
+ *                       Unlike Sites, there's no structured matched-record here
+ *                       — eq_remediation_queue's duplicate rows carry only the
+ *                       flagged record's own fields + a free-text `reason`
+ *                       naming the suspected match, so the AI call sanity-
+ *                       checks the detector's own reasoning rather than
+ *                       comparing two records.
  */
 
 import { useState, useEffect, useCallback, useMemo, type JSX } from "react";
-import { archiveDuplicateRecord, isArchivableDuplicate, getFieldSuggestedValues } from "@eq/intake";
+import {
+  archiveDuplicateRecord,
+  isArchivableDuplicate,
+  getFieldSuggestedValues,
+  adjudicateQueueDuplicateWithAI,
+  makeEdgeFnCaller,
+} from "@eq/intake";
+import type { AiQueueDuplicateVerdict } from "@eq/intake";
 import type { SupabaseLikeClient } from "../canonical/commit-canonical.js";
 import { DuplicateMergePanel } from "./DuplicateMergePanel.js";
+
+// Entities the "Ask Claude" sanity-check is wired for. Staff intentionally
+// excluded — see the module doc comment above.
+const AI_DUPLICATE_ENTITIES = new Set(["contacts"]);
 
 export interface RemediationQueueProps {
   supabase?: SupabaseLikeClient | null;
@@ -94,10 +115,14 @@ function entityToEventLabel(entity: string): string {
 export function RemediationQueue({ supabase, canMergeSites, tenantTrades }: RemediationQueueProps): JSX.Element {
   const [items, setItems] = useState<QueueItem[] | null>(null);
   const [customers, setCustomers] = useState<CustomerOption[] | null>(null);
+  const [contactRecords, setContactRecords] = useState<Record<string, Record<string, unknown>> | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [doneCount, setDoneCount] = useState(0);
+  const [aiSuggest, setAiSuggest] = useState<Record<string, AiQueueDuplicateVerdict>>({});
+  const [aiBusy,    setAiBusy]    = useState<Record<string, boolean>>({});
+  const [aiErr,     setAiErr]     = useState<Record<string, boolean>>({});
 
   const tradeOptions = useMemo(() => {
     const seen = new Set<string>();
@@ -149,6 +174,21 @@ export function RemediationQueue({ supabase, canMergeSites, tenantTrades }: Reme
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, customers, supabase]);
+
+  // Contact records, fetched lazily the first time an AI-eligible duplicate
+  // flag exists — the "Ask Claude" sanity-check needs the flagged record's
+  // own fields (eq_remediation_queue carries no structured record snapshot).
+  useEffect(() => {
+    if (!rpc || contactRecords !== null) return;
+    if (!items?.some((i) => i.category === "duplicate" && i.entity === "contacts")) return;
+    void rpc("eq_tidy_read_entity", { p_table: "contacts" }).then(({ data }) => {
+      const rows = (data as Record<string, unknown>[] | null) ?? [];
+      const byId: Record<string, Record<string, unknown>> = {};
+      for (const r of rows) byId[String(r["contact_id"])] = r;
+      setContactRecords(byId);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, contactRecords, supabase]);
 
   const removeItem = (queueId: string) => {
     setItems((prev) => (prev ?? []).filter((i) => i.queue_id !== queueId));
@@ -237,6 +277,41 @@ export function RemediationQueue({ supabase, canMergeSites, tenantTrades }: Reme
       setBusyId(null);
     }
   };
+
+  // Ask Claude to sanity-check the detector's own reasoning before the human
+  // taps Archive. Advisory only — fills aiSuggest so the reason can render
+  // next to the Archive button; the human still has to tap it. Fails soft.
+  const handleAskAi = useCallback(
+    async (item: QueueItem) => {
+      if (!supabase) return;
+      const record = contactRecords?.[item.record_id];
+      if (!record) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const callEdgeFn = makeEdgeFnCaller(supabase as any);
+      setAiErr((e) => {
+        if (!e[item.queue_id]) return e;
+        const next = { ...e }; delete next[item.queue_id]; return next;
+      });
+      setAiBusy((b) => ({ ...b, [item.queue_id]: true }));
+      try {
+        const verdict = await adjudicateQueueDuplicateWithAI(
+          record,
+          { reason: item.reason, currentValue: item.current_value },
+          callEdgeFn,
+        );
+        setAiSuggest((s) => ({ ...s, [item.queue_id]: verdict }));
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("[RemediationQueue] AI duplicate sanity-check failed:", err instanceof Error ? err.message : err);
+        setAiErr((e) => ({ ...e, [item.queue_id]: true }));
+      } finally {
+        setAiBusy((b) => {
+          const next = { ...b }; delete next[item.queue_id]; return next;
+        });
+      }
+    },
+    [supabase, contactRecords],
+  );
 
   if (!supabase) {
     return <section className="eq-queue"><div className="eq-health-notice">Connect EQ to see the review queue</div></section>;
@@ -343,13 +418,36 @@ export function RemediationQueue({ supabase, canMergeSites, tenantTrades }: Reme
                       {busy ? "Saving…" : "Approve"}
                     </button>
                   )}
+                  {item.category === "duplicate" && AI_DUPLICATE_ENTITIES.has(item.entity) && (
+                    aiSuggest[item.queue_id] ? (
+                      <span className="eq-queue__item-ai-reason">
+                        <span className="eq-advisory-item__ai-label">✨ Claude:</span>{" "}
+                        {aiSuggest[item.queue_id].reasoning}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="eq-intake-btn-ghost eq-queue__btn"
+                        onClick={() => handleAskAi(item)}
+                        disabled={!!aiBusy[item.queue_id] || contactRecords === null}
+                        title="Ask Claude to sanity-check the detector's reasoning before you archive"
+                      >
+                        {aiBusy[item.queue_id] ? "Asking Claude…" : contactRecords === null ? "Loading…" : "✨ Ask Claude"}
+                      </button>
+                    )
+                  )}
+                  {aiErr[item.queue_id] && <span className="eq-advisory-item__err">AI unavailable</span>}
                   {item.category === "duplicate" && isArchivableDuplicate(item.entity) && (
                     <button
                       type="button"
                       className="eq-intake-btn-primary eq-queue__btn"
                       onClick={() => archiveDuplicate(item)}
                       disabled={busy}
-                      title="Set this record inactive — same action as archiving it on its own page"
+                      title={
+                        aiSuggest[item.queue_id]?.verdict === "keep"
+                          ? "Claude thinks this may not be a real duplicate — read its reasoning above before archiving"
+                          : "Set this record inactive — same action as archiving it on its own page"
+                      }
                     >
                       {busy ? "Archiving…" : "Archive"}
                     </button>
