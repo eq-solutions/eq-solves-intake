@@ -5,7 +5,18 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 //
 // Deployed to: sks-canonical (ehowgjardagevnrluult)
 // Requires:    ANTHROPIC_API_KEY secret set on the project
-// Actions:     suggest_gaps | ask_canonical | adjudicate_duplicate
+// Actions:     suggest_gaps | ask_canonical | adjudicate_duplicate |
+//              adjudicate_queue_duplicate | adjudicate_contact_duplicate
+//
+// This file had gone stale (last touched by PR #69, missing
+// adjudicate_queue_duplicate which shipped via a direct MCP deploy on
+// 2026-08-02 with no matching repo commit) — found while adding
+// adjudicate_contact_duplicate. Brought back in sync with what's actually
+// live (verified via a readback of the deployed function before writing
+// this). No other deploy tooling references this path; deploys are manual
+// (Supabase MCP `deploy_edge_function`, Royce's explicit go each time) —
+// keep this file and the live function in sync by hand until that's
+// automated.
 // ---------------------------------------------------------------------------
 
 const CORS = {
@@ -40,6 +51,12 @@ interface AskIntent {
 
 interface AdjudicateVerdict {
   verdict:    'same' | 'different' | 'unsure';
+  confidence: 'high' | 'medium' | 'low';
+  reasoning:  string;
+}
+
+interface QueueDuplicateVerdict {
+  verdict:    'archive' | 'keep' | 'unsure';
   confidence: 'high' | 'medium' | 'low';
   reasoning:  string;
 }
@@ -240,6 +257,156 @@ Are these the same real-world site?`;
 }
 
 // ---------------------------------------------------------------------------
+// Action: adjudicate_contact_duplicate
+//
+// The write-time contact resolver (eq-shell 0233) flags new-contact writes
+// that look like an existing contact — same mechanism as adjudicate_duplicate
+// above (Sites), just for people instead of places. Reasons with real-world
+// knowledge a string matcher cannot: nicknames, maiden/married names, a
+// shared company inbox used by several distinct people, someone who changed
+// jobs (same person, different company_name today). NEVER merges — advises.
+// ---------------------------------------------------------------------------
+
+async function handleAdjudicateContactDuplicate(
+  apiKey: string,
+  payload: Record<string, unknown>,
+): Promise<AdjudicateVerdict> {
+  const contactA = payload['contact_a'] as Record<string, unknown> ?? {};
+  const contactB = payload['contact_b'] as Record<string, unknown> ?? {};
+
+  if (Object.keys(contactA).length === 0 || Object.keys(contactB).length === 0) {
+    throw new Error('adjudicate_contact_duplicate requires both contact_a and contact_b');
+  }
+
+  const system = `You are an expert data steward for EQ, a field-service platform used by Australian trades businesses. Your job: decide whether two CONTACT records refer to the SAME real-world person, or two DIFFERENT people.
+
+Reason with real-world knowledge a string matcher cannot:
+- Nicknames and name variants ("Rob" = "Robert"; "Liz" = "Elizabeth"; a maiden vs married surname).
+- A shared email or phone does NOT always mean the same person: a generic company inbox ("info@", "reception@", "accounts@") or a shared office switchboard number is used by several distinct people — weigh the name too, not the contact detail alone.
+- A person can genuinely change company_name (they changed jobs) and still be the same person if the name/email/phone line up — don't assume different just because the company differs.
+- If the two clearly belong to different companies AND the name/email/phone don't otherwise match, lean toward different.
+
+Choose ONE verdict:
+- "same": confident they are the same real person.
+- "different": confident they are distinct people.
+- "unsure": you genuinely cannot tell from the given fields. Do NOT guess — prefer "unsure" over a low-confidence "same"/"different".
+
+Return ONLY a JSON object — no markdown, no text outside it:
+{"verdict": "same" | "different" | "unsure", "confidence": "high" | "medium" | "low", "reasoning": "<one plain-English sentence>"}
+
+The reasoning must be a single sentence, name the specific clue you used, and avoid technical jargon.`;
+
+  const user = `Contact A (newly created):
+${JSON.stringify(contactA, null, 2)}
+
+Contact B (existing record it resembles):
+${JSON.stringify(contactB, null, 2)}
+
+Are these the same real person?`;
+
+  const text = await anthropicMessage(apiKey, system, user);
+
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('Could not parse AI response as verdict JSON');
+
+  let parsed: Partial<AdjudicateVerdict>;
+  try {
+    parsed = JSON.parse(match[0]) as Partial<AdjudicateVerdict>;
+  } catch {
+    throw new Error('AI returned malformed JSON for adjudicate_contact_duplicate');
+  }
+
+  const verdict = parsed.verdict === 'same' || parsed.verdict === 'different'
+    ? parsed.verdict
+    : 'unsure';
+  const confidence = parsed.confidence === 'high' || parsed.confidence === 'medium'
+    ? parsed.confidence
+    : 'low';
+  const reasoning = typeof parsed.reasoning === 'string' && parsed.reasoning.trim()
+    ? parsed.reasoning.trim()
+    : 'No reason returned.';
+
+  return { verdict, confidence, reasoning };
+}
+
+// ---------------------------------------------------------------------------
+// Action: adjudicate_queue_duplicate
+//
+// The Review Queue's "duplicate" category (app_data.eq_remediation_queue,
+// staff — contacts moved to the structured adjudicate_contact_duplicate flow
+// above once eq-shell 0233 gave contacts a real write-time resolver) flags a
+// record as a probable duplicate with only a free-text `reason` naming the
+// suspected match — no structured second record like the resolvers above
+// give. So this asks Claude to sanity-check the detector's OWN reasoning
+// against the flagged record's fields, rather than compare two records. It
+// never archives anything — the human still taps Archive
+// (eq_archive_duplicate_record).
+// ---------------------------------------------------------------------------
+
+async function handleAdjudicateQueueDuplicate(
+  apiKey: string,
+  payload: Record<string, unknown>,
+): Promise<QueueDuplicateVerdict> {
+  const record = payload['record'] as Record<string, unknown> ?? {};
+  const reason = String(payload['reason'] ?? '').trim();
+  const currentValue = payload['current_value'];
+
+  if (Object.keys(record).length === 0 || !reason) {
+    throw new Error('adjudicate_queue_duplicate requires record and reason');
+  }
+
+  const system = `You are an expert data steward for EQ, a field-service platform used by Australian trades businesses. An automated detector has flagged a record as a probable duplicate of another record already in the system, and given its own reasoning. Your job: sanity-check that reasoning before a human archives the record.
+
+You are NOT comparing two full records — you only have the flagged record's own fields and the detector's stated reason (which names the record it thinks this duplicates). Judge whether the reason itself holds up:
+- A shared phone/email is strong evidence, but a shared OFFICE line or a generic company inbox (e.g. "info@", "reception@") is weak evidence on its own.
+- If the reason mentions a different company/customer for the two records, be more cautious — a shared surname or similar name across different organisations is not proof of a duplicate.
+- If the reasoning looks solid and internally consistent, say so plainly — don't manufacture doubt.
+
+Choose ONE verdict:
+- "archive": the detector's reasoning holds up — archiving is the right call.
+- "keep": the detector's reasoning looks weak, or something in the record contradicts it — this may be a real, distinct record.
+- "unsure": you genuinely cannot tell from what's given. Do NOT guess — prefer "unsure" over a low-confidence call.
+
+Return ONLY a JSON object — no markdown, no text outside it:
+{"verdict": "archive" | "keep" | "unsure", "confidence": "high" | "medium" | "low", "reasoning": "<one plain-English sentence>"}
+
+The reasoning must be a single sentence, name the specific clue you used, and avoid technical jargon.`;
+
+  const user = `Flagged record:
+${JSON.stringify(record, null, 2)}
+
+Current status: ${currentValue ?? 'unknown'}
+
+Detector's own reasoning for flagging it: ${reason}
+
+Should this record actually be archived as a duplicate?`;
+
+  const text = await anthropicMessage(apiKey, system, user);
+
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('Could not parse AI response as verdict JSON');
+
+  let parsed: Partial<QueueDuplicateVerdict>;
+  try {
+    parsed = JSON.parse(match[0]) as Partial<QueueDuplicateVerdict>;
+  } catch {
+    throw new Error('AI returned malformed JSON for adjudicate_queue_duplicate');
+  }
+
+  const verdict = parsed.verdict === 'archive' || parsed.verdict === 'keep'
+    ? parsed.verdict
+    : 'unsure';
+  const confidence = parsed.confidence === 'high' || parsed.confidence === 'medium'
+    ? parsed.confidence
+    : 'low';
+  const reasoning = typeof parsed.reasoning === 'string' && parsed.reasoning.trim()
+    ? parsed.reasoning.trim()
+    : 'No reason returned.';
+
+  return { verdict, confidence, reasoning };
+}
+
+// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 
@@ -287,6 +454,22 @@ Deno.serve(async (req: Request) => {
 
     if (action === 'adjudicate_duplicate') {
       const data = await handleAdjudicateDuplicate(apiKey, payload);
+      return new Response(
+        JSON.stringify({ data, error: null }),
+        { headers: { ...CORS, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    if (action === 'adjudicate_contact_duplicate') {
+      const data = await handleAdjudicateContactDuplicate(apiKey, payload);
+      return new Response(
+        JSON.stringify({ data, error: null }),
+        { headers: { ...CORS, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    if (action === 'adjudicate_queue_duplicate') {
+      const data = await handleAdjudicateQueueDuplicate(apiKey, payload);
       return new Response(
         JSON.stringify({ data, error: null }),
         { headers: { ...CORS, 'Content-Type': 'application/json' } },
