@@ -20,6 +20,7 @@ import { equinixAuditSimproProfile }  from "../src/derive/profiles/equinix-audit
 import { assetRegisterExportProfile } from "../src/derive/profiles/asset-register-export.js";
 import { siteRegisterExportProfile }  from "../src/derive/profiles/site-register-export.js";
 import { serviceVisitScheduleProfile } from "../src/derive/profiles/service-visit-schedule.js";
+import { xeroPayrollTimesheetsProfile } from "../src/derive/profiles/xero-payroll-timesheets.js";
 import { listProfiles, getProfile }   from "../src/derive/registry.js";
 
 // ── Registry ─────────────────────────────────────────────────────────────────
@@ -514,6 +515,134 @@ describe("serviceVisitScheduleProfile", () => {
 
   it("handles empty input", () => {
     const { rows } = serviceVisitScheduleProfile.derive([]);
+    expect(rows).toHaveLength(0);
+  });
+});
+
+// ── xero-payroll-timesheets ────────────────────────────────────────────────
+//
+// This is the profile "the Friday problem" refers to (Royce manually
+// re-entering hours into Xero every week). Unlike the profiles above, its
+// declared inputShape is "canonical" — real rows are meant to conform to
+// @eq/schemas' timesheet.schema.json, not an arbitrary hand-shaped object.
+// That schema has NO name field (only staff_id, a uuid FK) — so these fixtures
+// are schema-conformant on purpose, to prove what actually happens to a
+// worker's identity on the way out, not what happens to a convenient fixture
+// that happens to carry a name field the real data never will.
+
+describe("xeroPayrollTimesheetsProfile — real canonical-shape data", () => {
+  const STAFF_A = "10000000-0000-4000-8000-000000000001";
+  const STAFF_B = "20000000-0000-4000-8000-000000000002";
+  const STAFF_C = "30000000-0000-4000-8000-000000000003"; // rejected/paid only — must never surface
+
+  // Every row below is schema-conformant: required fields only, plus the
+  // optional fields this profile actually reads (shift, task, hours, status).
+  // No first_name/last_name/preferred_name anywhere — the canonical schema
+  // doesn't have them.
+  const TIMESHEET_ROWS: Record<string, unknown>[] = [
+    {
+      timesheet_id: "t-01", tenant_id: "tenant-1", staff_id: STAFF_A,
+      date: "2024-06-10", hours: 8, status: "approved",
+      shift: "day", task: "Switchboard maintenance",
+    },
+    {
+      timesheet_id: "t-02", tenant_id: "tenant-1", staff_id: STAFF_B,
+      date: "2024-06-11", hours: 10, status: "approved",
+      shift: "night", task: "RCD testing",
+    },
+    {
+      timesheet_id: "t-03", tenant_id: "tenant-1", staff_id: STAFF_A,
+      date: "2024-06-09", hours: 6, status: "submitted",
+      shift: null, task: null, notes: null,
+    },
+    {
+      // Must be excluded — already paid, re-sending would double up in Xero.
+      timesheet_id: "t-04", tenant_id: "tenant-1", staff_id: STAFF_C,
+      date: "2024-06-08", hours: 8, status: "paid", shift: "day",
+    },
+    {
+      // Must be excluded — rejected hours should never reach payroll.
+      timesheet_id: "t-05", tenant_id: "tenant-1", staff_id: STAFF_C,
+      date: "2024-06-08", hours: 8, status: "rejected", shift: "day",
+    },
+    {
+      timesheet_id: "t-06", tenant_id: "tenant-1", staff_id: STAFF_B,
+      date: "2024-06-12", hours: 4, status: "draft",
+      shift: "split", task: "Thermal imaging",
+    },
+  ];
+
+  it("excludes only rejected and paid rows — nothing else silently drops", () => {
+    const { rows } = xeroPayrollTimesheetsProfile.derive(TIMESHEET_ROWS);
+    // 6 in, 2 excluded by design (paid, rejected) — 4 must survive.
+    expect(rows).toHaveLength(4);
+    expect(rows.some((r) => r["Employee"] === `Staff:${STAFF_C}`)).toBe(false);
+  });
+
+  it("every declared column is present and defined on every row", () => {
+    const { columns, rows } = xeroPayrollTimesheetsProfile.derive(TIMESHEET_ROWS);
+    expect(columns).toEqual(["Employee", "Date", "Hours", "Earnings Rate", "Notes"]);
+    for (const row of rows) {
+      for (const col of columns) {
+        expect(row[col]).toBeDefined();
+      }
+    }
+  });
+
+  it("falls back to a traceable Staff:<uuid> tag when no name field exists — the record survives, just unresolved", () => {
+    // The canonical schema never carries a name, so every row here must hit
+    // the fallback. This is the actual proof: identity isn't silently lost
+    // (blank/undefined), it's a visibly-flagged, look-up-able tag.
+    const { rows } = xeroPayrollTimesheetsProfile.derive(TIMESHEET_ROWS);
+    for (const row of rows) {
+      expect(String(row["Employee"])).toMatch(/^Staff:/);
+    }
+    expect(rows.map((r) => r["Employee"])).toContain(`Staff:${STAFF_A}`);
+    expect(rows.map((r) => r["Employee"])).toContain(`Staff:${STAFF_B}`);
+  });
+
+  it("sorts by Employee then Date", () => {
+    const { rows } = xeroPayrollTimesheetsProfile.derive(TIMESHEET_ROWS);
+    expect(rows.map((r) => r["Date"])).toEqual([
+      "2024-06-09", "2024-06-10", "2024-06-11", "2024-06-12",
+    ]);
+  });
+
+  it("flags rows over 8 hours for manual overtime review instead of silently applying ordinary pay", () => {
+    const { rows } = xeroPayrollTimesheetsProfile.derive(TIMESHEET_ROWS);
+    const tenHourRow = rows.find((r) => r["Hours"] === "10.00");
+    // The overtime note uses the raw `hours` number, not the toFixed(2) "Hours"
+    // column value — "10h", not "10.00h". Asserting the real behaviour, not a
+    // tidier one nobody wrote.
+    expect(tenHourRow!["Notes"]).toMatch(/^10h total — check for overtime split\./);
+  });
+
+  it("maps night shift to Night Shift Allowance; day/split/null all map to Ordinary Time Earnings", () => {
+    const { rows } = xeroPayrollTimesheetsProfile.derive(TIMESHEET_ROWS);
+    const nightRow = rows.find((r) => r["Hours"] === "10.00");
+    const dayRow = rows.find((r) => r["Hours"] === "8.00");
+    const nullShiftRow = rows.find((r) => r["Hours"] === "6.00");
+    const splitRow = rows.find((r) => r["Hours"] === "4.00");
+    expect(nightRow!["Earnings Rate"]).toBe("Night Shift Allowance");
+    expect(dayRow!["Earnings Rate"]).toBe("Ordinary Time Earnings");
+    expect(nullShiftRow!["Earnings Rate"]).toBe("Ordinary Time Earnings");
+    expect(splitRow!["Earnings Rate"]).toBe("Ordinary Time Earnings");
+  });
+
+  it("a row with only the required schema fields (no shift/task/notes) doesn't throw and doesn't drop", () => {
+    const minimal: Record<string, unknown> = {
+      timesheet_id: "t-min", tenant_id: "tenant-1", staff_id: STAFF_A,
+      date: "2024-06-13", hours: 5, status: "approved",
+    };
+    expect(() => xeroPayrollTimesheetsProfile.derive([minimal])).not.toThrow();
+    const { rows } = xeroPayrollTimesheetsProfile.derive([minimal]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!["Employee"]).toBe(`Staff:${STAFF_A}`);
+    expect(rows[0]!["Notes"]).toBe("");
+  });
+
+  it("handles empty input", () => {
+    const { rows } = xeroPayrollTimesheetsProfile.derive([]);
     expect(rows).toHaveLength(0);
   });
 });
