@@ -164,10 +164,6 @@ function buildHeuristicMappings(
     }
   }
 
-  // Track which canonical fields have been claimed - prefer one-to-one mappings
-  // when several source columns score equally for the same canonical.
-  const claimed = new Map<string, number>(); // canonical -> highest score so far
-
   // First pass: score every source column against every candidate
   const scored = sourceColumns.map((src) => {
     const srcTokens = tokenize(src);
@@ -370,7 +366,6 @@ function runHeuristicMap() {
 }
 
 async function runAiMap() {
-  const wrap = document.getElementById("mapping-table-wrap")!;
   const aiBtn = document.getElementById("btn-refine-ai") as HTMLButtonElement | null;
   if (aiBtn) { aiBtn.disabled = true; aiBtn.textContent = "Refining..."; }
   const summary = document.getElementById("mapping-summary")!;

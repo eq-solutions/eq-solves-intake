@@ -34,7 +34,6 @@ import type {
   TidyPassOpts,
   TidyCommitOpts,
   TidyCommitResult,
-  TIDY_ENTITY_TABLES,
 } from './tidy-types.js';
 
 export { TIDY_ENTITY_TABLES } from './tidy-types.js';

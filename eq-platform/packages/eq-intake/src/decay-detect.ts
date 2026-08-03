@@ -90,7 +90,6 @@ function daysSince(isoStr: string, now: Date): number {
 // ---------------------------------------------------------------------------
 
 const ENTITIES = ['staff', 'customers', 'sites', 'contacts', 'assets'] as const;
-type EntityKey = typeof ENTITIES[number];
 
 export async function decayCheck(
   supabase: SupabaseLikeClient,

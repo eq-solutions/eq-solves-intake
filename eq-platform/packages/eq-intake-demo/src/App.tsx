@@ -192,7 +192,7 @@ export function App() {
         localStorage.setItem(KEY, JSON.stringify(trimmed));
         // eslint-disable-next-line no-console
         console.log(`[eq-intake-demo] route logged: → ${value} (${source}); total=${trimmed.length}`);
-      } catch (e) {
+      } catch {
         // localStorage may be full / disabled — silently skip
       }
     },
