@@ -13,10 +13,4 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
   },
-  test: {
-    // Vitest config — runs derive profile unit tests.
-    // Profiles are pure TS functions, no browser/Vite runtime needed.
-    environment: "node",
-    include: ["test/**/*.test.ts"],
-  },
 });

@@ -8,9 +8,9 @@ const src = (pkg: string) =>
 export default defineConfig({
   resolve: {
     alias: [
-      { find: /^@eq\/ai$/, replacement: src("eq-ai") },
       { find: /^@eq\/schemas$/, replacement: src("eq-schemas") },
       { find: /^@eq\/validation$/, replacement: src("eq-validation") },
+      { find: /^@eq\/ai$/, replacement: src("eq-ai") },
     ],
   },
   test: {
