@@ -57,3 +57,8 @@ OVERNIGHT-REVIEW-*.md
 .claude/skills/
 .claude/armada/
 
+# Local vendored copies of eq-shell/eq-service for cross-repo dev checks —
+# each has its own real repo; these are stale duplicates, never committed
+# (config.json's own notes already excluded them from the build gate).
+eq-platform/apps/
+
