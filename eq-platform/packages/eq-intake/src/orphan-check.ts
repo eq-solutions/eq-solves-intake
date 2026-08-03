@@ -9,7 +9,6 @@
  * auto-fixed — they need a human to pick the correct linked record.
  */
 
-import type { SupabaseLikeClient } from './canonical/commit-canonical.js';
 import type {
   OrphanCheckOpts,
   OrphanCheckResult,

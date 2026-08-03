@@ -10,7 +10,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { AnthropicProvider, AIError } from "../src/index.js";
-import type { MapResult, ExtractResult, AIMetrics } from "../src/index.js";
+import type { AIMetrics } from "../src/index.js";
 
 // Simple fake of the Anthropic Messages API response.
 function fakeAnthropicResponse(textBody: string, usage = { input_tokens: 10, output_tokens: 50 }) {

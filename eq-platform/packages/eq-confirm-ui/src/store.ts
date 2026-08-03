@@ -43,7 +43,7 @@ export function createConfirmFlow(): {
   useStore: UseBoundStore<StoreApi<FlowState>>;
   driver: FlowDriver;
 } {
-  const useStore = create<FlowState>((set, get) => ({
+  const useStore = create<FlowState>((set, _get) => ({
     status: { kind: "idle" } as FlowStatus,
     userOverrides: {},
     transformations: {},

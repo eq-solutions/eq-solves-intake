@@ -373,7 +373,7 @@ function rawTextPage(text: string): ParsedPage {
   };
 }
 
-function emptyTablePage(text: string): ParsedPage {
+function emptyTablePage(_text: string): ParsedPage {
   return {
     headerRow: [],
     rows: [],

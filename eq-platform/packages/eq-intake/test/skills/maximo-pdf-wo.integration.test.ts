@@ -52,8 +52,8 @@ const HAS_FIXTURE =
 // Public Sonnet 4.5 pricing snapshot (USD per 1M tokens) — update if Anthropic
 // changes pricing. Only used to print a friendly cost estimate; the assertion
 // suite doesn't depend on it.
-const SONNET_45_USD_PER_1M_IN = 3.0;
-const SONNET_45_USD_PER_1M_OUT = 15.0;
+const _SONNET_45_USD_PER_1M_IN = 3.0;
+const _SONNET_45_USD_PER_1M_OUT = 15.0;
 
 function loadFixture(name: string): { bytes: Uint8Array; fileName: string } {
   const bytes = readFileSync(resolve(FIXTURE_DIR, name));
