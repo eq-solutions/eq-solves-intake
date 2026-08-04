@@ -34,6 +34,22 @@
  *   Safe to run multiple times. The canonical commit uses ON CONFLICT
  *   (tenant_id, external_id) — re-running just updates changed fields.
  *
+ * ── Tenant scoping (read this before re-running against a live pool) ───────────
+ *   fetchAll() below reads the ENTIRE cards `workers`/`worker_licences`
+ *   tables with no filter, then commits every row it finds under whichever
+ *   single --tenant-id was passed. Safe only as long as the target Cards
+ *   pool serves exactly one employer. The suite's documented target design
+ *   (EQ-CARDS-INTAKE-BRIDGE.md) is a SHARED worker pool projected into a
+ *   tenant's canonical only when that tenant actually engages the worker —
+ *   this script predates that model and does not implement the engagement
+ *   check. Do NOT re-run this against a Cards pool that now serves more
+ *   than one tenant without adding one first. (tenant-rule audit, 2026-08-05
+ *   — also flagged separately: this script's column names, given_name/
+ *   family_name/worker_licences, no longer match the live workers/
+ *   worker_credentials schema confirmed elsewhere this session, so it may
+ *   not even run as-is; not fixed here since guessing at the right filter
+ *   for a schema this stale risks a wrong fix being worse than an honest one.)
+ *
  * ── Column mapping ────────────────────────────────────────────────────────────
  *   Cards worker → canonical staff:
  *     worker.id               → external_id

@@ -112,6 +112,7 @@ Deno.serve(async (req: Request) => {
   if (!authHeader?.startsWith('Bearer ')) {
     return jsonError(401, 'Missing Authorization header (Bearer token required)')
   }
+  const jwt = authHeader.slice(7)
 
   // Build an authed client to validate the JWT and read tenant_id.
   const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -138,13 +139,26 @@ Deno.serve(async (req: Request) => {
     return jsonError(400, 'Request body must be valid JSON')
   }
 
-  // Service-role callers may pass tenant_id in the body.
-  if (!tenantId && body.tenant_id) {
+  // Service-role callers may pass tenant_id in the body — but only the actual
+  // service-role secret earns that trust. Previously this branch fired for
+  // ANY authenticated caller whose JWT simply lacked user_metadata.tenant_id
+  // (e.g. a freshly signed-up user never assigned to a tenant), letting them
+  // commit rows under any tenant_id of their choosing. The RPC below can't
+  // catch this either — api-intake always calls it via the service-role
+  // client, so eq_commit_batch's own tenant-mismatch guard sees our identity,
+  // never the original caller's. (tenant-rule audit, 2026-08-05)
+  const isServiceRoleCaller = jwt === SUPABASE_SERVICE_ROLE
+  if (!tenantId && isServiceRoleCaller && body.tenant_id) {
     tenantId = String(body.tenant_id)
   }
 
   if (!tenantId) {
-    return jsonError(400, 'tenant_id is required — add it to user_metadata or include in the request body')
+    return jsonError(
+      400,
+      isServiceRoleCaller
+        ? 'tenant_id is required in the request body for service-role calls'
+        : 'tenant_id is required — your account has no tenant_id set'
+    )
   }
 
   const entity  = String(body.entity ?? '')
