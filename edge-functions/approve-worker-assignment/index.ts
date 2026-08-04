@@ -84,6 +84,28 @@ Deno.serve(async (req: Request) => {
   const appData = employerAdmin.schema('app_data')
   const now = new Date().toISOString()
 
+  // onConflict('cards_worker_id') below relies on a unique constraint that is
+  // NOT tenant-scoped (sql/shell/003_staff_cards_sync_fields.sql — unique on
+  // cards_worker_id alone). Safe today only because each employer runs its
+  // own physically-isolated canonical database (EMPLOYER_URL, above), so no
+  // other tenant's row can exist here to collide with. Guard explicitly
+  // anyway rather than depend on that holding forever — an upsert scoped
+  // only by cards_worker_id would otherwise silently reassign an existing
+  // tenant's staff row the moment this table is ever shared. (tenant-rule
+  // audit, 2026-08-05)
+  const { data: conflictingStaff } = await appData
+    .from('staff')
+    .select('staff_id, tenant_id')
+    .eq('cards_worker_id', worker.id)
+    .maybeSingle()
+
+  if (conflictingStaff && conflictingStaff.tenant_id !== tenantId) {
+    return Response.json(
+      { error: 'cards_worker_id already claimed by a different tenant in this canonical' },
+      { status: 409 },
+    )
+  }
+
   const { data: staff, error: staffError } = await appData
     .from('staff')
     .upsert(
@@ -128,12 +150,37 @@ Deno.serve(async (req: Request) => {
       confirmed_at:        null,
     }))
 
-    const { error: licenceError } = await appData
+    // Same cross-tenant guard as the staff upsert above — onConflict on
+    // cards_credential_id alone is not tenant-scoped at the DB level either.
+    // Skip (not fail) any row a different tenant already claims, rather than
+    // let it silently overwrite that tenant's licence record.
+    const { data: conflictingLicences } = await appData
       .from('licences')
-      .upsert(licenceRows, { onConflict: 'cards_credential_id' })
+      .select('cards_credential_id, tenant_id')
+      .in('cards_credential_id', licenceRows.map((r) => r.cards_credential_id))
 
-    if (licenceError) {
-      return Response.json({ error: licenceError.message }, { status: 500 })
+    const foreignLicenceIds = new Set(
+      (conflictingLicences ?? [])
+        .filter((l) => l.tenant_id !== tenantId)
+        .map((l) => l.cards_credential_id),
+    )
+
+    if (foreignLicenceIds.size > 0) {
+      console.error(
+        `approve-worker-assignment: skipped ${foreignLicenceIds.size} licence row(s) already claimed by a different tenant`,
+      )
+    }
+
+    const safeLicenceRows = licenceRows.filter((r) => !foreignLicenceIds.has(r.cards_credential_id))
+
+    if (safeLicenceRows.length > 0) {
+      const { error: licenceError } = await appData
+        .from('licences')
+        .upsert(safeLicenceRows, { onConflict: 'cards_credential_id' })
+
+      if (licenceError) {
+        return Response.json({ error: licenceError.message }, { status: 500 })
+      }
     }
   }
 
