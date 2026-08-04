@@ -87,6 +87,7 @@ const { values: args } = parseArgs({
     "tenant-id":  { type: "string" },
     "dry-run":    { type: "boolean", default: false },
     "batch-size": { type: "string", default: "500" },
+    "i-know-this-is-stale": { type: "boolean", default: false },
   },
 });
 
@@ -112,6 +113,32 @@ Required:
 Optional:
   --dry-run     Print what would be committed without writing anything
   --batch-size  Rows per RPC call (default: 500)
+`);
+  process.exit(1);
+}
+
+// Retired 2026-08-05 (tenant-rule audit follow-up): its one real job — SKS's
+// initial provisioning — is done, nothing in this repo references it as live
+// tooling anymore, and its column names (given_name/family_name/
+// worker_licences) no longer match the live workers/worker_credentials
+// schema. Kept rather than deleted (no delete authority for this call), but
+// hard-stopped so nobody runs it believing it's still current. If a second
+// tenant genuinely needs a bulk Cards migration, rewrite this against the
+// live schema and add a real per-tenant engagement filter (see the "Tenant
+// scoping" note above) before removing this guard — don't just delete it.
+if (!args["i-know-this-is-stale"]) {
+  console.error(`
+migrate-cards-to-canonical: refusing to run.
+
+This script hasn't been touched since 2026-05-28 and its column names
+(given_name/family_name/worker_licences) don't match the live schema
+confirmed on 2026-08-04 (workers.first_name/last_name, worker_credentials).
+It likely won't even work as written, and it reads its whole source table
+with no tenant/engagement filter — see the header comment above for the
+full detail.
+
+If you've already rewritten it against the current schema and you're
+sure it's safe to run, pass --i-know-this-is-stale to bypass this check.
 `);
   process.exit(1);
 }
