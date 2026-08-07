@@ -68,8 +68,12 @@ export function isValidAuPostcode(postcode: string): boolean {
 // String normalisation for duplicate detection
 // ---------------------------------------------------------------------------
 
+// "P/L" and "P.L." are the standard Australian shorthand for "Pty Ltd" —
+// common on invoices/accounting exports — so they must strip the same as
+// the full form, or "Acme Pty Ltd" vs "ACME P/L" (same company, real-world
+// duplicate) scores as unrelated instead of a near-exact match.
 const LEGAL_SUFFIXES =
-  /\b(pty\.?\s*ltd\.?|ltd\.?|pty\.?|incorporated|inc\.?|limited|trust|& co\.?|and co\.?|co\.?)\b/gi;
+  /\b(pty\.?\s*ltd\.?|p\s*\/\s*l\.?|p\.\s*l\.?|ltd\.?|pty\.?|incorporated|inc\.?|limited|trust|& co\.?|and co\.?|co\.?)\b/gi;
 const NON_ALPHA_NUM = /[^a-z0-9\s]/g;
 
 /** Normalise a company name for fuzzy comparison (strips legal suffixes, punctuation). */

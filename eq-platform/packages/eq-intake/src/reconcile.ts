@@ -12,11 +12,23 @@
  *      - onlyInSource — source row has no canonical counterpart (red / new)
  *      - onlyInCanonical — canonical row not in source (grey / untouched)
  *
+ * When an entity is supplied, step 2 gets a second pass: source/canonical
+ * rows left unmatched by exact key are fuzzy-compared on their identity
+ * string (company name, person name, site name+address…), the same
+ * Dice-coefficient matcher duplicate-detect.ts uses for clustering. A
+ * high-confidence pair (e.g. "Acme Pty Ltd" vs "ACME P/L") is promoted from
+ * onlyInSource/onlyInCanonical into conflicts — flagged for a human, instead
+ * of quietly becoming an unrelated "new row" next to an "untouched" one that
+ * happen to be the same real-world record. These rows carry
+ * `matchedBy: "fuzzy"` and never offer an automatic "use source" merge —
+ * there's no shared key to upsert against.
+ *
  * Resolution is tracked per-row via the `resolution` field. The commit step
  * (in ReconcileModule) uses it to decide which rows to write.
  */
 
 import type { ParsedSheet } from "./readers/csv.js";
+import { dice, identityKeyFor, identityLabelFor, HIGH_SIM } from "./duplicate-detect.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -45,6 +57,17 @@ export interface ReconcileRow {
   conflicts: FieldConflict[];
   /** User-selected resolution for conflict rows. */
   resolution?: Resolution;
+  /**
+   * How this pair ended up in `conflicts`. Absent (or "key") for the normal
+   * path — an exact match on `matchKey`. "fuzzy" means there was NO shared
+   * key value; the pair was promoted here because their identity strings
+   * (company name, person name, site name+address…) are near-identical —
+   * e.g. "Acme Pty Ltd" in the file vs "ACME P/L" already in EQ. Callers
+   * must not offer an automatic "use source" merge for a fuzzy row: there's
+   * no shared key to upsert against, so committing it would silently insert
+   * a duplicate instead of updating the matched canonical row.
+   */
+  matchedBy?: "key" | "fuzzy";
 }
 
 /** Full output of reconcileSheets(). */
@@ -121,11 +144,17 @@ export function detectMatchKey(sheet: ParsedSheet): string {
  * @param sourceSheet   The ParsedSheet from the dropped file.
  * @param canonicalRows The existing rows fetched from the canonical database.
  * @param matchKey      The field to join on. Auto-detected if not supplied.
+ * @param entity        Canonical entity name (e.g. "customers", "sites").
+ *                       When supplied, rows left over in onlyInSource /
+ *                       onlyInCanonical after the exact-key pass get a
+ *                       second, fuzzy identity pass (see the module doc
+ *                       comment) before being reported as unrelated.
  */
 export function reconcileSheets(
   sourceSheet: ParsedSheet,
   canonicalRows: Record<string, unknown>[],
   matchKey?: string,
+  entity?: string,
 ): ReconcileResult {
   const key = matchKey ?? detectMatchKey(sourceSheet);
 
@@ -143,7 +172,7 @@ export function reconcileSheets(
 
   const matched: ReconcileRow[] = [];
   const conflicts: ReconcileRow[] = [];
-  const onlyInSource: ReconcileRow[] = [];
+  let onlyInSource: ReconcileRow[] = [];
 
   for (const sourceRow of sourceSheet.rows as Record<string, unknown>[]) {
     const keyValue = normaliseValue(sourceRow[key]);
@@ -174,14 +203,94 @@ export function reconcileSheets(
   }
 
   // Collect canonical rows that had no matching source row.
-  const onlyInCanonical: ReconcileRow[] = [];
+  let onlyInCanonical: ReconcileRow[] = [];
   for (const [keyValue, canonicalRow] of canonicalByKey) {
     if (!matchedCanonicalKeys.has(keyValue)) {
       onlyInCanonical.push({ canonicalRow, conflicts: [] });
     }
   }
 
+  // Fuzzy identity pass over what's left — see the module doc comment.
+  if (entity && onlyInSource.length > 0 && onlyInCanonical.length > 0) {
+    const pairs = findFuzzyPairs(entity, onlyInSource, onlyInCanonical);
+    if (pairs.length > 0) {
+      for (const { sourceIdx, canonicalIdx } of pairs) {
+        const sRow = onlyInSource[sourceIdx]!.sourceRow!;
+        const cRow = onlyInCanonical[canonicalIdx]!.canonicalRow!;
+        conflicts.push({
+          sourceRow: sRow,
+          canonicalRow: cRow,
+          matchedBy: "fuzzy",
+          conflicts: [
+            {
+              field: "name similarity",
+              sourceValue: identityLabelFor(entity, sRow),
+              canonicalValue: identityLabelFor(entity, cRow),
+            },
+            ...detectFieldConflicts(sRow, cRow),
+          ],
+        });
+      }
+      const usedSource = new Set(pairs.map((p) => p.sourceIdx));
+      const usedCanonical = new Set(pairs.map((p) => p.canonicalIdx));
+      onlyInSource = onlyInSource.filter((_, i) => !usedSource.has(i));
+      onlyInCanonical = onlyInCanonical.filter((_, i) => !usedCanonical.has(i));
+    }
+  }
+
   return { matched, conflicts, onlyInSource, onlyInCanonical, matchKey: key };
+}
+
+// ---------------------------------------------------------------------------
+// Fuzzy identity pass — cross-key candidates left over after exact matching
+// ---------------------------------------------------------------------------
+
+interface FuzzyPair {
+  sourceIdx: number;
+  canonicalIdx: number;
+  similarity: number;
+}
+
+/**
+ * Pair up leftover onlyInSource/onlyInCanonical rows by identity-string
+ * similarity. Greedy: strongest matches win first, each row claimed at most
+ * once — good enough for what's typically a small leftover set, and avoids
+ * a full assignment-problem solver for a UI hint, not a canonical decision.
+ */
+function findFuzzyPairs(
+  entity: string,
+  onlyInSource: ReconcileRow[],
+  onlyInCanonical: ReconcileRow[],
+): FuzzyPair[] {
+  const candidates: FuzzyPair[] = [];
+
+  for (let si = 0; si < onlyInSource.length; si++) {
+    const sKey = identityKeyFor(entity, onlyInSource[si]!.sourceRow!);
+    if (sKey.length < 2) continue;
+
+    for (let ci = 0; ci < onlyInCanonical.length; ci++) {
+      const cKey = identityKeyFor(entity, onlyInCanonical[ci]!.canonicalRow!);
+      if (cKey.length < 2) continue;
+
+      const similarity = dice(sKey, cKey);
+      if (similarity >= HIGH_SIM) {
+        candidates.push({ sourceIdx: si, canonicalIdx: ci, similarity });
+      }
+    }
+  }
+
+  candidates.sort((a, b) => b.similarity - a.similarity);
+
+  const usedSource = new Set<number>();
+  const usedCanonical = new Set<number>();
+  const pairs: FuzzyPair[] = [];
+  for (const c of candidates) {
+    if (usedSource.has(c.sourceIdx) || usedCanonical.has(c.canonicalIdx)) continue;
+    usedSource.add(c.sourceIdx);
+    usedCanonical.add(c.canonicalIdx);
+    pairs.push(c);
+  }
+  return pairs;
 }
 
 // ---------------------------------------------------------------------------
