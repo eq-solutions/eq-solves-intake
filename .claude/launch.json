@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "eq-intake-demo",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--dir", "eq-platform", "--filter", "@eq/intake-demo", "dev"],
+      "port": 5174
+    }
+  ]
+}

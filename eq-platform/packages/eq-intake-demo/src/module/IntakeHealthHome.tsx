@@ -30,6 +30,18 @@ export interface IntakeHealthHomeProps {
   onEntityClick?: (entity: string) => void;
   /** Tenant's saved field-importance corrections — see IntakeModule's fetch. */
   fieldImportanceOverrides?: FieldImportanceOverride[];
+  /**
+   * Called when the user taps the empty-state CTA ("Bring your first file
+   * in") on a brand-new tenant with zero records anywhere. Typically wired
+   * to switch the host's tab to Bring Data In. Omit to hide the button.
+   */
+  onBringDataIn?: () => void;
+  /**
+   * Bumped by the host on any data-changing action taken elsewhere (To Do
+   * approvals/archives, site/contact merges) so this screen's numbers don't
+   * go stale until someone remembers to hit the manual Refresh button.
+   */
+  refreshSignal?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -286,11 +298,11 @@ function ScoreRing({ composite }: { composite: number }): JSX.Element {
 }
 
 function DimensionBar({
-  label, score, weight,
-}: { label: string; score: number; weight: string }): JSX.Element {
+  label, score, weight, title,
+}: { label: string; score: number; weight: string; title?: string }): JSX.Element {
   return (
     <div className="eq-health-dim">
-      <span className="eq-health-dim-name">
+      <span className="eq-health-dim-name" title={title}>
         {label}
         <span className="eq-health-dim-weight">{weight}</span>
       </span>
@@ -575,6 +587,8 @@ export function IntakeHealthHome({
   tenantId,
   onEntityClick,
   fieldImportanceOverrides,
+  onBringDataIn,
+  refreshSignal,
 }: IntakeHealthHomeProps): JSX.Element {
   const resolvedTenantId = tenantId ?? DEFAULT_TENANT_ID;
 
@@ -654,7 +668,7 @@ export function IntakeHealthHome({
     });
 
     return () => { cancelled = true; };
-  }, [supabase, resolvedTenantId, refreshTick, fieldImportanceOverrides]);
+  }, [supabase, resolvedTenantId, refreshTick, refreshSignal, fieldImportanceOverrides]);
 
   if (!supabase) {
     return (
@@ -668,6 +682,33 @@ export function IntakeHealthHome({
     return (
       <section className="eq-health-home">
         <div className="eq-health-notice eq-health-notice--err" role="alert">{error}</div>
+      </section>
+    );
+  }
+
+  // A brand-new tenant with nothing imported anywhere yet — every entity
+  // shows `started: false`. Showing six 0%-filled dimension bars here reads
+  // as "your data is bad" when the truth is "you haven't brought anything
+  // in yet" — a completely different message that needs a completely
+  // different screen: a way in, not a score to fix.
+  const allEmpty = scores !== null && scores.every((s) => !s.started);
+
+  if (allEmpty) {
+    return (
+      <section className="eq-health-home">
+        <div className="eq-health-empty">
+          <p className="eq-health-empty__title">Nothing in EQ yet</p>
+          <p className="eq-health-empty__body">
+            Bring in your first file — customers, sites, contacts, staff, or
+            licences — and this page will start tracking your data quality
+            automatically.
+          </p>
+          {onBringDataIn && (
+            <button type="button" className="eq-intake-btn-primary" onClick={onBringDataIn}>
+              Bring your first file in →
+            </button>
+          )}
+        </div>
       </section>
     );
   }
@@ -735,12 +776,12 @@ export function IntakeHealthHome({
             <details className="eq-health-dims-disclosure">
               <summary>Show the breakdown</summary>
               <div className="eq-health-dims">
-                <DimensionBar label="Compliance"     score={dims.compliance}     weight={`${WEIGHTS.compliance}%`} />
-                <DimensionBar label="Serviceability" score={dims.serviceability} weight={`${WEIGHTS.serviceability}%`} />
-                <DimensionBar label="Completeness"   score={dims.completeness}   weight={`${WEIGHTS.completeness}%`} />
-                <DimensionBar label="Validity"       score={dims.validity}       weight={`${WEIGHTS.validity}%`} />
-                <DimensionBar label="Consistency"    score={dims.consistency}    weight={`${WEIGHTS.consistency}%`} />
-                <DimensionBar label="Timeliness"     score={dims.timeliness}     weight={`${WEIGHTS.timeliness}%`} />
+                <DimensionBar label="Compliance"        score={dims.compliance}     weight={`${WEIGHTS.compliance}%`} />
+                <DimensionBar label="Ready to dispatch"  score={dims.serviceability} weight={`${WEIGHTS.serviceability}%`} title="Serviceability" />
+                <DimensionBar label="Can we reach people" score={dims.completeness}  weight={`${WEIGHTS.completeness}%`} title="Completeness" />
+                <DimensionBar label="Correctly formatted" score={dims.validity}      weight={`${WEIGHTS.validity}%`} title="Validity" />
+                <DimensionBar label="Records linked up"   score={dims.consistency}   weight={`${WEIGHTS.consistency}%`} title="Consistency" />
+                <DimensionBar label="Recently updated"    score={dims.timeliness}    weight={`${WEIGHTS.timeliness}%`} title="Timeliness" />
               </div>
             </details>
           </>
@@ -786,35 +827,46 @@ export function IntakeHealthHome({
         </div>
       )}
 
-      {/* Duplicate detection (on-demand) */}
+      {/* Duplicate detection (on-demand) — deliberately not auto-run: it
+          re-reads every record in every entity and compares them pairwise,
+          on top of the fetch the checks above already did. Cheap to click,
+          not free to run on every page load, so it stays a choice. */}
       <div className="eq-health-strip-section">
         <span className="eq-health-section-label">Duplicates</span>
         {dupes === null ? (
-          <button
-            type="button"
-            className="eq-intake-btn-ghost"
-            onClick={scanDuplicates}
-            disabled={dupesBusy}
-          >
-            {dupesBusy ? "Scanning…" : "Scan for possible duplicates"}
-          </button>
+          <>
+            <button
+              type="button"
+              className="eq-intake-btn-ghost"
+              onClick={scanDuplicates}
+              disabled={dupesBusy}
+            >
+              {dupesBusy ? "Scanning…" : "Scan for possible duplicates"}
+            </button>
+            <span className="eq-health-scan-hint">Checks every record — takes a moment on a large dataset</span>
+          </>
         ) : (
           <DuplicateStrip report={dupes} onEntityClick={onEntityClick} />
         )}
       </div>
 
-      {/* Decay detection (on-demand) */}
+      {/* Decay detection (on-demand) — same reason as Duplicates above: a
+          full re-read of every entity, kept opt-in rather than run on every
+          load. */}
       <div className="eq-health-strip-section">
         <span className="eq-health-section-label">Record age</span>
         {decay === null ? (
-          <button
-            type="button"
-            className="eq-intake-btn-ghost"
-            onClick={scanDecay}
-            disabled={decayBusy}
-          >
-            {decayBusy ? "Scanning…" : "Check for stale records"}
-          </button>
+          <>
+            <button
+              type="button"
+              className="eq-intake-btn-ghost"
+              onClick={scanDecay}
+              disabled={decayBusy}
+            >
+              {decayBusy ? "Scanning…" : "Check for stale records"}
+            </button>
+            <span className="eq-health-scan-hint">Checks every record — takes a moment on a large dataset</span>
+          </>
         ) : (
           <DecayStrip report={decay} onEntityClick={onEntityClick} />
         )}
