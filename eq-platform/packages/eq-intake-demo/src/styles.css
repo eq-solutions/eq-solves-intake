@@ -2933,6 +2933,26 @@ button.eq-primary:hover {
   margin-left: auto;
 }
 
+/* Fuzzy cross-key match — no shared ID, flagged by name similarity instead */
+.eq-reconcile__fuzzy-badge {
+  padding: 2px 10px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 500;
+  background: #fef3c7;
+  color: var(--eq-warn);
+  border: 1px solid var(--eq-warn);
+}
+
+.eq-reconcile__fuzzy-note {
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--eq-muted);
+  background: var(--eq-page);
+  border-radius: 6px;
+}
+
 /* Section blocks */
 .eq-reconcile__section {
   background: var(--eq-paper);

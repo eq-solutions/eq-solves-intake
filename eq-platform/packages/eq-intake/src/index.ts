@@ -142,7 +142,7 @@ export type {
   EntityConfidenceSummary,
 } from "./confidence-score.js";
 
-export { detectAllDuplicates } from "./duplicate-detect.js";
+export { detectAllDuplicates, identityLabelFor } from "./duplicate-detect.js";
 export type { DuplicateCluster, DuplicateReport } from "./duplicate-detect.js";
 
 export { decayCheck } from "./decay-detect.js";

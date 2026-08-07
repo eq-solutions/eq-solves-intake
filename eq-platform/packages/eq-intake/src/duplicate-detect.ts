@@ -66,7 +66,11 @@ export interface DuplicateReport {
 // Thresholds
 // ---------------------------------------------------------------------------
 
-const HIGH_SIM   = 0.85;
+// Exported — reconcile.ts's fuzzy pass uses the same bar for "confident
+// enough to promote into a human-decision conflict" as this module's own
+// clustering, so the two engines don't quietly drift apart on what counts
+// as a likely duplicate.
+export const HIGH_SIM = 0.85;
 const MEDIUM_SIM = 0.65;
 
 // A shared, non-null site code is a strong same-site identity claim — treated
@@ -83,7 +87,7 @@ function bigrams(s: string): Set<string> {
   return bg;
 }
 
-function dice(a: string, b: string): number {
+export function dice(a: string, b: string): number {
   if (a === b) return 1;
   if (a.length < 2 || b.length < 2) return a === b ? 1 : 0;
   const bA = bigrams(a);
@@ -107,7 +111,7 @@ const PK: Record<string, string> = {
   assets:    'name',
 };
 
-function labelFor(entity: string, row: EntityRow): string {
+export function identityLabelFor(entity: string, row: EntityRow): string {
   if (entity === 'staff' || entity === 'contacts') {
     return `${row['first_name'] ?? ''} ${row['last_name'] ?? ''}`.trim();
   }
@@ -151,6 +155,32 @@ type Candidate = {
   completeness: number;
 };
 
+/**
+ * The single normalised string used to fuzzy-compare two rows of the same
+ * entity for "are these the same real-world thing" — company name, full
+ * person name, site name+address, or asset name. Shared by this module's own
+ * clustering below and by reconcile.ts's cross-key fuzzy pass (a source row
+ * with no shared key value against canonical needs the same identity check
+ * before it's allowed to fall through as an unrelated "new" row).
+ */
+export function identityKeyFor(entity: string, row: EntityRow): string {
+  if (entity === 'customers') {
+    return normaliseCompanyName(String(row['company_name'] ?? ''));
+  }
+  if (entity === 'staff' || entity === 'contacts') {
+    return normalisePersonName(String(row['first_name'] ?? ''), String(row['last_name'] ?? ''));
+  }
+  if (entity === 'sites') {
+    const name    = String(row['name'] ?? '').toLowerCase().trim();
+    const address = String(row['address_line_1'] ?? '').toLowerCase().trim();
+    return address ? `${name} ${address}` : name;
+  }
+  if (entity === 'assets') {
+    return String(row['name'] ?? '').toLowerCase().trim();
+  }
+  return identityLabelFor(entity, row).toLowerCase();
+}
+
 function buildCandidates(entity: string, rows: EntityRow[]): Candidate[] {
   return rows
     // NB: inactive rows are intentionally retained — a retired row can be the
@@ -158,35 +188,23 @@ function buildCandidates(entity: string, rows: EntityRow[]): Candidate[] {
     // silent. State is carried per-candidate instead of filtered away.
     .map((row): Candidate => {
       const id           = String(row[PK[entity] ?? 'id'] ?? '');
-      const label        = labelFor(entity, row);
+      const label        = identityLabelFor(entity, row);
       const active       = row['active'] !== false; // null/undefined ⇒ active
       const hasLink      = hasCustomerLink(entity, row);
       const completeness = completenessOf(row);
-      const base = { id, label, active, hasLink, completeness };
+      const key_primary  = identityKeyFor(entity, row);
+      const base = { id, label, active, hasLink, completeness, key_primary };
 
       if (entity === 'customers') {
         return {
           ...base,
-          key_primary: normaliseCompanyName(String(row['company_name'] ?? '')),
-          key_abn:     row['abn'] ? normaliseAbn(String(row['abn'])) : undefined,
-        };
-      }
-      if (entity === 'staff' || entity === 'contacts') {
-        return {
-          ...base,
-          key_primary: normalisePersonName(
-            String(row['first_name'] ?? ''),
-            String(row['last_name'] ?? ''),
-          ),
+          key_abn: row['abn'] ? normaliseAbn(String(row['abn'])) : undefined,
         };
       }
       if (entity === 'sites') {
-        const name    = String(row['name'] ?? '').toLowerCase().trim();
-        const address = String(row['address_line_1'] ?? '').toLowerCase().trim();
         return {
           ...base,
-          key_primary: address ? `${name} ${address}` : name,
-          key_code:    row['code']
+          key_code: row['code']
             ? String(row['code']).toUpperCase().replace(/\s+/g, '')
             : undefined,
         };
@@ -194,13 +212,12 @@ function buildCandidates(entity: string, rows: EntityRow[]): Candidate[] {
       if (entity === 'assets') {
         return {
           ...base,
-          key_primary: String(row['name'] ?? '').toLowerCase().trim(),
-          key_serial:  row['serial_number']
+          key_serial: row['serial_number']
             ? String(row['serial_number']).toLowerCase().replace(/\s/g, '')
             : undefined,
         };
       }
-      return { ...base, key_primary: label.toLowerCase() };
+      return base;
     })
     .filter((c) => c.key_primary.length >= 2 || c.key_code || c.key_abn || c.key_serial);
 }

@@ -13,7 +13,7 @@
  */
 
 import { useState, useCallback, useEffect, type JSX } from "react";
-import { parseFile, classifySheet, reconcileSheets, fetchCanonicalRows, scoreRows, normaliseAbn, normalisePhone, type ParsedSheet } from "@eq/intake";
+import { parseFile, classifySheet, reconcileSheets, fetchCanonicalRows, scoreRows, normaliseAbn, normalisePhone, identityLabelFor, type ParsedSheet } from "@eq/intake";
 import type { ReconcileResult, ReconcileRow, Resolution, RowConfidence, EntityConfidenceSummary } from "@eq/intake";
 import {
   commitBundleToCanonical,
@@ -98,7 +98,7 @@ export function ReconcileModule({ supabase, tenantId, initialSlot, onClose }: Re
       }
       if (cancelled) return;
       setStep({ tag: "loading", label: "Reconciling…" });
-      const result = reconcileSheets(initialSlot.sheet, canonicalRows);
+      const result = reconcileSheets(initialSlot.sheet, canonicalRows, undefined, initialSlot.entity);
       const scores = scoreRows(initialSlot.entity, result.onlyInSource.map((r) => r.sourceRow ?? {}));
       if (cancelled) return;
       setResolutions(new Map());
@@ -148,7 +148,7 @@ export function ReconcileModule({ supabase, tenantId, initialSlot, onClose }: Re
         }
 
         setStep({ tag: "loading", label: "Reconciling…" });
-        const result = reconcileSheets(sheet, canonicalRows);
+        const result = reconcileSheets(sheet, canonicalRows, undefined, entity);
 
         const scores = scoreRows(entity, result.onlyInSource.map((r) => r.sourceRow ?? {}));
 
@@ -173,7 +173,13 @@ export function ReconcileModule({ supabase, tenantId, initialSlot, onClose }: Re
     (resolution: Resolution) => {
       if (step.tag !== "ready") return;
       const next = new Map<number, Resolution>();
-      step.result.conflicts.forEach((_, i) => next.set(i, resolution));
+      step.result.conflicts.forEach((row, i) => {
+        // Never bulk "use source" a fuzzy cross-key match — there's no
+        // shared canonical key to upsert against, so it would silently
+        // insert a duplicate instead of updating the matched row.
+        if (resolution === "use-source" && row.matchedBy === "fuzzy") return;
+        next.set(i, resolution);
+      });
       setResolutions(next);
     },
     [step],
@@ -457,6 +463,7 @@ function ReconcileReview({
                 resolution={resolutions.get(i)}
                 onSetResolution={(res) => onSetResolution(i, res)}
                 matchKey={result.matchKey}
+                entity={entity}
               />
             ))}
           </div>
@@ -531,6 +538,7 @@ interface ConflictRowProps {
   resolution: Resolution | undefined;
   onSetResolution: (r: Resolution) => void;
   matchKey: string;
+  entity: string;
 }
 
 function ConflictRow({
@@ -538,10 +546,17 @@ function ConflictRow({
   resolution,
   onSetResolution,
   matchKey,
+  entity,
 }: ConflictRowProps): JSX.Element {
   const [expanded, setExpanded] = useState(false);
+  const isFuzzy = row.matchedBy === "fuzzy";
 
-  const keyValue = String(row.sourceRow?.[matchKey] ?? row.canonicalRow?.[matchKey] ?? "—");
+  // A fuzzy row has no shared matchKey value on either side — that's why it
+  // fell through to here instead of the exact-key path — so show the
+  // identity label (company name, person name, …) instead of a blank "—".
+  const keyValue = isFuzzy
+    ? identityLabelFor(entity, row.sourceRow ?? row.canonicalRow ?? {})
+    : String(row.sourceRow?.[matchKey] ?? row.canonicalRow?.[matchKey] ?? "—");
 
   return (
     <div
@@ -558,6 +573,11 @@ function ConflictRow({
           aria-expanded={expanded}
         >
           {expanded ? "▾" : "▸"} <code>{keyValue}</code>
+          {isFuzzy && (
+            <span className="eq-reconcile__fuzzy-badge" title="No shared ID — matched by name similarity">
+              possible duplicate
+            </span>
+          )}
           <span className="eq-reconcile__conflict-count">
             {row.conflicts.length} field{row.conflicts.length === 1 ? "" : "s"} differ
           </span>
@@ -571,13 +591,18 @@ function ConflictRow({
           >
             Keep canonical
           </button>
-          <button
-            type="button"
-            aria-pressed={resolution === "use-source"}
-            onClick={() => onSetResolution("use-source")}
-          >
-            Use source
-          </button>
+          {/* No shared key on a fuzzy row — "use source" has nothing to
+              upsert against and would silently insert a duplicate instead
+              of updating the matched canonical record. */}
+          {!isFuzzy && (
+            <button
+              type="button"
+              aria-pressed={resolution === "use-source"}
+              onClick={() => onSetResolution("use-source")}
+            >
+              Use source
+            </button>
+          )}
           <button
             type="button"
             aria-pressed={resolution === "skip"}
@@ -587,6 +612,13 @@ function ConflictRow({
           </button>
         </div>
       </div>
+
+      {isFuzzy && (
+        <p className="eq-reconcile__fuzzy-note">
+          No shared ID between this row and the canonical record below — matched by name only.
+          If these are the same record, update it directly in EQ; otherwise Skip.
+        </p>
+      )}
 
       {expanded && (
         <table className="eq-reconcile__diff-table">
