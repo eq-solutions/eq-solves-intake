@@ -31,6 +31,8 @@ export interface ContactDuplicateMergePanelProps {
   supabase?: SupabaseLikeClient | null;
   /** Host-computed, manager-only by default — same posture as canMergeSites. */
   canMergeContacts?: boolean;
+  /** Called after a merge actually moves canonical data — see RemediationQueueProps.onDataChanged. */
+  onDataChanged?: () => void;
 }
 
 const VERDICT_LABEL: Record<ContactVerdict, string> = {
@@ -301,7 +303,7 @@ function ContactAdvisoryPanel({
   );
 }
 
-export function ContactDuplicateMergePanel({ supabase, canMergeContacts }: ContactDuplicateMergePanelProps): JSX.Element | null {
+export function ContactDuplicateMergePanel({ supabase, canMergeContacts, onDataChanged }: ContactDuplicateMergePanelProps): JSX.Element | null {
   const [advisory,   setAdvisory]   = useState<ContactAdvisorySummary | null>(null);
   const [adjSaving,  setAdjSaving]  = useState<Record<string, boolean>>({});
   const [adjErrors,  setAdjErrors]  = useState<Record<string, boolean>>({});
@@ -462,6 +464,7 @@ export function ContactDuplicateMergePanel({ supabase, canMergeContacts }: Conta
         const result = await executeContactMerge(sb, { advisoryId: item.id });
         const movedTotal = Object.values(result.moved).reduce((sum, n) => sum + n, 0);
         setMerged((m) => ({ ...m, [item.id]: { survivor_contact_id: result.survivor_contact_id, movedTotal } }));
+        onDataChanged?.();
       } catch (err) {
         // eslint-disable-next-line no-console
         console.warn("[ContactDuplicateMergePanel] merge execute failed:", err instanceof Error ? err.message : err);
@@ -472,7 +475,7 @@ export function ContactDuplicateMergePanel({ supabase, canMergeContacts }: Conta
         });
       }
     },
-    [supabase],
+    [supabase, onDataChanged],
   );
 
   if (!supabase || advisory === null) return null;

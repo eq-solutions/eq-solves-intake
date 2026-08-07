@@ -28,6 +28,8 @@ export interface DuplicateMergePanelProps {
   supabase?: SupabaseLikeClient | null;
   /** See IntakeModuleProps.canMergeSites — host-computed, manager-only by default. */
   canMergeSites?: boolean;
+  /** Called after a merge actually moves canonical data — see RemediationQueueProps.onDataChanged. */
+  onDataChanged?: () => void;
 }
 
 const VERDICT_LABEL: Record<SiteVerdict, string> = {
@@ -306,7 +308,7 @@ function SiteAdvisoryPanel({
   );
 }
 
-export function DuplicateMergePanel({ supabase, canMergeSites }: DuplicateMergePanelProps): JSX.Element | null {
+export function DuplicateMergePanel({ supabase, canMergeSites, onDataChanged }: DuplicateMergePanelProps): JSX.Element | null {
   const [advisory,   setAdvisory]   = useState<SiteAdvisorySummary | null>(null);
   const [adjSaving,  setAdjSaving]  = useState<Record<string, boolean>>({});
   const [adjErrors,  setAdjErrors]  = useState<Record<string, boolean>>({});
@@ -481,6 +483,7 @@ export function DuplicateMergePanel({ supabase, canMergeSites }: DuplicateMergeP
         const result = await executeSiteMerge(sb, { advisoryId: item.id });
         const movedTotal = Object.values(result.moved).reduce((sum, n) => sum + n, 0);
         setMerged((m) => ({ ...m, [item.id]: { survivor_site_id: result.survivor_site_id, movedTotal } }));
+        onDataChanged?.();
       } catch (err) {
         // eslint-disable-next-line no-console
         console.warn("[DuplicateMergePanel] merge execute failed:", err instanceof Error ? err.message : err);
@@ -491,7 +494,7 @@ export function DuplicateMergePanel({ supabase, canMergeSites }: DuplicateMergeP
         });
       }
     },
-    [supabase],
+    [supabase, onDataChanged],
   );
 
   if (!supabase || advisory === null) return null;

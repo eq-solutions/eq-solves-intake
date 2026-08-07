@@ -63,6 +63,13 @@ export interface RemediationQueueProps {
    * trade dropdown below. Omit or pass an empty array to use defaults only.
    */
   tenantTrades?: string[];
+  /**
+   * Called after any action here actually changes canonical data — approve,
+   * archive, or a merge confirm in one of the two panels below. Lets the
+   * host (IntakeModule) invalidate Overview's cached scores and the To Do
+   * badge count instead of leaving them stale until a manual refresh.
+   */
+  onDataChanged?: () => void;
 }
 
 interface QueueItem {
@@ -108,7 +115,7 @@ const CATEGORY_HINT: Record<string, string> = {
   email:             "Check the suggested mailbox actually exists before approving.",
   link:              "Pick the right customer — this drives invoicing and reporting.",
   format:            "Confirm the corrected value, or dismiss if the original is right.",
-  duplicate:         "A separate signal from the merge tool above — not site pairs, and never auto-merged. Archive the flagged record directly, or read the reason first if it says to fix something elsewhere before archiving.",
+  duplicate:         "These weren't caught by the merge tool above. Read the reason, then archive the duplicate — or leave it if the reason says to fix something else first.",
   emergency_contact: "These come from the workers themselves — an EQ Cards prompt is the plan. Dismiss any that no longer apply.",
 };
 
@@ -118,7 +125,7 @@ function entityToEventLabel(entity: string): string {
   return entity === "contacts" ? "contact" : entity === "staff" ? "staff" : entity.replace(/s$/, "");
 }
 
-export function RemediationQueue({ supabase, canMergeSites, tenantTrades }: RemediationQueueProps): JSX.Element {
+export function RemediationQueue({ supabase, canMergeSites, tenantTrades, onDataChanged }: RemediationQueueProps): JSX.Element {
   const [items, setItems] = useState<QueueItem[] | null>(null);
   const [customers, setCustomers] = useState<CustomerOption[] | null>(null);
   const [contactRecords, setContactRecords] = useState<Record<string, Record<string, unknown>> | null>(null);
@@ -199,6 +206,7 @@ export function RemediationQueue({ supabase, canMergeSites, tenantTrades }: Reme
   const removeItem = (queueId: string) => {
     setItems((prev) => (prev ?? []).filter((i) => i.queue_id !== queueId));
     setDoneCount((n) => n + 1);
+    onDataChanged?.();
   };
 
   const approve = async (item: QueueItem) => {
@@ -348,8 +356,8 @@ export function RemediationQueue({ supabase, canMergeSites, tenantTrades }: Reme
 
       {error && <div role="alert" className="eq-intake-alert">{error}</div>}
 
-      <DuplicateMergePanel supabase={supabase} canMergeSites={canMergeSites} />
-      <ContactDuplicateMergePanel supabase={supabase} canMergeContacts={canMergeSites} />
+      <DuplicateMergePanel supabase={supabase} canMergeSites={canMergeSites} onDataChanged={onDataChanged} />
+      <ContactDuplicateMergePanel supabase={supabase} canMergeContacts={canMergeSites} onDataChanged={onDataChanged} />
 
       {(items ?? []).length === 0 && !error && (
         <div className="eq-queue__empty">Queue is clear. Nothing needs your eyes.</div>

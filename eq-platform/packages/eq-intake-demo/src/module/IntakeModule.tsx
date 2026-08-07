@@ -20,7 +20,7 @@
  * override via the onDestinationChange prop.
  */
 
-import { useMemo, useState, useEffect, type JSX } from "react";
+import { useMemo, useState, useEffect, useCallback, type JSX } from "react";
 import { type ParsedSheet, readSiteAdvisory, type AskFilter } from "@eq/intake";
 import { useIntakeBundle, roleLabel, ROLE_REGISTRY, type IntakeBundle, type FileSlot } from "../shared/intake-bundle.js";
 import { IntakeDropZone } from "../shared/IntakeDropZone.js";
@@ -155,6 +155,12 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
   // reference, see the render guard below) currently has ReconcileModule
   // open inline, or null when closed.
   const [reconcileSlot, setReconcileSlot] = useState<FileSlot | null>(null);
+  // Bumped by any data-changing action taken in To Do (approve/archive a
+  // queue item, merge a flagged duplicate) so Overview's health scores and
+  // the To Do badge count don't go stale until someone happens to hit
+  // Overview's own manual Refresh button.
+  const [dataVersion, setDataVersion] = useState(0);
+  const bumpDataVersion = useCallback(() => setDataVersion((v) => v + 1), []);
 
   // Reset drill-down / settings when switching away from health tab
   useEffect(() => {
@@ -194,7 +200,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
       .catch(() => { /* non-critical — badge just stays hidden */ });
 
     return () => { cancelled = true; };
-  }, [props.supabase]);
+  }, [props.supabase, dataVersion]);
 
   const exportDest = useMemo(
     () => QUICK_DESTINATIONS.find((d) => `${QUICK_PREFIX}${d.id}` === destId),
@@ -209,8 +215,9 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
   return (
     <section className="eq-intake-module">
       {/* Mode toggle — Overview (default, was Health) / To Do (was Queue) /
-          Bring Data In (was Import) / Reconcile (folding into Bring Data In
-          in a follow-up pass) / Ask */}
+          Bring Data In (was Import) / Ask. Reconcile already lives inline
+          under Bring Data In (per-file-slot "Check for conflicts", below) —
+          it was never a fifth top-level tab here. */}
       <div className="eq-intake-tabs" role="tablist">
         <button
           type="button"
@@ -299,10 +306,17 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
             tenantId={props.tenantId}
             onEntityClick={(e) => { setDrillEntity(e); setDrillFilters(null); }}
             fieldImportanceOverrides={fieldImportance.overrides}
+            onBringDataIn={() => setMode("import")}
+            refreshSignal={dataVersion}
           />
         )
       ) : mode === "queue" ? (
-        <RemediationQueue supabase={props.supabase} canMergeSites={props.canMergeSites} tenantTrades={tenantTrades.trades} />
+        <RemediationQueue
+          supabase={props.supabase}
+          canMergeSites={props.canMergeSites}
+          tenantTrades={tenantTrades.trades}
+          onDataChanged={bumpDataVersion}
+        />
       ) : mode === "ask" ? (
         <AskCanonical
           supabase={props.supabase}
