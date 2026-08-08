@@ -142,7 +142,11 @@ export type {
   EntityConfidenceSummary,
 } from "./confidence-score.js";
 
-export { detectAllDuplicates, identityLabelFor } from "./duplicate-detect.js";
+// dice/identityKeyFor/HIGH_SIM are the primitives, not just the entity-level
+// detectAllDuplicates() — exported so other consumers of this package (e.g.
+// eq-shell's own Contacts dedup) can reuse the same fuzzy-match algorithm
+// instead of maintaining a second copy of it.
+export { detectAllDuplicates, identityLabelFor, identityKeyFor, dice, HIGH_SIM } from "./duplicate-detect.js";
 export type { DuplicateCluster, DuplicateReport } from "./duplicate-detect.js";
 
 export { decayCheck } from "./decay-detect.js";
