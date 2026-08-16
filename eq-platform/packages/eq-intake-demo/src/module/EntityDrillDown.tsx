@@ -58,6 +58,15 @@ export interface EntityDrillDownProps {
    */
   canMergeSites?: boolean;
   /**
+   * Whether the caller may edit a record's fields inline, or archive/dismiss
+   * a flagged duplicate — eq-shell's intake.edit_canonical (manager/
+   * supervisor). Without this, cells stay read-only (no click-to-edit) and
+   * the duplicate-row Archive / Not-a-duplicate actions don't render. CSV
+   * download and viewing are unaffected — those stay behind the module's own
+   * intake.view gate.
+   */
+  canEditCanonical?: boolean;
+  /**
    * Tenant's saved field-importance corrections (from the settings screen).
    * Additive — omit it and gaps/tiers fall back to the code defaults exactly
    * as before. Passed down from IntakeModule, which owns the one fetch.
@@ -244,6 +253,7 @@ export function EntityDrillDown({
   onBack,
   onBulkFix,
   canMergeSites,
+  canEditCanonical,
   fieldImportanceOverrides,
 }: EntityDrillDownProps): JSX.Element {
   const [rows, setRows] = useState<Row[]>([]);
@@ -609,7 +619,7 @@ export function EntityDrillDown({
 
   const handleArchiveDuplicate = useCallback(
     async (rowId: string) => {
-      if (!supabase || archiveBusy[rowId] || !rowId) return;
+      if (!supabase || archiveBusy[rowId] || !rowId || !canEditCanonical) return;
       setArchiveBusy((prev) => ({ ...prev, [rowId]: true }));
       setArchiveError((prev) => {
         const next = { ...prev };
@@ -630,7 +640,7 @@ export function EntityDrillDown({
         setArchiveBusy((prev) => ({ ...prev, [rowId]: false }));
       }
     },
-    [supabase, archiveBusy, entity],
+    [supabase, archiveBusy, entity, canEditCanonical],
   );
 
   // First row_id encountered per dupe group, in duplicateRows order — the
@@ -649,7 +659,7 @@ export function EntityDrillDown({
   const handleDismissDuplicate = useCallback(
     async (dupeField: string, dupeKey: string) => {
       const groupKey = `${dupeField}:${dupeKey}`;
-      if (!supabase || dismissBusy[groupKey]) return;
+      if (!supabase || dismissBusy[groupKey] || !canEditCanonical) return;
       setDismissBusy((prev) => ({ ...prev, [groupKey]: true }));
       setDismissError((prev) => {
         const next = { ...prev };
@@ -675,7 +685,7 @@ export function EntityDrillDown({
         setDismissBusy((prev) => ({ ...prev, [groupKey]: false }));
       }
     },
-    [supabase, dismissBusy, entity],
+    [supabase, dismissBusy, entity, canEditCanonical],
   );
 
   // Full row lookup by PK — lets the Tidy tab's gap table show real context
@@ -708,16 +718,17 @@ export function EntityDrillDown({
   // ── Edit handlers (by row ID) ──────────────────────────────────────────
   const startEdit = useCallback(
     (rowId: string, field: string) => {
+      if (!canEditCanonical) return;
       const targetRow = rows.find((r) => rowKey(entity, r) === rowId);
       const current = targetRow?.[field];
       setEditState({ rowId, field });
       setEditDraft(current === null || current === undefined ? "" : String(current));
     },
-    [rows, entity],
+    [rows, entity, canEditCanonical],
   );
 
   const commitEdit = useCallback(async () => {
-    if (!editState) return;
+    if (!editState || !canEditCanonical) return;
     const { rowId, field } = editState;
     const targetRow = rows.find((r) => rowKey(entity, r) === rowId);
     const newValue = editDraft;
@@ -768,7 +779,7 @@ export function EntityDrillDown({
     } finally {
       setEditSaving(false);
     }
-  }, [editState, editDraft, entity, rows, supabase, tidyReport, resolvedTenantId]);
+  }, [editState, editDraft, entity, rows, supabase, tidyReport, resolvedTenantId, canEditCanonical]);
 
   const cancelEdit = useCallback(() => {
     setEditState(null);
@@ -969,14 +980,14 @@ export function EntityDrillDown({
             <span
               className={cellClass}
               onClick={
-                isGapField && !isEditing
+                isGapField && !isEditing && canEditCanonical
                   ? (e) => {
                       e.stopPropagation();
                       startEdit(rowId, col);
                     }
                   : undefined
               }
-              title={isGapField && !isEditing ? "Click to edit" : undefined}
+              title={isGapField && !isEditing && canEditCanonical ? "Click to edit" : undefined}
             >
               {isBlank(row[col]) ? (
                 <span className="eq-drill__cell-empty">—</span>
@@ -1092,7 +1103,7 @@ export function EntityDrillDown({
       });
     }
 
-    if (filterMode === "duplicates" && entity !== "sites") {
+    if (filterMode === "duplicates" && entity !== "sites" && canEditCanonical) {
       cols.push({
         key: "_dismiss",
         header: "Not a duplicate",
@@ -1125,7 +1136,7 @@ export function EntityDrillDown({
       });
     }
 
-    if (filterMode === "duplicates" && entity !== "sites" && isArchivableDuplicate(entity)) {
+    if (filterMode === "duplicates" && entity !== "sites" && isArchivableDuplicate(entity) && canEditCanonical) {
       cols.push({
         key: "_archive",
         header: "Archive",
@@ -1194,6 +1205,7 @@ export function EntityDrillDown({
     flagBusy,
     flagError,
     canMergeSites,
+    canEditCanonical,
     handleFlagPair,
     archiveBusy,
     archiveError,
