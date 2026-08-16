@@ -137,6 +137,13 @@ export function RemediationQueue({ supabase, canMergeSites, tenantTrades, onData
   const [aiBusy,    setAiBusy]    = useState<Record<string, boolean>>({});
   const [aiErr,     setAiErr]     = useState<Record<string, boolean>>({});
 
+  // Batch approve — Trade unknown only (see runBatchApprove below).
+  const [selectedIds,    setSelectedIds]    = useState<Record<string, boolean>>({});
+  const [batchTrade,     setBatchTrade]     = useState("");
+  const [batchBusy,      setBatchBusy]      = useState(false);
+  const [batchProgress,  setBatchProgress]  = useState<{ done: number; total: number } | null>(null);
+  const [batchError,     setBatchError]     = useState<string | null>(null);
+
   const tradeOptions = useMemo(() => {
     const seen = new Set<string>();
     const list: string[] = [];
@@ -209,6 +216,32 @@ export function RemediationQueue({ supabase, canMergeSites, tenantTrades, onData
     onDataChanged?.();
   };
 
+  // Shared by the single-row Approve button and batch approve below — opens
+  // an intake event, commits the one field, closes the event, resolves the
+  // queue row. Throws on any failure; callers decide how to surface it.
+  const commitFix = async (item: QueueItem, value: string): Promise<void> => {
+    if (!rpc) throw new Error("Not connected");
+    const opened = await rpc("eq_queue_open_event", { p_entity: entityToEventLabel(item.entity) });
+    if (opened.error) throw new Error(opened.error.message);
+    const intakeId = String(opened.data);
+
+    const committed = await rpc("eq_tidy_commit_fixes", {
+      p_intake_id: intakeId,
+      p_fixes: [{ table: item.entity, row_id: item.record_id, field: item.field, new_value: value }],
+    });
+    if (committed.error) throw new Error(committed.error.message);
+    const result = committed.data as { applied?: number; skipped?: number } | null;
+    if (!result || (result.applied ?? 0) < 1) {
+      throw new Error(`Fix was not applied (skipped: ${result?.skipped ?? "?"}) — field may not be whitelisted or the record has changed.`);
+    }
+
+    await rpc("eq_queue_close_event", { p_intake_id: intakeId, p_committed: 1 });
+    const resolved = await rpc("eq_queue_resolve", {
+      p_queue_id: item.queue_id, p_status: "committed", p_note: `set to "${value}" (intake ${intakeId.slice(0, 8)})`,
+    });
+    if (resolved.error) throw new Error(resolved.error.message);
+  };
+
   const approve = async (item: QueueItem) => {
     if (!rpc || busyId) return;
     const value = values[item.queue_id]?.trim();
@@ -216,31 +249,45 @@ export function RemediationQueue({ supabase, canMergeSites, tenantTrades, onData
     setBusyId(item.queue_id);
     setError(null);
     try {
-      const opened = await rpc("eq_queue_open_event", { p_entity: entityToEventLabel(item.entity) });
-      if (opened.error) throw new Error(opened.error.message);
-      const intakeId = String(opened.data);
-
-      const committed = await rpc("eq_tidy_commit_fixes", {
-        p_intake_id: intakeId,
-        p_fixes: [{ table: item.entity, row_id: item.record_id, field: item.field, new_value: value }],
-      });
-      if (committed.error) throw new Error(committed.error.message);
-      const result = committed.data as { applied?: number; skipped?: number } | null;
-      if (!result || (result.applied ?? 0) < 1) {
-        throw new Error(`Fix was not applied (skipped: ${result?.skipped ?? "?"}) — field may not be whitelisted or the record has changed.`);
-      }
-
-      await rpc("eq_queue_close_event", { p_intake_id: intakeId, p_committed: 1 });
-      const resolved = await rpc("eq_queue_resolve", {
-        p_queue_id: item.queue_id, p_status: "committed", p_note: `set to "${value}" (intake ${intakeId.slice(0, 8)})`,
-      });
-      if (resolved.error) throw new Error(resolved.error.message);
+      await commitFix(item, value);
       removeItem(item.queue_id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusyId(null);
     }
+  };
+
+  // Batch approve — trade unknown only. Checked rows all get the one
+  // bulk-picked trade, applied sequentially through the same commitFix path
+  // as a single approve (same lineage: one intake event per row). Rows that
+  // fail stay in the queue and selected, so a retry only touches the leftovers.
+  const runBatchApprove = async (rows: QueueItem[]) => {
+    if (!rpc || busyId || batchBusy || !batchTrade) return;
+    const targets = rows.filter((r) => selectedIds[r.queue_id]);
+    if (targets.length === 0) return;
+    setBatchBusy(true);
+    setBatchError(null);
+    setBatchProgress({ done: 0, total: targets.length });
+    const failedLabels: string[] = [];
+    for (const item of targets) {
+      try {
+        await commitFix(item, batchTrade);
+        removeItem(item.queue_id);
+        setSelectedIds((s) => {
+          if (!s[item.queue_id]) return s;
+          const next = { ...s };
+          delete next[item.queue_id];
+          return next;
+        });
+      } catch {
+        failedLabels.push(item.record_label);
+      }
+      setBatchProgress((p) => (p ? { done: p.done + 1, total: p.total } : p));
+    }
+    setBatchBusy(false);
+    setBatchProgress(null);
+    setBatchError(failedLabels.length > 0 ? `Couldn't approve: ${failedLabels.join(", ")}` : null);
   };
 
   const dismiss = async (item: QueueItem) => {
@@ -371,11 +418,75 @@ export function RemediationQueue({ supabase, canMergeSites, tenantTrades, onData
           </div>
           <p className="eq-queue__section-hint">{CATEGORY_HINT[cat]}</p>
 
+          {cat === "trade" && rows.length > 0 && (
+            <div className="eq-queue__batch-bar">
+              <label className="eq-queue__batch-selectall">
+                <input
+                  type="checkbox"
+                  checked={rows.every((r) => selectedIds[r.queue_id])}
+                  onChange={(e) => {
+                    setSelectedIds((s) => {
+                      const next = { ...s };
+                      for (const r of rows) {
+                        if (e.target.checked) next[r.queue_id] = true;
+                        else delete next[r.queue_id];
+                      }
+                      return next;
+                    });
+                  }}
+                  disabled={batchBusy}
+                />
+                Select all
+              </label>
+              <select
+                className="eq-queue__input"
+                value={batchTrade}
+                onChange={(e) => setBatchTrade(e.target.value)}
+                disabled={batchBusy}
+                aria-label="Trade to apply to selected"
+              >
+                <option value="">Bulk-set trade…</option>
+                {tradeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <button
+                type="button"
+                className="eq-intake-btn-primary eq-queue__btn"
+                disabled={batchBusy || !batchTrade || rows.filter((r) => selectedIds[r.queue_id]).length === 0}
+                onClick={() => runBatchApprove(rows)}
+              >
+                {batchBusy
+                  ? `Approving ${batchProgress?.done ?? 0}/${batchProgress?.total ?? 0}…`
+                  : `Approve ${rows.filter((r) => selectedIds[r.queue_id]).length} selected`}
+              </button>
+              {batchError && <span className="eq-advisory-item__err">{batchError}</span>}
+            </div>
+          )}
+
           {rows.map((item) => {
-            const busy = busyId === item.queue_id;
+            // A trade row also counts as busy while the batch run is going,
+            // so its own Approve/Dismiss can't race the batch loop touching
+            // the same row.
+            const busy = busyId === item.queue_id || (item.category === "trade" && batchBusy);
             const committable = COMMITTABLE.has(item.category);
             return (
               <div key={item.queue_id} className="eq-queue__item">
+                {item.category === "trade" && (
+                  <input
+                    type="checkbox"
+                    className="eq-queue__item-check"
+                    checked={!!selectedIds[item.queue_id]}
+                    onChange={() => {
+                      setSelectedIds((s) => {
+                        const next = { ...s };
+                        if (next[item.queue_id]) delete next[item.queue_id];
+                        else next[item.queue_id] = true;
+                        return next;
+                      });
+                    }}
+                    disabled={busy || batchBusy}
+                    aria-label={`Select ${item.record_label} for batch approval`}
+                  />
+                )}
                 <div className="eq-queue__item-main">
                   <span className="eq-queue__item-label">{item.record_label}</span>
                   <span className="eq-queue__item-field">{item.field}</span>

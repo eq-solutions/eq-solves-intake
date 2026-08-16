@@ -3589,16 +3589,28 @@ button.eq-primary:hover {
 .eq-health-empty__body { font-size: 13px; color: var(--eq-muted); max-width: 420px; margin: 0 auto 20px; line-height: 1.5; }
 
 /* ---- Duplicates caught at the write (SiteAdvisoryPanel + MergePanel) ---- */
-.eq-advisory-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.eq-advisory-item { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.eq-advisory-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.eq-advisory-item {
+  display: flex; flex-direction: column; gap: 6px; font-size: 13px;
+  padding: 10px 12px; border: 1px solid var(--eq-line); border-radius: 8px;
+  background: var(--eq-bg, transparent);
+}
+.eq-advisory-item__row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.eq-advisory-item__controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .eq-advisory-item__name { font-weight: 500; }
 .eq-advisory-item__arrow { opacity: 0.5; }
 .eq-advisory-item__matched { color: var(--eq-muted); }
-.eq-advisory-item__verdict-note { font-size: 12px; font-weight: 500; color: var(--eq-muted); }
+.eq-advisory-item__verdict-note { font-size: 12px; font-weight: 500; color: var(--eq-muted); display: inline-flex; align-items: center; gap: 6px; }
 .eq-advisory-item__err { font-size: 12px; color: var(--eq-err); }
 .eq-advisory-item__note-row { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; width: 100%; margin-top: 2px; }
 
-.eq-advisory-item__verdict-btns { display: inline-flex; gap: 4px; }
+.eq-advisory-item__change-btn {
+  font-size: 11px; padding: 0; border: none; background: none;
+  color: var(--eq-sky); font-weight: 600; cursor: pointer; text-decoration: underline;
+}
+.eq-advisory-item__change-btn:hover { color: var(--eq-deep); }
+
+.eq-advisory-item__verdict-btns { display: inline-flex; gap: 4px; flex-wrap: wrap; }
 .eq-advisory-item__verdict-btn {
   font-size: 12px; padding: 1px 8px; border-radius: 6px;
   border: 1px solid var(--eq-line); background: var(--eq-paper);
@@ -3607,7 +3619,12 @@ button.eq-primary:hover {
 .eq-advisory-item__verdict-btn--suggested {
   border-color: var(--eq-sky); background: var(--eq-ice); font-weight: 700;
 }
+.eq-advisory-item__verdict-btn--current {
+  border-color: var(--eq-deep); background: var(--eq-deep); color: #fff; font-weight: 600;
+}
 .eq-advisory-item__verdict-btn:disabled { opacity: 0.5; cursor: default; }
+
+.eq-advisory-resolved { margin-top: 8px; }
 
 .eq-advisory-item__ai-reason { font-size: 12px; color: var(--eq-muted); }
 .eq-advisory-item__ai-label { color: var(--eq-deep); font-weight: 600; }
@@ -3657,6 +3674,7 @@ button.eq-primary:hover {
 .eq-queue__section-count { font-size: 12px; font-weight: 600; color: var(--eq-muted); }
 .eq-queue__section-hint { font-size: 12px; color: var(--eq-muted); margin: 2px 0 10px; }
 .eq-queue__item { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; padding: 10px 12px; border: 1px solid var(--eq-line); border-radius: 8px; margin-bottom: 8px; background: var(--eq-bg, transparent); }
+.eq-queue__item-check { margin-top: 3px; flex-shrink: 0; cursor: pointer; }
 .eq-queue__item-main { min-width: 0; flex: 1; }
 .eq-queue__item-label { font-size: 14px; font-weight: 600; margin-right: 8px; }
 .eq-queue__item-field { font-size: 12px; color: var(--eq-deep); background: var(--eq-ice); border-radius: 4px; padding: 1px 6px; margin-right: 8px; }
@@ -3667,6 +3685,12 @@ button.eq-primary:hover {
 .eq-queue__item-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; max-width: 320px; }
 .eq-queue__input { font-size: 13px; padding: 6px 8px; border: 1px solid var(--eq-line); border-radius: 6px; min-width: 180px; }
 .eq-queue__btn { white-space: nowrap; }
+.eq-queue__batch-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 12px; margin-bottom: 10px; border: 1px dashed var(--eq-line);
+  border-radius: 8px; background: var(--eq-ice);
+}
+.eq-queue__batch-selectall { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--eq-deep); font-weight: 500; cursor: pointer; }
 @media (max-width: 640px) {
   .eq-queue__item { flex-direction: column; }
   .eq-queue__item-actions { justify-content: flex-start; max-width: none; }
