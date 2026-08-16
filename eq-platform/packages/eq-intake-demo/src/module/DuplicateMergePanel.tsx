@@ -48,7 +48,7 @@ function MergePanel({
   previewBusy: boolean;
   mergeBusy: boolean;
   mergeErr?: string;
-  merged?: { survivor_site_id: string; movedTotal: number };
+  merged?: { survivor_site_id: string; movedTotal: number; alreadyMerged?: boolean };
   onPreview: () => void;
   onCancelPreview: () => void;
   onConfirm: () => void;
@@ -60,7 +60,9 @@ function MergePanel({
   if (merged) {
     return (
       <span className="eq-merge-panel__done">
-        ✓ Merged — {merged.movedTotal} row{merged.movedTotal === 1 ? "" : "s"} moved
+        {merged.alreadyMerged
+          ? "✓ Already merged elsewhere — nothing left to move"
+          : `✓ Merged — ${merged.movedTotal} row${merged.movedTotal === 1 ? "" : "s"} moved`}
       </span>
     );
   }
@@ -135,7 +137,7 @@ function SiteAdvisoryPanel({
   mergePreviewBusy: Record<string, boolean>;
   mergeBusy: Record<string, boolean>;
   mergeErrors: Record<string, string>;
-  merged: Record<string, { survivor_site_id: string; movedTotal: number }>;
+  merged: Record<string, { survivor_site_id: string; movedTotal: number; alreadyMerged?: boolean }>;
   onPreviewMerge: (item: SiteAdvisoryItem) => void;
   onCancelPreviewMerge: (advisoryId: string) => void;
   onConfirmMerge: (item: SiteAdvisoryItem) => void;
@@ -149,6 +151,14 @@ function SiteAdvisoryPanel({
   // offered one. Only one row's note field is open at a time.
   const [notingId, setNotingId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
+  // A decided row that's re-opened via "Change answer" — re-shows the verdict
+  // buttons for that one row instead of the locked-in "you said" text. The
+  // adjudicate RPC records the latest verdict, so re-firing it just overwrites.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  // Resolved rows (a final verdict with nothing left to do) collapse out of
+  // the main queue by default so the list actually shrinks as you work
+  // through it — expand to review or change one.
+  const [resolvedOpen, setResolvedOpen] = useState(false);
 
   if (summary.total === 0) {
     return (
@@ -158,9 +168,162 @@ function SiteAdvisoryPanel({
     );
   }
 
+  // A "same" verdict still needs a merge — keep it in the working queue.
+  // "different"/"unsure" (or a "same" that's already merged) have nothing
+  // left to do, so they're resolved and free to leave the main list.
+  const isResolved = (it: SiteAdvisoryItem) =>
+    it.verdict != null && (it.verdict !== "same" || !!merged[it.id]);
+
+  const actionableItems = summary.items.filter((it) => !isResolved(it));
+  const resolvedItems = summary.items.filter(isResolved);
+
   const VISIBLE_CAP = 8;
-  const visibleItems = expanded ? summary.items : summary.items.slice(0, VISIBLE_CAP);
-  const hiddenCount = summary.items.length - VISIBLE_CAP;
+  const visibleActionable = expanded ? actionableItems : actionableItems.slice(0, VISIBLE_CAP);
+  const hiddenCount = actionableItems.length - VISIBLE_CAP;
+
+  const renderRow = (it: SiteAdvisoryItem) => {
+    const canChangeAnswer = it.verdict != null && !merged[it.id];
+    const showButtons = it.verdict == null || editingId === it.id;
+    return (
+      <li key={it.id} className="eq-advisory-item">
+        <div className="eq-advisory-item__row">
+          <span className="eq-advisory-item__name">{it.candidate_name ?? it.candidate_code ?? "New site"}</span>
+          <span aria-hidden="true" className="eq-advisory-item__arrow">→</span>
+          <span className="eq-advisory-item__matched">
+            {it.matched_name ?? "existing site"}{it.matched_active === false ? " (retired)" : ""}
+          </span>
+          <span className={`eq-health-badge eq-health-badge--${it.outcome === "match" ? "warning" : "info"}`}>
+            {it.outcome === "match" ? "likely same" : "unsure"}
+          </span>
+          {it.verdict && editingId !== it.id && (
+            <span className="eq-advisory-item__verdict-note">
+              · you said: {VERDICT_LABEL[it.verdict]}
+              {it.verdict_note ? <> — &ldquo;{it.verdict_note}&rdquo;</> : null}
+              {canChangeAnswer && (
+                <button
+                  type="button"
+                  className="eq-advisory-item__change-btn"
+                  onClick={() => setEditingId(it.id)}
+                >
+                  Change answer
+                </button>
+              )}
+            </span>
+          )}
+        </div>
+        <div className="eq-advisory-item__controls">
+          {!showButtons && (
+            <MergePanel
+              item={it}
+              canMerge={!!canMergeSites}
+              preview={mergePreviews[it.id]}
+              previewBusy={!!mergePreviewBusy[it.id]}
+              mergeBusy={!!mergeBusy[it.id]}
+              mergeErr={mergeErrors[it.id]}
+              merged={merged[it.id]}
+              onPreview={() => onPreviewMerge(it)}
+              onCancelPreview={() => onCancelPreviewMerge(it.id)}
+              onConfirm={() => onConfirmMerge(it)}
+            />
+          )}
+          {showButtons && (
+            <>
+              <span className="eq-advisory-item__verdict-btns">
+                {(["same", "different", "unsure"] as SiteVerdict[]).map((v) => {
+                  const suggested = aiSuggest[it.id]?.verdict === v;
+                  const current = it.verdict === v;
+                  return (
+                    <button
+                      key={v}
+                      type="button"
+                      disabled={!!saving[it.id]}
+                      onClick={() => {
+                        // Unsure opens an inline note instead of firing
+                        // immediately — same/different need no follow-up.
+                        if (v === "unsure") { setNotingId(it.id); setNoteDraft(it.verdict_note ?? ""); }
+                        else { onAdjudicate(it.id, v); setEditingId(null); }
+                      }}
+                      title={
+                        current ? "This is your current answer"
+                        : suggested ? `Claude suggests: ${VERDICT_LABEL[v]}`
+                        : `Record: ${VERDICT_LABEL[v]}`
+                      }
+                      className={`eq-advisory-item__verdict-btn${suggested ? " eq-advisory-item__verdict-btn--suggested" : ""}${current ? " eq-advisory-item__verdict-btn--current" : ""}`}
+                    >
+                      {VERDICT_LABEL[v]}
+                    </button>
+                  );
+                })}
+                {editingId === it.id && (
+                  <button
+                    type="button"
+                    className="eq-intake-btn-ghost eq-queue__btn"
+                    onClick={() => setEditingId(null)}
+                  >
+                    Cancel
+                  </button>
+                )}
+              </span>
+              {notingId === it.id && (
+                <span className="eq-advisory-item__note-row">
+                  <input
+                    type="text"
+                    className="eq-queue__input"
+                    placeholder="What's unclear? (optional — helps whoever looks next)"
+                    value={noteDraft}
+                    onChange={(e) => setNoteDraft(e.target.value)}
+                    disabled={!!saving[it.id]}
+                    aria-label={`Note for ${it.candidate_name ?? "this row"}`}
+                  />
+                  <button
+                    type="button"
+                    className="eq-intake-btn-primary eq-queue__btn"
+                    disabled={!!saving[it.id]}
+                    onClick={() => {
+                      onAdjudicate(it.id, "unsure", noteDraft.trim() || undefined);
+                      setNotingId(null);
+                      setNoteDraft("");
+                      setEditingId(null);
+                    }}
+                  >
+                    {saving[it.id] ? "Saving…" : "Record: Unsure"}
+                  </button>
+                  <button
+                    type="button"
+                    className="eq-intake-btn-ghost eq-queue__btn"
+                    disabled={!!saving[it.id]}
+                    onClick={() => { setNotingId(null); setNoteDraft(""); }}
+                  >
+                    Cancel
+                  </button>
+                </span>
+              )}
+              {it.verdict == null && (
+                aiSuggest[it.id] ? (
+                  <span className="eq-advisory-item__ai-reason">
+                    <span className="eq-advisory-item__ai-label">✨ Claude:</span>{" "}
+                    {aiSuggest[it.id].reasoning}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onAskAi(it)}
+                    disabled={!!aiBusy[it.id]}
+                    title="Ask Claude for a suggested answer with a reason"
+                    className="eq-advisory-item__ai-btn"
+                  >
+                    {aiBusy[it.id] ? "Asking Claude…" : "✨ Ask Claude"}
+                  </button>
+                )
+              )}
+              {aiErr[it.id] && <span className="eq-advisory-item__err">AI unavailable</span>}
+            </>
+          )}
+          {errors[it.id] && <span className="eq-advisory-item__err">couldn&rsquo;t save — try again</span>}
+        </div>
+      </li>
+    );
+  };
 
   return (
     <div>
@@ -184,125 +347,40 @@ function SiteAdvisoryPanel({
           </span>
         )}
       </div>
-      <ul className="eq-advisory-list">
-        {visibleItems.map((it) => (
-          <li key={it.id} className="eq-advisory-item">
-            <span className="eq-advisory-item__name">{it.candidate_name ?? it.candidate_code ?? "New site"}</span>
-            <span aria-hidden="true" className="eq-advisory-item__arrow">→</span>
-            <span className="eq-advisory-item__matched">
-              {it.matched_name ?? "existing site"}{it.matched_active === false ? " (retired)" : ""}
-            </span>
-            <span className={`eq-health-badge eq-health-badge--${it.outcome === "match" ? "warning" : "info"}`}>
-              {it.outcome === "match" ? "likely same" : "unsure"}
-            </span>
-            {it.verdict ? (
-              <>
-                <span className="eq-advisory-item__verdict-note">
-                  · you said: {VERDICT_LABEL[it.verdict]}
-                  {it.verdict_note ? <> — &ldquo;{it.verdict_note}&rdquo;</> : null}
-                </span>
-                <MergePanel
-                  item={it}
-                  canMerge={!!canMergeSites}
-                  preview={mergePreviews[it.id]}
-                  previewBusy={!!mergePreviewBusy[it.id]}
-                  mergeBusy={!!mergeBusy[it.id]}
-                  mergeErr={mergeErrors[it.id]}
-                  merged={merged[it.id]}
-                  onPreview={() => onPreviewMerge(it)}
-                  onCancelPreview={() => onCancelPreviewMerge(it.id)}
-                  onConfirm={() => onConfirmMerge(it)}
-                />
-              </>
-            ) : (
-              <>
-                <span className="eq-advisory-item__verdict-btns">
-                  {(["same", "different", "unsure"] as SiteVerdict[]).map((v) => {
-                    const suggested = aiSuggest[it.id]?.verdict === v;
-                    return (
-                      <button
-                        key={v}
-                        type="button"
-                        disabled={!!saving[it.id]}
-                        onClick={() => {
-                          // Unsure opens an inline note instead of firing
-                          // immediately — same/different need no follow-up.
-                          if (v === "unsure") { setNotingId(it.id); setNoteDraft(""); }
-                          else onAdjudicate(it.id, v);
-                        }}
-                        title={suggested ? `Claude suggests: ${VERDICT_LABEL[v]}` : `Record: ${VERDICT_LABEL[v]}`}
-                        className={`eq-advisory-item__verdict-btn${suggested ? " eq-advisory-item__verdict-btn--suggested" : ""}`}
-                      >
-                        {VERDICT_LABEL[v]}
-                      </button>
-                    );
-                  })}
-                </span>
-                {notingId === it.id && (
-                  <span className="eq-advisory-item__note-row">
-                    <input
-                      type="text"
-                      className="eq-queue__input"
-                      placeholder="What's unclear? (optional — helps whoever looks next)"
-                      value={noteDraft}
-                      onChange={(e) => setNoteDraft(e.target.value)}
-                      disabled={!!saving[it.id]}
-                      aria-label={`Note for ${it.candidate_name ?? "this row"}`}
-                    />
-                    <button
-                      type="button"
-                      className="eq-intake-btn-primary eq-queue__btn"
-                      disabled={!!saving[it.id]}
-                      onClick={() => {
-                        onAdjudicate(it.id, "unsure", noteDraft.trim() || undefined);
-                        setNotingId(null);
-                        setNoteDraft("");
-                      }}
-                    >
-                      {saving[it.id] ? "Saving…" : "Record: Unsure"}
-                    </button>
-                    <button
-                      type="button"
-                      className="eq-intake-btn-ghost eq-queue__btn"
-                      disabled={!!saving[it.id]}
-                      onClick={() => { setNotingId(null); setNoteDraft(""); }}
-                    >
-                      Cancel
-                    </button>
-                  </span>
-                )}
-                {aiSuggest[it.id] ? (
-                  <span className="eq-advisory-item__ai-reason">
-                    <span className="eq-advisory-item__ai-label">✨ Claude:</span>{" "}
-                    {aiSuggest[it.id].reasoning}
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => onAskAi(it)}
-                    disabled={!!aiBusy[it.id]}
-                    title="Ask Claude for a suggested answer with a reason"
-                    className="eq-advisory-item__ai-btn"
-                  >
-                    {aiBusy[it.id] ? "Asking Claude…" : "✨ Ask Claude"}
-                  </button>
-                )}
-                {aiErr[it.id] && <span className="eq-advisory-item__err">AI unavailable</span>}
-              </>
-            )}
-            {errors[it.id] && <span className="eq-advisory-item__err">couldn&rsquo;t save — try again</span>}
-          </li>
-        ))}
-      </ul>
-      {hiddenCount > 0 && (
-        <button
-          type="button"
-          className="eq-intake-btn-ghost"
-          style={{ marginTop: 8 }}
-          onClick={() => setExpanded((e) => !e)}
-        >
-          {expanded ? "Show fewer" : `Show all ${summary.items.length}`}
-        </button>
+      {actionableItems.length > 0 ? (
+        <>
+          <ul className="eq-advisory-list">
+            {visibleActionable.map(renderRow)}
+          </ul>
+          {hiddenCount > 0 && (
+            <button
+              type="button"
+              className="eq-intake-btn-ghost"
+              style={{ marginTop: 8 }}
+              onClick={() => setExpanded((e) => !e)}
+            >
+              {expanded ? "Show fewer" : `Show all ${actionableItems.length}`}
+            </button>
+          )}
+        </>
+      ) : (
+        <p className="eq-queue__section-hint">Nothing needs your input right now.</p>
+      )}
+      {resolvedItems.length > 0 && (
+        <div className="eq-advisory-resolved">
+          <button
+            type="button"
+            className="eq-intake-btn-ghost"
+            onClick={() => setResolvedOpen((o) => !o)}
+          >
+            {resolvedOpen ? "Hide" : "Show"} {resolvedItems.length} resolved
+          </button>
+          {resolvedOpen && (
+            <ul className="eq-advisory-list" style={{ marginTop: 8 }}>
+              {resolvedItems.map(renderRow)}
+            </ul>
+          )}
+        </div>
       )}
     </div>
   );
@@ -319,7 +397,7 @@ export function DuplicateMergePanel({ supabase, canMergeSites, onDataChanged }: 
   const [mergePreviewBusy,  setMergePreviewBusy]  = useState<Record<string, boolean>>({});
   const [mergeBusy,         setMergeBusy]         = useState<Record<string, boolean>>({});
   const [mergeErrors,       setMergeErrors]       = useState<Record<string, string>>({});
-  const [merged,            setMerged]            = useState<Record<string, { survivor_site_id: string; movedTotal: number }>>({});
+  const [merged,            setMerged]            = useState<Record<string, { survivor_site_id: string; movedTotal: number; alreadyMerged?: boolean }>>({});
   const [loading,    setLoading]    = useState(false);
   // Independent of RemediationQueue's own eq_queue_list load and of
   // Overview's other health checks — this section refreshes on its own.
@@ -445,7 +523,15 @@ export function DuplicateMergePanel({ supabase, canMergeSites, onDataChanged }: 
       setMergePreviewBusy((b) => ({ ...b, [item.id]: true }));
       try {
         const preview = await previewSiteMerge(sb, item.id);
-        setMergePreviews((p) => ({ ...p, [item.id]: preview }));
+        if (preview.already_merged) {
+          // Someone else (or an earlier click) already executed this merge —
+          // the server still answers the preview, just with nothing left to
+          // move. Land straight on the "done" state instead of showing a
+          // Confirm button that would only 500 on a re-execute.
+          setMerged((m) => ({ ...m, [item.id]: { survivor_site_id: preview.survivor_site_id, movedTotal: 0, alreadyMerged: true } }));
+        } else {
+          setMergePreviews((p) => ({ ...p, [item.id]: preview }));
+        }
       } catch (err) {
         // eslint-disable-next-line no-console
         console.warn("[DuplicateMergePanel] merge preview failed:", err instanceof Error ? err.message : err);
