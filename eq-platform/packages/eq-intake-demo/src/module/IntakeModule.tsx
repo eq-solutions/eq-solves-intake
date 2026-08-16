@@ -85,6 +85,23 @@ export interface IntakeModuleProps {
    */
   canMergeSites?: boolean;
   /**
+   * Whether the caller may start an import at all — controls visibility of
+   * the "Bring Data In" tab and its Overview entry point. UI-layer only —
+   * the actual write is still gated server-side by intake.commit on
+   * /intake-stage and /intake-commit, so a caller who forced this open
+   * couldn't commit anything anyway.
+   */
+  canImport?: boolean;
+  /**
+   * Whether the caller may edit a record that came in through an import,
+   * archive or dismiss a duplicate, or work the review queue — eq-shell's
+   * intake.edit_canonical (manager/supervisor). Threaded into
+   * EntityDrillDown and RemediationQueue, and hides this module's own
+   * field-importance/trades settings entry points (⚙/🔧) below — those are
+   * edit surfaces, not read views.
+   */
+  canEditCanonical?: boolean;
+  /**
    * When supplied, the "Into EQ" commit routes flagged/conflicting rows
    * through the host's staging/review-queue gate instead of writing them
    * straight to the canonical table — see StageCommitFn. The EQ Shell host
@@ -238,15 +255,17 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
           To Do
           <TabBadge count={todoPending} />
         </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === "import"}
-          className={"eq-intake-tab" + (mode === "import" ? " eq-intake-tab--active" : "")}
-          onClick={() => { setDrillEntity(null); setMode("import"); }}
-        >
-          Bring Data In
-        </button>
+        {props.canImport && (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "import"}
+            className={"eq-intake-tab" + (mode === "import" ? " eq-intake-tab--active" : "")}
+            onClick={() => { setDrillEntity(null); setMode("import"); }}
+          >
+            Bring Data In
+          </button>
+        )}
         <button
           type="button"
           role="tab"
@@ -257,24 +276,28 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
           Ask
         </button>
 
-        <button
-          type="button"
-          className="eq-intake-tab__settings"
-          title="Field importance settings"
-          aria-label="Field importance settings"
-          onClick={() => { setMode("health"); setDrillEntity(null); setShowTradesSettings(false); setShowSettings(true); }}
-        >
-          ⚙
-        </button>
-        <button
-          type="button"
-          className="eq-intake-tab__settings"
-          title="Trades settings"
-          aria-label="Trades settings"
-          onClick={() => { setMode("health"); setDrillEntity(null); setShowSettings(false); setShowTradesSettings(true); }}
-        >
-          🔧
-        </button>
+        {props.canEditCanonical && (
+          <button
+            type="button"
+            className="eq-intake-tab__settings"
+            title="Field importance settings"
+            aria-label="Field importance settings"
+            onClick={() => { setMode("health"); setDrillEntity(null); setShowTradesSettings(false); setShowSettings(true); }}
+          >
+            ⚙
+          </button>
+        )}
+        {props.canEditCanonical && (
+          <button
+            type="button"
+            className="eq-intake-tab__settings"
+            title="Trades settings"
+            aria-label="Trades settings"
+            onClick={() => { setMode("health"); setDrillEntity(null); setShowSettings(false); setShowTradesSettings(true); }}
+          >
+            🔧
+          </button>
+        )}
       </div>
 
       {mode === "health" ? (
@@ -298,6 +321,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
             initialFilterLabel={drillFilters?.label}
             onBack={() => { setDrillEntity(null); setDrillFilters(null); }}
             canMergeSites={props.canMergeSites}
+            canEditCanonical={props.canEditCanonical}
             fieldImportanceOverrides={fieldImportance.overrides}
           />
         ) : (
@@ -306,7 +330,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
             tenantId={props.tenantId}
             onEntityClick={(e) => { setDrillEntity(e); setDrillFilters(null); }}
             fieldImportanceOverrides={fieldImportance.overrides}
-            onBringDataIn={() => setMode("import")}
+            onBringDataIn={props.canImport ? () => setMode("import") : undefined}
             refreshSignal={dataVersion}
           />
         )
@@ -314,6 +338,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
         <RemediationQueue
           supabase={props.supabase}
           canMergeSites={props.canMergeSites}
+          canEditCanonical={props.canEditCanonical}
           tenantTrades={tenantTrades.trades}
           onDataChanged={bumpDataVersion}
         />

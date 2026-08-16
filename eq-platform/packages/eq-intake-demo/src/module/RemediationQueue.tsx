@@ -58,6 +58,15 @@ export interface RemediationQueueProps {
   /** See IntakeModuleProps.canMergeSites — host-computed, manager-only by default. */
   canMergeSites?: boolean;
   /**
+   * Whether the caller may approve, dismiss, or archive a queue item — see
+   * IntakeModuleProps.canEditCanonical (intake.edit_canonical, manager/
+   * supervisor). Every write action in this component checks it directly
+   * (not just the buttons that trigger them), so a stale render can't call
+   * through. Omitting it hides every action button, same fail-closed
+   * default as canMergeSites.
+   */
+  canEditCanonical?: boolean;
+  /**
    * Tenant-added trades (from app_data.tenant_trades, via the Trades
    * settings screen) — merged on top of the EQ default vocabulary for the
    * trade dropdown below. Omit or pass an empty array to use defaults only.
@@ -125,7 +134,7 @@ function entityToEventLabel(entity: string): string {
   return entity === "contacts" ? "contact" : entity === "staff" ? "staff" : entity.replace(/s$/, "");
 }
 
-export function RemediationQueue({ supabase, canMergeSites, tenantTrades, onDataChanged }: RemediationQueueProps): JSX.Element {
+export function RemediationQueue({ supabase, canMergeSites, canEditCanonical, tenantTrades, onDataChanged }: RemediationQueueProps): JSX.Element {
   const [items, setItems] = useState<QueueItem[] | null>(null);
   const [customers, setCustomers] = useState<CustomerOption[] | null>(null);
   const [contactRecords, setContactRecords] = useState<Record<string, Record<string, unknown>> | null>(null);
@@ -251,7 +260,7 @@ export function RemediationQueue({ supabase, canMergeSites, tenantTrades, onData
   };
 
   const approve = async (item: QueueItem) => {
-    if (!rpc || busyId) return;
+    if (!rpc || busyId || !canEditCanonical) return;
     const value = values[item.queue_id]?.trim();
     if (!value) return;
     setBusyId(item.queue_id);
@@ -271,7 +280,7 @@ export function RemediationQueue({ supabase, canMergeSites, tenantTrades, onData
   // as a single approve (same lineage: one intake event per row). Rows that
   // fail stay in the queue and selected, so a retry only touches the leftovers.
   const runBatchApprove = async (rows: QueueItem[]) => {
-    if (!rpc || busyId || batchBusy || !batchTrade) return;
+    if (!rpc || busyId || batchBusy || !batchTrade || !canEditCanonical) return;
     const targets = rows.filter((r) => selectedIds[r.queue_id]);
     if (targets.length === 0) return;
     setBatchBusy(true);
@@ -293,7 +302,7 @@ export function RemediationQueue({ supabase, canMergeSites, tenantTrades, onData
   };
 
   const dismiss = async (item: QueueItem) => {
-    if (!rpc || busyId) return;
+    if (!rpc || busyId || !canEditCanonical) return;
     setBusyId(item.queue_id);
     setError(null);
     try {
@@ -314,7 +323,7 @@ export function RemediationQueue({ supabase, canMergeSites, tenantTrades, onData
   // action sets) instead of sending the user to the Staff/Contacts page and
   // back. Same open-event/commit/close-event/resolve lineage as approve().
   const archiveDuplicate = async (item: QueueItem) => {
-    if (!rpc || busyId) return;
+    if (!rpc || busyId || !canEditCanonical) return;
     setBusyId(item.queue_id);
     setError(null);
     try {
@@ -420,7 +429,7 @@ export function RemediationQueue({ supabase, canMergeSites, tenantTrades, onData
           </div>
           <p className="eq-queue__section-hint">{CATEGORY_HINT[cat]}</p>
 
-          {cat === "trade" && rows.length > 0 && (() => {
+          {cat === "trade" && rows.length > 0 && canEditCanonical && (() => {
             const selectedCount = rows.filter((r) => selectedIds[r.queue_id]).length;
             return (
               <div className="eq-queue__batch-bar">
@@ -475,7 +484,7 @@ export function RemediationQueue({ supabase, canMergeSites, tenantTrades, onData
             const committable = COMMITTABLE.has(item.category);
             return (
               <div key={item.queue_id} className="eq-queue__item">
-                {item.category === "trade" && (
+                {item.category === "trade" && canEditCanonical && (
                   <input
                     type="checkbox"
                     className="eq-queue__item-check"
@@ -539,7 +548,7 @@ export function RemediationQueue({ supabase, canMergeSites, tenantTrades, onData
                       aria-label={`New ${item.field} for ${item.record_label}`}
                     />
                   )}
-                  {committable && (
+                  {committable && canEditCanonical && (
                     <button
                       type="button"
                       className="eq-intake-btn-primary eq-queue__btn"
@@ -568,7 +577,7 @@ export function RemediationQueue({ supabase, canMergeSites, tenantTrades, onData
                     )
                   )}
                   {aiErr[item.queue_id] && <span className="eq-advisory-item__err">AI unavailable</span>}
-                  {item.category === "duplicate" && isArchivableDuplicate(item.entity) && (
+                  {item.category === "duplicate" && isArchivableDuplicate(item.entity) && canEditCanonical && (
                     <button
                       type="button"
                       className="eq-intake-btn-primary eq-queue__btn"
@@ -583,14 +592,16 @@ export function RemediationQueue({ supabase, canMergeSites, tenantTrades, onData
                       {busy ? "Archiving…" : "Archive"}
                     </button>
                   )}
-                  <button
-                    type="button"
-                    className="eq-intake-btn-ghost eq-queue__btn"
-                    onClick={() => dismiss(item)}
-                    disabled={busy}
-                  >
-                    Dismiss
-                  </button>
+                  {canEditCanonical && (
+                    <button
+                      type="button"
+                      className="eq-intake-btn-ghost eq-queue__btn"
+                      onClick={() => dismiss(item)}
+                      disabled={busy}
+                    >
+                      Dismiss
+                    </button>
+                  )}
                 </div>
               </div>
             );
