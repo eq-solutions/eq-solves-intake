@@ -156,6 +156,7 @@ function ContactAdvisoryPanel({
   // the main queue by default so the list actually shrinks as you work
   // through it — expand to review or change one.
   const [resolvedOpen, setResolvedOpen] = useState(false);
+  const [resolvedExpanded, setResolvedExpanded] = useState(false);
 
   if (summary.total === 0) {
     return (
@@ -253,7 +254,7 @@ function ContactAdvisoryPanel({
                   <button
                     type="button"
                     className="eq-intake-btn-ghost eq-queue__btn"
-                    onClick={() => setEditingId(null)}
+                    onClick={() => { setEditingId(null); setNotingId(null); setNoteDraft(""); }}
                   >
                     Cancel
                   </button>
@@ -371,9 +372,21 @@ function ContactAdvisoryPanel({
             {resolvedOpen ? "Hide" : "Show"} {resolvedItems.length} resolved
           </button>
           {resolvedOpen && (
-            <ul className="eq-advisory-list" style={{ marginTop: 8 }}>
-              {resolvedItems.map(renderRow)}
-            </ul>
+            <>
+              <ul className="eq-advisory-list" style={{ marginTop: 8 }}>
+                {(resolvedExpanded ? resolvedItems : resolvedItems.slice(0, VISIBLE_CAP)).map(renderRow)}
+              </ul>
+              {resolvedItems.length > VISIBLE_CAP && (
+                <button
+                  type="button"
+                  className="eq-intake-btn-ghost"
+                  style={{ marginTop: 8 }}
+                  onClick={() => setResolvedExpanded((e) => !e)}
+                >
+                  {resolvedExpanded ? "Show fewer" : `Show all ${resolvedItems.length}`}
+                </button>
+              )}
+            </>
           )}
         </div>
       )}
@@ -438,7 +451,11 @@ export function ContactDuplicateMergePanel({ supabase, canMergeContacts, onDataC
           const items = prev.items.map((it) => {
             if (it.id !== advisoryId) return it;
             wasPending = it.verdict == null;
-            return { ...it, verdict, verdict_note: note ?? it.verdict_note ?? null, decided_at: new Date().toISOString() };
+            // Don't carry the old note forward onto a changed verdict — an
+            // "unsure" note re-attached to a subsequent "same"/"different"
+            // reads as if it justified the new answer. Mirrors what the RPC
+            // itself does server-side (p_note ?? null clears it).
+            return { ...it, verdict, verdict_note: note ?? null, decided_at: new Date().toISOString() };
           });
           return {
             ...prev,
@@ -446,6 +463,17 @@ export function ContactDuplicateMergePanel({ supabase, canMergeContacts, onDataC
             decided: wasPending ? prev.decided + 1 : prev.decided,
             pending: wasPending ? Math.max(0, prev.pending - 1) : prev.pending,
           };
+        });
+        // A changed verdict invalidates any merge preview/error fetched
+        // under the previous one — clear so "Change answer" back to "same"
+        // starts clean instead of showing a stale "N rows will move".
+        setMergePreviews((p) => {
+          if (!(advisoryId in p)) return p;
+          const next = { ...p }; delete next[advisoryId]; return next;
+        });
+        setMergeErrors((e) => {
+          if (!e[advisoryId]) return e;
+          const next = { ...e }; delete next[advisoryId]; return next;
         });
       } catch (err) {
         // eslint-disable-next-line no-console

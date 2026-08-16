@@ -212,6 +212,14 @@ export function RemediationQueue({ supabase, canMergeSites, tenantTrades, onData
 
   const removeItem = (queueId: string) => {
     setItems((prev) => (prev ?? []).filter((i) => i.queue_id !== queueId));
+    // A row can be resolved via its own Approve/Dismiss button even while
+    // checked for batch approval — drop it from the selection either way.
+    setSelectedIds((s) => {
+      if (!s[queueId]) return s;
+      const next = { ...s };
+      delete next[queueId];
+      return next;
+    });
     setDoneCount((n) => n + 1);
     onDataChanged?.();
   };
@@ -269,25 +277,19 @@ export function RemediationQueue({ supabase, canMergeSites, tenantTrades, onData
     setBatchBusy(true);
     setBatchError(null);
     setBatchProgress({ done: 0, total: targets.length });
-    const failedLabels: string[] = [];
+    const failures: string[] = [];
     for (const item of targets) {
       try {
         await commitFix(item, batchTrade);
         removeItem(item.queue_id);
-        setSelectedIds((s) => {
-          if (!s[item.queue_id]) return s;
-          const next = { ...s };
-          delete next[item.queue_id];
-          return next;
-        });
-      } catch {
-        failedLabels.push(item.record_label);
+      } catch (e) {
+        failures.push(`${item.record_label} (${e instanceof Error ? e.message : String(e)})`);
       }
       setBatchProgress((p) => (p ? { done: p.done + 1, total: p.total } : p));
     }
     setBatchBusy(false);
     setBatchProgress(null);
-    setBatchError(failedLabels.length > 0 ? `Couldn't approve: ${failedLabels.join(", ")}` : null);
+    setBatchError(failures.length > 0 ? `Couldn't approve: ${failures.join("; ")}` : null);
   };
 
   const dismiss = async (item: QueueItem) => {
@@ -418,49 +420,52 @@ export function RemediationQueue({ supabase, canMergeSites, tenantTrades, onData
           </div>
           <p className="eq-queue__section-hint">{CATEGORY_HINT[cat]}</p>
 
-          {cat === "trade" && rows.length > 0 && (
-            <div className="eq-queue__batch-bar">
-              <label className="eq-queue__batch-selectall">
-                <input
-                  type="checkbox"
-                  checked={rows.every((r) => selectedIds[r.queue_id])}
-                  onChange={(e) => {
-                    setSelectedIds((s) => {
-                      const next = { ...s };
-                      for (const r of rows) {
-                        if (e.target.checked) next[r.queue_id] = true;
-                        else delete next[r.queue_id];
-                      }
-                      return next;
-                    });
-                  }}
+          {cat === "trade" && rows.length > 0 && (() => {
+            const selectedCount = rows.filter((r) => selectedIds[r.queue_id]).length;
+            return (
+              <div className="eq-queue__batch-bar">
+                <label className="eq-queue__batch-selectall">
+                  <input
+                    type="checkbox"
+                    checked={rows.every((r) => selectedIds[r.queue_id])}
+                    onChange={(e) => {
+                      setSelectedIds((s) => {
+                        const next = { ...s };
+                        for (const r of rows) {
+                          if (e.target.checked) next[r.queue_id] = true;
+                          else delete next[r.queue_id];
+                        }
+                        return next;
+                      });
+                    }}
+                    disabled={batchBusy}
+                  />
+                  Select all
+                </label>
+                <select
+                  className="eq-queue__input"
+                  value={batchTrade}
+                  onChange={(e) => setBatchTrade(e.target.value)}
                   disabled={batchBusy}
-                />
-                Select all
-              </label>
-              <select
-                className="eq-queue__input"
-                value={batchTrade}
-                onChange={(e) => setBatchTrade(e.target.value)}
-                disabled={batchBusy}
-                aria-label="Trade to apply to selected"
-              >
-                <option value="">Bulk-set trade…</option>
-                {tradeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-              <button
-                type="button"
-                className="eq-intake-btn-primary eq-queue__btn"
-                disabled={batchBusy || !batchTrade || rows.filter((r) => selectedIds[r.queue_id]).length === 0}
-                onClick={() => runBatchApprove(rows)}
-              >
-                {batchBusy
-                  ? `Approving ${batchProgress?.done ?? 0}/${batchProgress?.total ?? 0}…`
-                  : `Approve ${rows.filter((r) => selectedIds[r.queue_id]).length} selected`}
-              </button>
-              {batchError && <span className="eq-advisory-item__err">{batchError}</span>}
-            </div>
-          )}
+                  aria-label="Trade to apply to selected"
+                >
+                  <option value="">Bulk-set trade…</option>
+                  {tradeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <button
+                  type="button"
+                  className="eq-intake-btn-primary eq-queue__btn"
+                  disabled={batchBusy || !!busyId || !batchTrade || selectedCount === 0}
+                  onClick={() => runBatchApprove(rows)}
+                >
+                  {batchBusy
+                    ? `Approving ${batchProgress?.done ?? 0}/${batchProgress?.total ?? 0}…`
+                    : `Approve ${selectedCount} selected`}
+                </button>
+                {batchError && <span className="eq-advisory-item__err">{batchError}</span>}
+              </div>
+            );
+          })()}
 
           {rows.map((item) => {
             // A trade row also counts as busy while the batch run is going,
