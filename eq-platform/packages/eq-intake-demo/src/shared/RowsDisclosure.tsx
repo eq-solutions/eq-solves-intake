@@ -29,8 +29,16 @@ export interface RowsDisclosureProps {
   downloadFilename?: string;
   perEntity: Array<{
     entity: EntityCommitResult["entity"];
-    rows: Array<{ source_row_index: number; reasons: string[] }>;
+    rows: Array<{ source_row_index: number; reasons: string[]; field?: string; recordId?: string }>;
   }>;
+  /**
+   * "Fix →" per row — only rendered when a row carries a recordId (rejected
+   * rows never do; they never saved, so there's no record to open). Takes
+   * the user to that entity's own edit surface (EntityDrillDown's tidy
+   * mode), not pre-scrolled to this exact row/field yet — that needs
+   * EntityDrillDown to accept a focus target, which doesn't exist today.
+   */
+  onFixRow?: (entity: EntityCommitResult["entity"]) => void;
 }
 
 /** Trigger a browser CSV download from an array of flat string objects. */
@@ -60,18 +68,25 @@ export function RowsDisclosure({
   perEntity,
   showDownload,
   downloadFilename,
+  onFixRow,
 }: RowsDisclosureProps): JSX.Element {
   const [filter, setFilter] = useState("");
   const [sortAsc, setSortAsc] = useState(true);
 
   // Flatten all rows across entities with entity label prepended to reason.
   const allRows = useMemo(() => {
-    const out: Array<{ rowNum: number; entity: string; reason: string }> = [];
+    const out: Array<{
+      rowNum: number;
+      entity: string;
+      rawEntity: EntityCommitResult["entity"];
+      reason: string;
+      recordId?: string;
+    }> = [];
     for (const { entity, rows } of perEntity) {
       const lbl = entityLabel(entity);
       for (const r of rows) {
         for (const reason of r.reasons) {
-          out.push({ rowNum: r.source_row_index + 1, entity: lbl, reason });
+          out.push({ rowNum: r.source_row_index + 1, entity: lbl, rawEntity: entity, reason, recordId: r.recordId });
         }
       }
     }
@@ -159,7 +174,21 @@ export function RowsDisclosure({
                   <tr key={i}>
                     <td className="eq-monospace">{r.rowNum}</td>
                     <td className="eq-nowrap">{r.entity}</td>
-                    <td>{r.reason}</td>
+                    <td>
+                      {r.reason}
+                      {onFixRow && r.recordId && (
+                        <>
+                          {" "}
+                          <button
+                            type="button"
+                            className="eq-rows-disclosure__fix"
+                            onClick={() => onFixRow(r.rawEntity)}
+                          >
+                            Fix →
+                          </button>
+                        </>
+                      )}
+                    </td>
                   </tr>
                 ))
               )}

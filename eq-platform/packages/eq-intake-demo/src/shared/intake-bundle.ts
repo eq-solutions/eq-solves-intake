@@ -35,6 +35,10 @@ export interface FileSlot {
   sheet?: ParsedSheet;
   confidence?: number;
   error?: string;
+  /** Per-role heuristic scores from classifySheet — powers the "could be A or B" / "what is it?" detection tiers. */
+  scores?: Record<string, number>;
+  /** How classifySheet reached `role` — "heuristic" is decisive, the others need a human glance. */
+  method?: "heuristic" | "ai" | "ambiguous_fallback";
 }
 
 /** Plain-English plural for a role, for UI copy. */
@@ -73,6 +77,8 @@ export interface IntakeBundle {
   availableRoles: Set<RoleName>;
   /** The first readable slot for a given role, or undefined. */
   slotForRole: (role: RoleName) => FileSlot | undefined;
+  /** Override a slot's classified role — the "Change" / close-call / unsure picks. */
+  setSlotRole: (idx: number, role: RoleName) => void;
 }
 
 export function useIntakeBundle(): IntakeBundle {
@@ -102,6 +108,8 @@ export function useIntakeBundle(): IntakeBundle {
               role: toRole(classification.entity),
               sheet,
               confidence: classification.confidence,
+              scores: classification.scores,
+              method: classification.method,
             });
           }
         } catch (e) {
@@ -122,6 +130,12 @@ export function useIntakeBundle(): IntakeBundle {
     setSlots((prev) => prev.filter((_, i) => i !== idx));
   }, []);
 
+  const setSlotRole = useCallback((idx: number, role: RoleName) => {
+    setSlots((prev) =>
+      prev.map((s, i) => (i === idx ? { ...s, role, method: "heuristic" as const } : s)),
+    );
+  }, []);
+
   const reset = useCallback(() => setSlots([]), []);
 
   const availableRoles = new Set<RoleName>(
@@ -136,5 +150,5 @@ export function useIntakeBundle(): IntakeBundle {
     [slots],
   );
 
-  return { slots, busy, ingestFiles, removeSlot, reset, availableRoles, slotForRole };
+  return { slots, busy, ingestFiles, removeSlot, reset, availableRoles, slotForRole, setSlotRole };
 }

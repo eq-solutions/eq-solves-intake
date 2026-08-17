@@ -9,8 +9,9 @@
  */
 
 import { useRef, useState, type DragEvent, type JSX } from "react";
-import { roleLabel, type IntakeBundle, type FileSlot } from "./intake-bundle.js";
-import { entityLabel } from "./entity-label.js";
+import type { IntakeBundle, FileSlot } from "./intake-bundle.js";
+import { DetectionLine } from "./DetectionLine.js";
+import type { RoleName } from "../rollup/roles.js";
 
 // ---------------------------------------------------------------------------
 // Upload icon (inline SVG — no external icon dep needed here)
@@ -43,7 +44,7 @@ export interface IntakeDropZoneProps {
 }
 
 export function IntakeDropZone({ bundle, onCheckConflicts }: IntakeDropZoneProps): JSX.Element {
-  const { slots, busy, ingestFiles, removeSlot } = bundle;
+  const { slots, busy, ingestFiles, removeSlot, setSlotRole } = bundle;
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -92,14 +93,21 @@ export function IntakeDropZone({ bundle, onCheckConflicts }: IntakeDropZoneProps
             <div className="eq-intake-dropzone__icon">
               <UploadIcon size={26} />
             </div>
-            <p className="eq-intake-dropzone__title">Drop a file here</p>
-            <p className="eq-intake-dropzone__hint">CSV or Excel · We work out what it is</p>
+            <p className="eq-intake-dropzone__title">
+              Drop a file here, or <span className="eq-intake-dropzone__pick">click to pick</span>
+            </p>
+            {/* PDF is genuinely wired end-to-end today (readers/pdf.ts, no AI needed for
+                born-digital PDFs). Photos aren't listed here yet — that path needs an
+                AIProvider this module doesn't have wired in, and promising it in the
+                copy before it works would be exactly the over-promise the redesign
+                spec's voice rule warns against. */}
+            <p className="eq-intake-dropzone__hint">CSV, Excel, or PDF · We work out what it is</p>
           </>
         )}
         <input
           ref={inputRef}
           type="file"
-          accept=".csv,.xlsx"
+          accept=".csv,.xlsx,.pdf"
           multiple
           style={{ display: "none" }}
           onChange={(e) => {
@@ -112,96 +120,74 @@ export function IntakeDropZone({ bundle, onCheckConflicts }: IntakeDropZoneProps
 
       {/* File slot cards */}
       {slots.length > 0 && (
-        <ul className="eq-intake-slots" style={{ listStyle: "none", padding: 0, margin: 0 }}>
-          {slots.map((slot, i) => {
-            const isUnknown = slot.role === "unknown";
-            const conf = slot.confidence != null && !isUnknown
-              ? Math.round(slot.confidence * 100)
-              : null;
-            const lowConf = conf != null && conf < 70;
+        <>
+          <ul className="eq-intake-slots" style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            {slots.map((slot, i) => {
+              const isUnknown = slot.role === "unknown";
 
-            const slotClass = [
-              "eq-intake-slot",
-              lowConf ? "eq-intake-slot--warn" : "",
-              isUnknown || slot.error ? "eq-intake-slot--err" : "",
-            ].filter(Boolean).join(" ");
+              const slotClass = [
+                "eq-intake-slot",
+                isUnknown || slot.error ? "eq-intake-slot--err" : "",
+              ].filter(Boolean).join(" ");
 
-            const slotEntityLabel = entityLabel(slot.role) !== slot.role ? entityLabel(slot.role) : roleLabel(slot.role);
-
-            return (
-              <li key={i} className={slotClass}>
-                {/* Classification chip */}
-                <span className={`eq-entity-chip ${isUnknown ? "eq-entity-chip--unknown" : "eq-entity-chip--typed"}`}>
-                  {isUnknown ? "Unknown" : slotEntityLabel}
-                </span>
-
-                {/* File info */}
-                <div className="eq-intake-slot__info">
-                  <div className="eq-intake-slot__row">
-                    <span className="eq-intake-slot__name" title={slot.file.name}>
-                      {slot.file.name}
-                    </span>
-                    {slot.sheet?.sheetName && slot.sheet.sheetName !== "Sheet1" && (
-                      <span className="eq-intake-slot__sheet">
-                        [{slot.sheet.sheetName}]
+              return (
+                <li key={i} className={slotClass}>
+                  <div className="eq-intake-slot__info">
+                    <div className="eq-intake-slot__row">
+                      <span className="eq-intake-slot__name" title={slot.file.name}>
+                        📄 {slot.file.name}
                       </span>
+                      {slot.sheet?.sheetName && slot.sheet.sheetName !== "Sheet1" && (
+                        <span className="eq-intake-slot__sheet">
+                          [{slot.sheet.sheetName}]
+                        </span>
+                      )}
+                    </div>
+
+                    {slot.error && (
+                      <div className="eq-intake-slot__error">{slot.error}</div>
                     )}
-                    {slot.sheet && (
-                      <span className="eq-intake-slot__meta">
-                        {slot.sheet.rows.length.toLocaleString()} rows
-                      </span>
+                    {isUnknown && !slot.error && (
+                      <div className="eq-intake-slot__error">
+                        Couldn't classify this file — check the column headers.
+                      </div>
                     )}
-                    {conf != null && (
-                      <span
-                        className="eq-intake-slot__meta"
-                        style={lowConf ? { color: "var(--eq-warn)", fontWeight: 600 } : undefined}
-                      >
-                        {conf}% confident
-                      </span>
+                    {!isUnknown && !slot.error && (
+                      <DetectionLine slot={slot} onPick={(role: RoleName) => setSlotRole(i, role)} />
                     )}
                   </div>
-                  {slot.error && (
-                    <div className="eq-intake-slot__error">{slot.error}</div>
-                  )}
-                  {lowConf && !slot.error && (
-                    <div className="eq-intake-slot__warning">
-                      Low confidence — does this look right?
-                    </div>
-                  )}
-                  {isUnknown && !slot.error && (
-                    <div className="eq-intake-slot__error">
-                      Couldn't classify this file — check the column headers.
-                    </div>
-                  )}
-                </div>
 
-                {/* Check against what's already there — only meaningful once
-                    the sheet classified cleanly */}
-                {onCheckConflicts && slot.sheet && slot.role !== "unknown" && !slot.error && (
+                  {/* Check against what's already there — only meaningful once
+                      the sheet classified cleanly */}
+                  {onCheckConflicts && slot.sheet && slot.role !== "unknown" && !slot.error && (
+                    <button
+                      type="button"
+                      className="eq-intake-btn-ghost eq-intake-slot__check"
+                      onClick={() => onCheckConflicts(slot, i)}
+                      disabled={busy}
+                    >
+                      Check for conflicts
+                    </button>
+                  )}
+
+                  {/* Remove */}
                   <button
                     type="button"
-                    className="eq-intake-btn-ghost eq-intake-slot__check"
-                    onClick={() => onCheckConflicts(slot, i)}
+                    className="eq-intake-slot__remove"
+                    onClick={() => removeSlot(i)}
                     disabled={busy}
+                    aria-label={`Remove ${slot.file.name}`}
                   >
-                    Check for conflicts
+                    ×
                   </button>
-                )}
-
-                {/* Remove */}
-                <button
-                  type="button"
-                  className="eq-intake-slot__remove"
-                  onClick={() => removeSlot(i)}
-                  disabled={busy}
-                  aria-label={`Remove ${slot.file.name}`}
-                >
-                  ×
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+                </li>
+              );
+            })}
+          </ul>
+          {slots.length > 1 && (
+            <p className="eq-intake-slots__hint">order doesn't matter</p>
+          )}
+        </>
       )}
     </div>
   );

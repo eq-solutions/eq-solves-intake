@@ -88,8 +88,17 @@ export interface EntityCommitResult {
   rejectedCount: number;
   /** Per-row rejection reasons for the operator to see. */
   rejectedRows: Array<{ source_row_index: number; reasons: string[] }>;
-  /** Rows that saved but have flags the operator should review. */
-  flaggedRows: Array<{ source_row_index: number; reasons: string[] }>;
+  /**
+   * Rows that saved but have flags the operator should review. `field` is the
+   * first flag's field name (a row can carry more than one flag; the first is
+   * what "Fix" targets). `recordId` is the row's real canonical primary key —
+   * only present on the direct-commit path (eq_intake_commit_batch returns
+   * committed_ids; the staged path doesn't, since staged rows land in the
+   * review queue, not the table — see StageCommitResult). Undefined when the
+   * RPC's returned id array didn't line up with the chunk sent, so a wrong id
+   * is never guessed onto the wrong row.
+   */
+  flaggedRows: Array<{ source_row_index: number; reasons: string[]; field?: string; recordId?: string }>;
   /** If the whole entity commit failed (RPC error, network, etc.), the message. */
   fatalError?: string;
 }
@@ -721,6 +730,7 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
       flaggedRows: (validationResult.flagged_rows as _FlaggedLike[]).map((r) => ({
         source_row_index: remapIdx(r.source_row_index),
         reasons: r.flags.map(formatFlag),
+        field: r.flags[0]?.field,
       })),
     };
   }
@@ -739,6 +749,11 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
   let stagedCount = 0;
   const chunkFailRejections: Array<{ source_row_index: number; reasons: string[] }> = [];
   let firstFatalError: string | undefined;
+  // committed_ids for every entry in toCommit, direct-RPC path only (staged
+  // rows never get a canonical id here — see StageCommitResult's doc comment).
+  // Stays undefined for a row when a chunk's returned id array didn't match
+  // that chunk's length — see the length check below for why.
+  const committedIds: (string | undefined)[] = new Array(toCommit.length).fill(undefined);
 
   const progress = args.onProgress ?? (() => undefined);
 
@@ -786,12 +801,13 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
       p_rows: chunk,
     });
 
+    const startIdx = ci * CHUNK_SIZE;
+
     if (error) {
       // This chunk failed — record the rows as rejected but continue with the
       // next chunk. The original row indices for this chunk span
       // [ci * CHUNK_SIZE, ci * CHUNK_SIZE + chunk.length).
       if (!firstFatalError) firstFatalError = error.message;
-      const startIdx = ci * CHUNK_SIZE;
       for (let ri = 0; ri < chunk.length; ri++) {
         chunkFailRejections.push({
           source_row_index: remapIdx(startIdx + ri),
@@ -800,9 +816,23 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
       }
     } else {
       const rpcRow = Array.isArray(data)
-        ? (data[0] as { committed_count?: number } | undefined)
+        ? (data[0] as { committed_count?: number; committed_ids?: string[] } | undefined)
         : undefined;
       committedCount += rpcRow?.committed_count ?? chunk.length;
+
+      // eq_intake_commit_batch_* builds committed_ids by looping p_rows in
+      // order and array_append-ing each row's id (sql/008_decompose_intake_
+      // commit_batch.sql) — same order as the chunk we sent, so a straight
+      // positional zip is safe. Only trust it when the lengths match: a
+      // short array (the SQL only appends when a row's id came back non-null)
+      // means we can no longer say which id belongs to which row, and a wrong
+      // guess would point "Fix" at someone else's record.
+      const ids = rpcRow?.committed_ids;
+      if (ids && ids.length === chunk.length) {
+        for (let ri = 0; ri < chunk.length; ri++) {
+          committedIds[startIdx + ri] = ids[ri];
+        }
+      }
     }
   }
 
@@ -845,9 +875,13 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
       })),
       ...chunkFailRejections,
     ],
-    flaggedRows: (validationResult.flagged_rows as _FlaggedLike[]).map((r) => ({
+    flaggedRows: (validationResult.flagged_rows as _FlaggedLike[]).map((r, i) => ({
       source_row_index: remapIdx(r.source_row_index),
       reasons: r.flags.map(formatFlag),
+      field: r.flags[0]?.field,
+      // Flagged rows are the tail of toCommit, after all valid rows — see
+      // where toCommit is built above.
+      recordId: committedIds[(validationResult.valid_rows as _ValidLike[]).length + i],
     })),
     fatalError: firstFatalError && committedCount === 0 ? firstFatalError : undefined,
   };

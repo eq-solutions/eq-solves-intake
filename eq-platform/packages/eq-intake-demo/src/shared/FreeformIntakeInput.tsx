@@ -1,10 +1,18 @@
 /**
  * FreeformIntakeInput — a natural language textarea for describing data.
  *
- * Sits below the drop zone in Import mode. The user can type a free-text
- * description of what they want to import (e.g. "Add 5 new customers from
- * Adelaide"). If an AI client is wired in via the `ai` prop, the input is
- * sent for processing; otherwise it shows a "no AI configured" notice.
+ * Sits below the drop zone in Import mode, collapsed to a single link by
+ * default. Not part of INTAKE-REDESIGN-SPEC.md's anatomy — it was added
+ * after that spec was written, so it has no assigned place in the "one
+ * screen" flow. Rather than either removing it or permanently occupying
+ * space on the primary drop-a-file path, it stays reachable as a secondary
+ * affordance: collapsed until clicked, matching the spec's "simple by
+ * default, deeper only when needed" principle (§3.4).
+ *
+ * The user can type a free-text description of what they want to import
+ * (e.g. "Add 5 new customers from Adelaide"). If an AI client is wired in
+ * via the `ai` prop, the input is sent for processing; otherwise it shows a
+ * "no AI configured" notice.
  *
  * Design rules: no inline styles, no hardcoded hex. CSS in styles.css under
  * the .eq-freeform namespace.
@@ -34,6 +42,7 @@ export function FreeformIntakeInput({
   placeholder = "Describe what you'd like to import — e.g. \"Add 5 new customers from Adelaide with site addresses\"",
   onResult,
 }: FreeformIntakeInputProps): JSX.Element {
+  const [expanded, setExpanded] = useState(false);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
@@ -55,12 +64,20 @@ export function FreeformIntakeInput({
     }
   };
 
+  if (!expanded) {
+    return (
+      <button
+        type="button"
+        className="eq-freeform-intake__toggle"
+        onClick={() => setExpanded(true)}
+      >
+        Or describe what you want to import
+      </button>
+    );
+  }
+
   return (
     <div className="eq-freeform-intake">
-      <p className="eq-freeform-intake__label">
-        Or describe what you want to import
-      </p>
-
       <div className="eq-freeform">
         <textarea
           className="eq-freeform-intake__textarea"
