@@ -352,6 +352,80 @@ describe("commitBundleToCanonical — FK resolution between customer and contact
   });
 });
 
+describe("commitBundleToCanonical — flagged rows carry field + recordId (Fix/Skip scope)", () => {
+  // One clean row, one with an unparseable phone — @eq/validation flags the
+  // latter (phone_kept_raw) rather than rejecting it, same shape as
+  // @eq/validation's own staff-messy.csv fixture (Tom O'Sullivan / "no mobile").
+  const STAFF_SHEET_MESSY = {
+    sheetName: "csv",
+    headerRow: ["first_name", "last_name", "email", "phone", "employment_type", "trade", "start_date", "active"],
+    rows: [
+      {
+        first_name: "James", last_name: "Patel", email: "james.patel@example.com.au",
+        phone: "+61412345678", employment_type: "employee", trade: "electrical",
+        start_date: "2022-03-01", active: "true",
+      },
+      {
+        first_name: "Tom", last_name: "O'Sullivan", email: "tom.osullivan@example.com.au",
+        phone: "no mobile", employment_type: "employee", trade: "electrical",
+        start_date: "2022-05-05", active: "true",
+      },
+    ],
+    meta: {
+      encoding: "utf-8", delimiter: ",", totalRows: 2,
+      emptyRowsSkipped: 0, malformedRows: 0, malformed: [], bomDetected: false,
+    },
+  };
+
+  it("attaches the flagged field and the row's real canonical id when committed_ids lines up", async () => {
+    const state: MockState = { rpcCalls: [] };
+    const supabase = makeMockSupabase(state);
+
+    const result = await commitBundleToCanonical({
+      supabase,
+      bundle: { staff: STAFF_SHEET_MESSY as never },
+      tenantId: TENANT,
+    });
+
+    const staffResult = result.perEntity.find((r) => r.entity === "staff");
+    expect(staffResult).toBeDefined();
+    expect(staffResult?.flaggedCount).toBeGreaterThan(0);
+    expect(staffResult?.flaggedRows.length).toBeGreaterThan(0);
+
+    const flagged = staffResult!.flaggedRows[0]!;
+    expect(flagged.field).toBe("phone");
+    expect(flagged.reasons.join(" ")).toMatch(/phone/i);
+    // Mock's default committed_ids are `uuid-${index in the chunk}` — the
+    // flagged row is the tail of toCommit (after the valid rows), so its id
+    // is whatever the mock assigned at that position, not necessarily uuid-0.
+    expect(flagged.recordId).toBeDefined();
+    expect(flagged.recordId).toMatch(/^uuid-\d+$/);
+  });
+
+  it("leaves recordId undefined when the RPC's id array doesn't line up with the chunk sent", async () => {
+    const state: MockState = {
+      rpcCalls: [],
+      // Simulates the SQL's `if v_id is not null` guard producing a short
+      // array — must never be guessed onto the wrong row.
+      commitBatchResponse: () => ({
+        data: [{ committed_count: 1, committed_ids: ["only-one-id"] }],
+        error: null,
+      }),
+    };
+    const supabase = makeMockSupabase(state);
+
+    const result = await commitBundleToCanonical({
+      supabase,
+      bundle: { staff: STAFF_SHEET_MESSY as never },
+      tenantId: TENANT,
+    });
+
+    const staffResult = result.perEntity.find((r) => r.entity === "staff");
+    expect(staffResult?.flaggedRows.length).toBeGreaterThan(0);
+    expect(staffResult?.flaggedRows[0]?.recordId).toBeUndefined();
+  });
+});
+
 describe("commitBundleToCanonical — stageCommit (the /intake vs /intake/core parity fix)", () => {
   it("routes rows through stageCommit instead of the direct RPC when supplied", async () => {
     const state: MockState = { rpcCalls: [] };

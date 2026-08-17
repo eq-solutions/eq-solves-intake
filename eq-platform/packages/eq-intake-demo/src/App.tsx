@@ -17,6 +17,7 @@ import { CUSTOMER_SCHEMA, CONTACT_SCHEMA, SITE_SCHEMA } from "./simpro-schemas.j
 import { RollupDropZone } from "./rollup/RollupDropZone.js";
 import { IntakeModule } from "./module/IntakeModule.js";
 import { ReconcileModule } from "./module/ReconcileModule.js";
+import { createMockSupabase } from "./mock-supabase.js";
 
 type Mode = "single" | "bundle" | "intake" | "reconcile";
 
@@ -158,6 +159,7 @@ export function App() {
 
   const picked = useMemo(() => pickAi(), []);
   const { ai } = picked;
+  const mockSupabase = useMemo(() => createMockSupabase(), []);
 
   const targetSchema = TARGETS[target].schema;
   const canonicalFields = useMemo(
@@ -394,7 +396,16 @@ export function App() {
         ) : mode === "bundle" ? (
           <RollupDropZone />
         ) : mode === "intake" ? (
-          <IntakeModule onDestinationChange={onDestinationChange} />
+          // canImport unlocks "Bring Data In" — without it the demo can only ever
+          // reach Overview/To Do/Ask, so this playground couldn't demo the import
+          // screen at all. canEditCanonical unlocks the ⚙/🔧 settings entries.
+          <IntakeModule
+            onDestinationChange={onDestinationChange}
+            canImport
+            canEditCanonical
+            supabase={mockSupabase}
+            tenantId="00000000-0000-4000-8000-000000000001"
+          />
         ) : (
           <ReconcileModule />
         )}

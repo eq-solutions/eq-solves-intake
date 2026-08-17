@@ -1675,86 +1675,117 @@ button.eq-primary:hover {
   background: var(--eq-page);
 }
 
-/* Destination picker */
-.eq-intake-dest {
-  margin-top: 20px;
+.eq-intake-dropzone__pick {
+  color: var(--eq-sky);
+  text-decoration: underline;
 }
 
-.eq-intake-dest__label {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.eq-intake-slots__hint {
+  font-size: 12px;
   color: var(--eq-muted);
-  margin-bottom: 10px;
+  margin: 6px 2px 0;
 }
 
-.eq-intake-dest__row {
+/* DetectionLine — "what is it?" tiers under a classified slot. */
+.eq-detect {
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.eq-detect__row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
   align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.eq-intake-dest__divider {
-  font-size: 11px;
-  color: var(--eq-muted);
-  opacity: 0.5;
-  padding: 0 2px;
+.eq-detect--confident {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-/* Destination pill */
-.eq-dest-pill {
+.eq-detect__icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
   display: inline-flex;
   align-items: center;
-  border-radius: 8px;
-  font-weight: 500;
+  justify-content: center;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.eq-detect__icon--ok {
+  background: #16a34a;
+  color: white;
+}
+
+.eq-detect__icon--unsure {
+  background: var(--eq-ice);
+  color: var(--eq-warn);
+  font-weight: 800;
+}
+
+.eq-detect__change {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--eq-sky);
+  font-weight: 700;
+  font-size: 12.5px;
+  text-decoration: underline;
   cursor: pointer;
+  font-family: inherit;
+}
+
+.eq-detect__picks,
+.eq-detect__picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  margin-left: 24px;
+}
+
+.eq-detect__pick {
   border: 1px solid var(--eq-line);
-  background: var(--eq-page);
-  color: var(--eq-ink);
-  transition: background 0.1s, border-color 0.1s, color 0.1s;
-  white-space: nowrap;
+  background: var(--eq-paper);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-weight: 700;
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.eq-detect__pick:hover {
+  border-color: var(--eq-sky);
+  color: var(--eq-deep);
+}
+
+.eq-detect__select {
   font-family: inherit;
   font-size: 13px;
-  padding: 5px 12px;
-  line-height: 1;
-}
-
-.eq-dest-pill:hover {
-  background: var(--eq-ice);
-  border-color: var(--eq-sky);
-  color: var(--eq-deep);
-}
-
-.eq-dest-pill--primary {
-  font-size: 14px;
-  padding: 7px 14px;
   font-weight: 600;
+  padding: 6px 10px;
+  border: 1px solid var(--eq-line);
+  border-radius: 8px;
+  background: var(--eq-paper);
+  color: var(--eq-ink);
 }
 
-.eq-dest-pill--active {
-  background: var(--eq-ice);
-  border-color: var(--eq-sky);
-  color: var(--eq-deep);
-}
-
-.eq-dest-pill--active-primary {
-  background: var(--eq-deep);
-  border-color: var(--eq-deep);
-  color: white;
-}
-
-.eq-dest-pill--active-primary:hover {
-  background: var(--eq-sky);
-  border-color: var(--eq-sky);
-  color: white;
-}
-
-.eq-dest-pill--disabled {
-  opacity: 0.35;
-  cursor: default;
-  pointer-events: none;
+.eq-detect__use {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--eq-sky);
+  font-weight: 700;
+  font-size: 12.5px;
+  text-decoration: underline;
+  cursor: pointer;
+  font-family: inherit;
 }
 
 /* Description + missing-file hint below the picker */
@@ -2127,6 +2158,19 @@ button.eq-primary:hover {
   margin-top: 8px;
 }
 
+.eq-rows-disclosure__fix {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--eq-sky);
+  text-decoration: underline;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
 .eq-rows-disclosure__filter {
   width: 100%;
   box-sizing: border-box;
@@ -2218,13 +2262,23 @@ button.eq-primary:hover {
  * @media (max-width: 600px) block further down.
  * ========================================================================= */
 
-/* Destination-picker row — label + pill list in a flex row on desktop. */
+/* Destination picker — "Where's it going?" label + pill row. */
+.eq-intake-dest {
+  margin-bottom: 20px;
+}
+
+.eq-intake-dest__label {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--eq-ink);
+  margin-bottom: 12px;
+}
+
 .eq-intake-dest__row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
-  margin-bottom: 16px;
 }
 
 /* Destination pill buttons. */
@@ -2233,26 +2287,32 @@ button.eq-primary:hover {
   align-items: center;
   gap: 6px;
   font-size: 14px;
-  font-weight: 500;
-  padding: 8px 14px;
+  font-weight: 700;
+  padding: 9px 16px;
   border: 1px solid var(--eq-line);
   border-radius: 100px;
   background: var(--eq-paper);
   color: var(--eq-ink);
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.1s, border-color 0.1s;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
 }
 
-.eq-dest-pill:hover {
-  background: var(--eq-ice);
+.eq-dest-pill:hover:not(:disabled) {
   border-color: var(--eq-sky);
 }
 
 .eq-dest-pill--active {
-  background: var(--eq-deep);
+  background: var(--eq-sky);
   color: white;
-  border-color: var(--eq-deep);
+  border-color: var(--eq-sky);
+}
+
+.eq-dest-pill--disabled {
+  color: var(--eq-muted);
+  border-color: var(--eq-line);
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 /* Mapping panel — scrollable table for column→field mappings. */
@@ -3299,11 +3359,20 @@ button.eq-primary:hover {
   margin-top: 16px;
 }
 
-.eq-freeform-intake__label {
+/* Collapsed FreeformIntakeInput — a plain-text link until clicked, so it
+   doesn't permanently take up space on the primary drop-a-file screen. */
+.eq-freeform-intake__toggle {
+  display: block;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 4px 0 0;
   font-size: 13px;
-  font-weight: 500;
-  color: var(--eq-muted);
-  margin: 0 0 8px;
+  font-weight: 600;
+  color: var(--eq-sky);
+  text-decoration: underline;
+  cursor: pointer;
+  font-family: inherit;
 }
 
 .eq-freeform-intake__textarea {
@@ -3895,84 +3964,6 @@ button.eq-primary:hover {
   border-bottom: 1px solid var(--eq-line);
 }
 
-/* Download success / commit success strip */
-.eq-intake-success {
-  margin-top: 16px;
-  padding: 12px;
-  background: var(--eq-ice);
-  border: 1px solid var(--eq-deep);
-  border-radius: 4px;
-  font-size: 14px;
-  color: var(--eq-ink);
-}
-
-/* CommitSummary status card — uses data-status attribute for colour variants */
-.eq-intake-summary {
-  margin-top: 16px;
-  padding: 12px 16px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.eq-intake-summary[data-status="ok"] {
-  background: var(--eq-ice);
-  border: 1px solid var(--eq-deep);
-}
-
-.eq-intake-summary[data-status="warn"] {
-  background: #fff8ec;
-  border: 1px solid var(--eq-warn);
-}
-
-.eq-intake-summary[data-status="error"] {
-  background: #fbeaea;
-  border: 1px solid var(--eq-err);
-}
-
-.eq-intake-summary__icon {
-  font-size: 20px;
-  flex-shrink: 0;
-}
-
-.eq-intake-summary__icon[data-status="ok"]    { color: var(--eq-deep); }
-.eq-intake-summary__icon[data-status="warn"]  { color: var(--eq-warn); }
-.eq-intake-summary__icon[data-status="error"] { color: var(--eq-err); }
-
-.eq-intake-summary__body {
-  flex: 1;
-  min-width: 160px;
-}
-
-.eq-intake-summary__saved {
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--eq-ink);
-}
-
-.eq-intake-summary__flagged {
-  margin-left: 12px;
-  font-size: 13px;
-  color: var(--eq-warn);
-}
-
-.eq-intake-summary__rejected {
-  margin-left: 12px;
-  font-size: 13px;
-  color: var(--eq-err);
-}
-
-.eq-intake-summary__chip {
-  padding: 2px 8px;
-  border-radius: 100px;
-  background: var(--eq-deep);
-  color: white;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-}
 
 /* ===== RollupDropZone — orphan warning block ===== */
 .eq-rollup__orphan-warning {
@@ -4339,84 +4330,6 @@ button.eq-primary:hover {
   border-bottom: 1px solid var(--eq-line);
 }
 
-/* Download success / commit success strip */
-.eq-intake-success {
-  margin-top: 16px;
-  padding: 12px;
-  background: var(--eq-ice);
-  border: 1px solid var(--eq-deep);
-  border-radius: 4px;
-  font-size: 14px;
-  color: var(--eq-ink);
-}
-
-/* CommitSummary status card — uses data-status attribute for colour variants */
-.eq-intake-summary {
-  margin-top: 16px;
-  padding: 12px 16px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.eq-intake-summary[data-status="ok"] {
-  background: var(--eq-ice);
-  border: 1px solid var(--eq-deep);
-}
-
-.eq-intake-summary[data-status="warn"] {
-  background: #fff8ec;
-  border: 1px solid var(--eq-warn);
-}
-
-.eq-intake-summary[data-status="error"] {
-  background: #fbeaea;
-  border: 1px solid var(--eq-err);
-}
-
-.eq-intake-summary__icon {
-  font-size: 20px;
-  flex-shrink: 0;
-}
-
-.eq-intake-summary__icon[data-status="ok"]    { color: var(--eq-deep); }
-.eq-intake-summary__icon[data-status="warn"]  { color: var(--eq-warn); }
-.eq-intake-summary__icon[data-status="error"] { color: var(--eq-err); }
-
-.eq-intake-summary__body {
-  flex: 1;
-  min-width: 160px;
-}
-
-.eq-intake-summary__saved {
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--eq-ink);
-}
-
-.eq-intake-summary__flagged {
-  margin-left: 12px;
-  font-size: 13px;
-  color: var(--eq-warn);
-}
-
-.eq-intake-summary__rejected {
-  margin-left: 12px;
-  font-size: 13px;
-  color: var(--eq-err);
-}
-
-.eq-intake-summary__chip {
-  padding: 2px 8px;
-  border-radius: 100px;
-  background: var(--eq-deep);
-  color: white;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-}
 
 /* ===== RollupDropZone — orphan warning block ===== */
 .eq-rollup__orphan-warning {
@@ -4752,4 +4665,83 @@ button.eq-primary:hover {
   font-size: 12px;
   color: var(--eq-muted);
   font-style: italic;
+}
+
+/* ResultPanel / DownloadResultView — the "done" state (states C1/C2/C3 of
+   the 2026-08-17 build spec). Replaces the old eq-intake-summary chip card
+   and eq-intake-success strip — one result treatment for both the Into-EQ
+   and export paths. */
+.eq-result {
+  margin-top: 16px;
+}
+
+.eq-result__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--eq-ink);
+}
+
+.eq-result__icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  flex-shrink: 0;
+  color: white;
+}
+
+.eq-result__icon[data-status="ok"]    { background: #16a34a; }
+.eq-result__icon[data-status="warn"]  { background: var(--eq-warn); }
+.eq-result__icon[data-status="error"] { background: var(--eq-err); }
+
+.eq-result__sub {
+  margin: 10px 0 0;
+  color: var(--eq-muted);
+  font-size: 14px;
+}
+
+.eq-result__sub--warn {
+  color: var(--eq-warn);
+}
+
+.eq-result__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.eq-result__chip {
+  padding: 3px 10px;
+  border-radius: 100px;
+  background: var(--eq-ice);
+  color: var(--eq-deep);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.eq-result__actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+
+.eq-result__link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--eq-sky);
+  text-decoration: underline;
+  cursor: pointer;
 }
