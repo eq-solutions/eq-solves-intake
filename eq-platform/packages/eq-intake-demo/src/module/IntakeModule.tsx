@@ -27,7 +27,6 @@ import { IntakeDropZone } from "../shared/IntakeDropZone.js";
 import {
   DestinationPicker,
   INTO_EQ_ID,
-  QUICK_PREFIX,
   findQuickDestination,
 } from "../shared/DestinationPicker.js";
 import { RowsDisclosure } from "../shared/RowsDisclosure.js";
