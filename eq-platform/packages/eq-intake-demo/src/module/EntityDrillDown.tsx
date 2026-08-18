@@ -48,6 +48,10 @@ export interface EntityDrillDownProps {
   initialFilters?: AskFilter[];
   /** Human-readable description of initialFilters, shown in the clearable chip. */
   initialFilterLabel?: string;
+  /** Set from a Health Overview "Fix these" card (e.g. "phone") — opens the
+   * Tidy tab's gap section straight into the bulk-fill grid for this one
+   * field instead of the full mixed gap list. */
+  initialGapField?: string | null;
   onBack?: () => void;
   onBulkFix?: (csvBlob: Blob, filename: string) => void;
   /**
@@ -250,6 +254,7 @@ export function EntityDrillDown({
   initialMode,
   initialFilters,
   initialFilterLabel,
+  initialGapField,
   onBack,
   onBulkFix,
   canMergeSites,
@@ -309,6 +314,16 @@ export function EntityDrillDown({
   const [selectedFixKeys, setSelectedFixKeys] = useState<Set<string>>(new Set());
   const [committing, setCommitting] = useState(false);
   const [commitResult, setCommitResult] = useState<TidyCommitResult | null>(null);
+
+  // Bulk-fill state — a fast, non-AI grid for genuinely-missing fields
+  // (phone, email, emergency contact) that suggestGaps() has no signal to
+  // infer. One draft value per row_id, one commitTidyFixes() call for the
+  // whole batch instead of a modal per record.
+  const [bulkFillField, setBulkFillField] = useState<string | null>(initialGapField ?? null);
+  const [bulkFillDrafts, setBulkFillDrafts] = useState<Record<string, string>>({});
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkResult, setBulkResult] = useState<TidyCommitResult | null>(null);
+  const [bulkError, setBulkError] = useState<string | null>(null);
 
   // Gap suggestion state
   const [suggestRowId, setSuggestRowId] = useState<string | null>(null);
@@ -817,6 +832,64 @@ export function EntityDrillDown({
       setCommitting(false);
     }
   }, [supabase, tidyReport, selectedFixKeys, committing, resolvedTenantId]);
+
+  const handleBulkDraftChange = useCallback((rowId: string, value: string) => {
+    setBulkFillDrafts((prev) => ({ ...prev, [rowId]: value }));
+  }, []);
+
+  const exitBulkFill = useCallback(() => {
+    setBulkFillField(null);
+    setBulkFillDrafts({});
+    setBulkResult(null);
+    setBulkError(null);
+  }, []);
+
+  // ── Bulk-fill commit — one commitTidyFixes() call for every row the
+  // operator typed a value into, instead of a save per record. ────────────
+  const handleBulkSave = useCallback(async () => {
+    if (!supabase || !tidyReport || !bulkFillField || !canEditCanonical || bulkSaving) return;
+
+    const tidyEntity = ENTITY_TO_TIDY[entity];
+    if (!tidyEntity) return;
+
+    const fixes: TidyFix[] = tidyReport.gaps
+      .filter((g) => g.field === bulkFillField && (bulkFillDrafts[g.row_id] ?? "").trim() !== "")
+      .map((g) => {
+        const targetRow = rows.find((r) => rowKey(entity, r) === g.row_id);
+        const oldValue = targetRow?.[bulkFillField] == null ? "" : String(targetRow[bulkFillField]);
+        return {
+          entity:    tidyEntity,
+          table:     entity,
+          row_id:    g.row_id,
+          row_label: g.row_label,
+          field:     bulkFillField,
+          fix_type:  "other",
+          old_value: oldValue,
+          new_value: bulkFillDrafts[g.row_id].trim(),
+        };
+      });
+
+    if (fixes.length === 0) return;
+
+    setBulkSaving(true);
+    setBulkError(null);
+    setBulkResult(null);
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await commitTidyFixes({ supabase: supabase as any, tenantId: resolvedTenantId, fixes });
+      setBulkResult(result);
+      if (result.applied > 0) {
+        setBulkFillDrafts({});
+        setRefreshCounter((c) => c + 1);
+        setTidyReport(null);
+      }
+    } catch (err: unknown) {
+      setBulkError(err instanceof Error ? err.message : "Failed to save.");
+    } finally {
+      setBulkSaving(false);
+    }
+  }, [supabase, tidyReport, bulkFillField, bulkFillDrafts, canEditCanonical, bulkSaving, entity, rows, resolvedTenantId]);
 
   // ── Gap suggestions ───────────────────────────────────────────────────
   const callEdgeFn = useMemo<EdgeFnCaller | null>(() => {
@@ -1401,6 +1474,15 @@ export function EntityDrillDown({
           editSaving={editSaving}
           editSaveError={editSaveError}
           rowContext={rowContext}
+          bulkFillField={bulkFillField}
+          onEnterBulkFill={setBulkFillField}
+          onExitBulkFill={exitBulkFill}
+          bulkFillDrafts={bulkFillDrafts}
+          onBulkDraftChange={handleBulkDraftChange}
+          onBulkSave={handleBulkSave}
+          bulkSaving={bulkSaving}
+          bulkResult={bulkResult}
+          bulkError={bulkError}
         />
       ) : (
         <Table<DrillRow>
@@ -1462,6 +1544,16 @@ interface TidyPanelProps {
   editSaveError: string | null;
   /** row_id -> full canonical row, for showing real context (email/phone/company) next to a bare row_label. */
   rowContext: Map<string, Row>;
+  /** Non-null while the gap section is showing the bulk-fill grid for one field. */
+  bulkFillField: string | null;
+  onEnterBulkFill: (field: string) => void;
+  onExitBulkFill: () => void;
+  bulkFillDrafts: Record<string, string>;
+  onBulkDraftChange: (rowId: string, value: string) => void;
+  onBulkSave: () => void;
+  bulkSaving: boolean;
+  bulkResult: TidyCommitResult | null;
+  bulkError: string | null;
 }
 
 const FIX_TYPE_LABELS: Record<string, string> = {
@@ -1510,6 +1602,15 @@ function TidyPanel({
   editSaving,
   editSaveError,
   rowContext,
+  bulkFillField,
+  onEnterBulkFill,
+  onExitBulkFill,
+  bulkFillDrafts,
+  onBulkDraftChange,
+  onBulkSave,
+  bulkSaving,
+  bulkResult,
+  bulkError,
 }: TidyPanelProps): JSX.Element {
   if (loading) {
     return (
@@ -1535,6 +1636,14 @@ function TidyPanel({
   if (!report) return <div className="eq-tidy" />;
 
   const { auto_fixes, gaps, review_flags, summary } = report;
+
+  // Fields with more than one gap are worth a bulk-fill link — a single gap
+  // isn't worth switching views for, the inline "Edit" below is just as fast.
+  const bulkFillCandidates = new Map<string, number>();
+  for (const g of gaps) {
+    bulkFillCandidates.set(g.field, (bulkFillCandidates.get(g.field) ?? 0) + 1);
+  }
+  const bulkFillGaps = bulkFillField ? gaps.filter((g) => g.field === bulkFillField) : [];
 
   const fixColumns: TableColumn<TidyFix>[] = [
     {
@@ -1790,43 +1899,76 @@ function TidyPanel({
       {/* Format gaps */}
       {gaps.length > 0 && (
         <div className="eq-tidy__section">
-          <div className="eq-tidy__section-header">
-            <div className="eq-tidy__section-header-text">
-              <h3 className="eq-tidy__section-title">Data gaps</h3>
-              <p className="eq-tidy__section-hint">
-                Missing required fields or invalid formats. Fix one at a time below, or download
-                this list, edit it in a spreadsheet, and re-upload it on the Reconcile tab for
-                bulk changes.
-              </p>
-            </div>
-            <button
-              type="button"
-              className="eq-drill__download"
-              onClick={() => {
-                const csv = buildCsvContent(
-                  gaps.map((g) => ({ ...g })),
-                  ["row_label", "field", "message", "gap_type"],
-                );
-                const filename = `${entityLabel.toLowerCase()}-gaps-${todayString()}.csv`;
-                const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = filename;
-                a.click();
-                URL.revokeObjectURL(url);
-              }}
-            >
-              Download {gaps.length} gap{gaps.length !== 1 ? "s" : ""} as CSV
-            </button>
-          </div>
-          <Table<GapItem>
-            columns={gapColumns}
-            rows={gaps}
-            getRowId={(g) => `${g.row_id}:${g.field}`}
-            emptyMessage="No gaps."
-            className="eq-tidy__table"
-          />
+          {bulkFillField && bulkFillGaps.length > 0 ? (
+            <BulkFillGrid
+              field={bulkFillField}
+              gaps={bulkFillGaps}
+              rowContext={rowContext}
+              drafts={bulkFillDrafts}
+              onDraftChange={onBulkDraftChange}
+              onSave={onBulkSave}
+              onBack={onExitBulkFill}
+              saving={bulkSaving}
+              result={bulkResult}
+              error={bulkError}
+            />
+          ) : (
+            <>
+              <div className="eq-tidy__section-header">
+                <div className="eq-tidy__section-header-text">
+                  <h3 className="eq-tidy__section-title">Data gaps</h3>
+                  <p className="eq-tidy__section-hint">
+                    Missing required fields or invalid formats. Fix one at a time below, use "Fill
+                    in bulk" for a field with several gaps, or download this list and re-upload it
+                    on the Reconcile tab.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="eq-drill__download"
+                  onClick={() => {
+                    const csv = buildCsvContent(
+                      gaps.map((g) => ({ ...g })),
+                      ["row_label", "field", "message", "gap_type"],
+                    );
+                    const filename = `${entityLabel.toLowerCase()}-gaps-${todayString()}.csv`;
+                    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = filename;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                >
+                  Download {gaps.length} gap{gaps.length !== 1 ? "s" : ""} as CSV
+                </button>
+              </div>
+              {bulkFillCandidates.size > 0 && (
+                <div className="eq-tidy__bulkfill-links">
+                  {[...bulkFillCandidates.entries()]
+                    .filter(([, count]) => count > 1)
+                    .map(([field, count]) => (
+                      <button
+                        key={field}
+                        type="button"
+                        className="eq-drill__suggest-btn"
+                        onClick={() => onEnterBulkFill(field)}
+                      >
+                        Fill in {count} missing {fieldLabel(field)} in bulk
+                      </button>
+                    ))}
+                </div>
+              )}
+              <Table<GapItem>
+                columns={gapColumns}
+                rows={gaps}
+                getRowId={(g) => `${g.row_id}:${g.field}`}
+                emptyMessage="No gaps."
+                className="eq-tidy__table"
+              />
+            </>
+          )}
         </div>
       )}
 
@@ -1850,6 +1992,106 @@ function TidyPanel({
           />
         </div>
       )}
+    </div>
+  );
+}
+
+// ── BulkFillGrid ─────────────────────────────────────────────────────────────
+// A fast, non-AI grid for one gap field at a time: type a value per row, save
+// once. Exists because suggestGaps() has no signal to infer phone/email/
+// emergency-contact from other fields on the same record — there's nothing to
+// suggest, so the fix is faster manual entry, not AI.
+
+interface BulkFillGridProps {
+  field: string;
+  gaps: GapItem[]; // already filtered to `field`
+  rowContext: Map<string, Row>;
+  drafts: Record<string, string>;
+  onDraftChange: (rowId: string, value: string) => void;
+  onSave: () => void;
+  onBack: () => void;
+  saving: boolean;
+  result: TidyCommitResult | null;
+  error: string | null;
+}
+
+function BulkFillGrid({
+  field, gaps, rowContext, drafts, onDraftChange, onSave, onBack, saving, result, error,
+}: BulkFillGridProps): JSX.Element {
+  const filledCount = gaps.filter((g) => (drafts[g.row_id] ?? "").trim() !== "").length;
+  const allowedValues = gaps[0]?.allowed_values;
+
+  return (
+    <div className="eq-bulkfill">
+      <div className="eq-tidy__section-header">
+        <div className="eq-tidy__section-header-text">
+          <button type="button" className="eq-drill__back" onClick={onBack}>
+            ‹ Back to full list
+          </button>
+          <h3 className="eq-tidy__section-title">
+            Fill in {fieldLabel(field)} for {gaps.length} record{gaps.length !== 1 ? "s" : ""}
+          </h3>
+          <p className="eq-tidy__section-hint">
+            Type a value for as many as you can, then save once — the rest stay on the list for later.
+          </p>
+        </div>
+      </div>
+      <div className="eq-bulkfill__rows">
+        {gaps.map((g, i) => {
+          const context = gapContextLine(rowContext.get(g.row_id));
+          return (
+            <div key={g.row_id} className="eq-bulkfill__row">
+              <span className="eq-bulkfill__label">
+                {g.row_label}
+                {context && context !== g.row_label && (
+                  <span className="eq-tidy__row-context"> · {context}</span>
+                )}
+              </span>
+              {allowedValues ? (
+                <select
+                  className="eq-drill__inline-select"
+                  value={drafts[g.row_id] ?? ""}
+                  onChange={(e) => onDraftChange(g.row_id, e.target.value)}
+                  aria-label={`${fieldLabel(field)} for ${g.row_label}`}
+                >
+                  <option value="">—</option>
+                  {allowedValues.map((v) => (
+                    <option key={v} value={v}>{v}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="eq-bulkfill__input"
+                  value={drafts[g.row_id] ?? ""}
+                  onChange={(e) => onDraftChange(g.row_id, e.target.value)}
+                  placeholder={fieldLabel(field)}
+                  aria-label={`${fieldLabel(field)} for ${g.row_label}`}
+                  autoFocus={i === 0}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="eq-tidy__apply-bar">
+        {result && (
+          <span
+            className={`eq-tidy__commit-result${result.errors.length > 0 ? " eq-tidy__commit-result--warn" : " eq-tidy__commit-result--ok"}`}
+          >
+            {result.applied > 0 && `${result.applied} saved`}
+            {result.skipped > 0 && ` · ${result.skipped} skipped`}
+          </span>
+        )}
+        {error && <span className="eq-drill__inline-error" role="alert">{error}</span>}
+        <button
+          className="eq-intake-btn-primary"
+          type="button"
+          onClick={onSave}
+          disabled={filledCount === 0 || saving}
+        >
+          {saving ? "Saving…" : `Save ${filledCount} of ${gaps.length}`}
+        </button>
+      </div>
     </div>
   );
 }

@@ -148,6 +148,10 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
   const [mode, setMode] = useState<IntakeMode>("health");
   const [drillEntity, setDrillEntity] = useState<string | null>(null);
   const [drillFilters, setDrillFilters] = useState<{ filters: AskFilter[]; label: string } | null>(null);
+  /** Set when a Health Overview "Fix these" card is clicked for a specific
+   * gap field (e.g. "phone") — tells EntityDrillDown to open straight into
+   * the bulk-fill grid for that field instead of the full mixed gap list. */
+  const [drillGapField, setDrillGapField] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showTradesSettings, setShowTradesSettings] = useState(false);
   // Single fetch of the tenant's saved field-importance corrections — shared
@@ -173,6 +177,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
     if (mode !== "health") {
       setDrillEntity(null);
       setDrillFilters(null);
+      setDrillGapField(null);
       setShowSettings(false);
       setShowTradesSettings(false);
     }
@@ -301,7 +306,8 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
             initialMode="tidy"
             initialFilters={drillFilters?.filters}
             initialFilterLabel={drillFilters?.label}
-            onBack={() => { setDrillEntity(null); setDrillFilters(null); }}
+            initialGapField={drillGapField}
+            onBack={() => { setDrillEntity(null); setDrillFilters(null); setDrillGapField(null); }}
             canMergeSites={props.canMergeSites}
             canEditCanonical={props.canEditCanonical}
             fieldImportanceOverrides={fieldImportance.overrides}
@@ -310,7 +316,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
           <IntakeHealthHome
             supabase={props.supabase}
             tenantId={props.tenantId}
-            onEntityClick={(e) => { setDrillEntity(e); setDrillFilters(null); }}
+            onEntityClick={(e, field) => { setDrillEntity(e); setDrillFilters(null); setDrillGapField(field ?? null); }}
             fieldImportanceOverrides={fieldImportance.overrides}
             onBringDataIn={props.canImport ? () => setMode("import") : undefined}
             refreshSignal={dataVersion}

@@ -27,7 +27,10 @@ import { entityLabel, fieldLabel } from "../shared/entity-label.js";
 export interface IntakeHealthHomeProps {
   supabase?: SupabaseLikeClient | null;
   tenantId?: string;
-  onEntityClick?: (entity: string) => void;
+  /** field is set when the click originated from a specific gap ("N missing
+   * Phone") card, so the drill-down can open straight into a bulk-fill grid
+   * for that one field instead of the full mixed gap list. */
+  onEntityClick?: (entity: string, field?: string) => void;
   /** Tenant's saved field-importance corrections — see IntakeModule's fetch. */
   fieldImportanceOverrides?: FieldImportanceOverride[];
   /**
@@ -70,6 +73,10 @@ interface ActionItem {
   id:          string;
   /** Entity this action's onClick should drill into. */
   entity:      string;
+  /** Set only for field-gap actions (e.g. "phone") — lets the click open
+   * straight into a bulk-fill grid for that field. Unset for the two
+   * whole-record special cases (no licences / licences expiring). */
+  field?:      string;
   title:       string;
   description: string;
   pts:         number;
@@ -221,6 +228,7 @@ function deriveActions(
       actions.push({
         id:          `${hs.entity}.${field}`,
         entity:      hs.entity,
+        field,
         title:       `${count} of ${hs.total} ${entityLabel(hs.entity).toLowerCase()} missing ${fieldLabel(field)}`,
         description: why,
         pts:         ACTION_PTS[tier],
@@ -319,12 +327,12 @@ function DimensionBar({
 
 function ActionCard({
   action, onEntityClick,
-}: { action: ActionItem; onEntityClick?: (entity: string) => void }): JSX.Element {
+}: { action: ActionItem; onEntityClick?: (entity: string, field?: string) => void }): JSX.Element {
   return (
     <button
       type="button"
       className={`eq-health-action eq-health-action--${action.severity}`}
-      onClick={onEntityClick ? () => onEntityClick(action.entity) : undefined}
+      onClick={onEntityClick ? () => onEntityClick(action.entity, action.field) : undefined}
     >
       <div className={`eq-health-action-icon eq-health-action-icon--${action.severity}`} aria-hidden="true">
         {action.severity === "danger" ? "!" : "→"}

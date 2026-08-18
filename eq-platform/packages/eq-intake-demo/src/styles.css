@@ -3955,6 +3955,16 @@ button.eq-primary:hover {
 .eq-tidy__gap-badge--fk_no_match { background: #ede9fe; color: #5b21b6; }
 .eq-tidy__flag-badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 10px; background: #f3e8ff; color: #6b21a8; }
 .eq-tidy__row-context { font-size: 12px; color: var(--eq-muted); }
+
+.eq-tidy__bulkfill-links { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* ── BulkFillGrid ─────────────────────────────────────────────────────────── */
+.eq-bulkfill { display: flex; flex-direction: column; gap: 12px; }
+.eq-bulkfill__rows { display: flex; flex-direction: column; gap: 6px; max-height: 420px; overflow-y: auto; padding-right: 4px; }
+.eq-bulkfill__row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 10px; border-radius: 6px; background: var(--eq-ice); }
+.eq-bulkfill__label { font-size: 13px; color: var(--eq-ink); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.eq-bulkfill__input { border: 1px solid var(--eq-sky); border-radius: 4px; padding: 4px 8px; font-size: 13px; width: 200px; flex-shrink: 0; }
+
 /* Orphan strip — reuse licence section layout */
 .eq-health-orphan { display: flex; flex-wrap: wrap; gap: 8px; }
 .eq-health-orphan--ok { display: flex; flex-wrap: wrap; gap: 8px; }
