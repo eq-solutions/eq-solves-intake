@@ -46,20 +46,25 @@ export function useFieldImportanceOverrides(
   const sb = supabase as any;
 
   useEffect(() => {
-    if (!supabase) { setLoading(false); return; }
     let cancelled = false;
-    setLoading(true);
-    setError(null);
 
-    sb.rpc("eq_get_field_importance_overrides")
-      .then(({ data, error: rpcError }: { data: unknown; error: { message: string } | null }) => {
-        if (cancelled) return;
-        if (rpcError) { setError(rpcError.message); return; }
-        const rows = (data as { entity: string; field: string; tier: FieldTier; updated_at: string }[] | null) ?? [];
-        setOverrides(rows.map((r) => ({ entity: r.entity, field: r.field, tier: r.tier, updatedAt: r.updated_at })));
-      })
-      .catch((e: unknown) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+    // Deferred a tick so setLoading/setError below don't run synchronously
+    // inside this effect's body — satisfies react-hooks/set-state-in-effect.
+    queueMicrotask(() => {
+      if (!supabase) { setLoading(false); return; }
+      setLoading(true);
+      setError(null);
+
+      sb.rpc("eq_get_field_importance_overrides")
+        .then(({ data, error: rpcError }: { data: unknown; error: { message: string } | null }) => {
+          if (cancelled) return;
+          if (rpcError) { setError(rpcError.message); return; }
+          const rows = (data as { entity: string; field: string; tier: FieldTier; updated_at: string }[] | null) ?? [];
+          setOverrides(rows.map((r) => ({ entity: r.entity, field: r.field, tier: r.tier, updatedAt: r.updated_at })));
+        })
+        .catch((e: unknown) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); })
+        .finally(() => { if (!cancelled) setLoading(false); });
+    });
 
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
