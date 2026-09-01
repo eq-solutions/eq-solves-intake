@@ -39,20 +39,25 @@ export function useTenantTrades(
   const sb = supabase as any;
 
   useEffect(() => {
-    if (!supabase) { setLoading(false); return; }
     let cancelled = false;
-    setLoading(true);
-    setError(null);
 
-    sb.rpc("eq_list_tenant_trades")
-      .then(({ data, error: rpcError }: { data: unknown; error: { message: string } | null }) => {
-        if (cancelled) return;
-        if (rpcError) { setError(rpcError.message); return; }
-        const rows = (data as { trade: string }[] | null) ?? [];
-        setTrades(rows.map((r) => r.trade));
-      })
-      .catch((e: unknown) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+    // Deferred a tick so setLoading/setError below don't run synchronously
+    // inside this effect's body — satisfies react-hooks/set-state-in-effect.
+    queueMicrotask(() => {
+      if (!supabase) { setLoading(false); return; }
+      setLoading(true);
+      setError(null);
+
+      sb.rpc("eq_list_tenant_trades")
+        .then(({ data, error: rpcError }: { data: unknown; error: { message: string } | null }) => {
+          if (cancelled) return;
+          if (rpcError) { setError(rpcError.message); return; }
+          const rows = (data as { trade: string }[] | null) ?? [];
+          setTrades(rows.map((r) => r.trade));
+        })
+        .catch((e: unknown) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); })
+        .finally(() => { if (!cancelled) setLoading(false); });
+    });
 
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps

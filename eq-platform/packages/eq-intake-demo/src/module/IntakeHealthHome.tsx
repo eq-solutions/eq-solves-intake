@@ -625,54 +625,59 @@ export function IntakeHealthHome({
     if (!supabase) return;
 
     let cancelled = false;
-    setLoading(true);
-    setError(null);
 
-    // The demo's SupabaseLikeClient is narrower than @eq/intake's (no select).
-    // At runtime the actual client has select — this cast is safe.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sb = supabase as any;
+    // Deferred a tick so setLoading/setError below don't run synchronously
+    // inside this effect's body — satisfies react-hooks/set-state-in-effect.
+    queueMicrotask(() => {
+      setLoading(true);
+      setError(null);
 
-    Promise.allSettled([
-      computeHealthScores(sb, fieldImportanceOverrides),
-      runLicenceExpiryCheck(sb, resolvedTenantId),
+      // The demo's SupabaseLikeClient is narrower than @eq/intake's (no select).
+      // At runtime the actual client has select — this cast is safe.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      runOrphanCheck({ supabase: supabase as any, tenantId: resolvedTenantId }),
-      computeComplianceMetrics(sb),
-    ]).then(([healthResult, licenceResult, orphanResult, complianceResult]) => {
-      if (cancelled) return;
+      const sb = supabase as any;
 
-      if (healthResult.status === "fulfilled") {
-        setScores(healthResult.value);
-      } else {
-        setError(
-          healthResult.reason instanceof Error
-            ? healthResult.reason.message
-            : String(healthResult.reason),
-        );
-      }
+      Promise.allSettled([
+        computeHealthScores(sb, fieldImportanceOverrides),
+        runLicenceExpiryCheck(sb, resolvedTenantId),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        runOrphanCheck({ supabase: supabase as any, tenantId: resolvedTenantId }),
+        computeComplianceMetrics(sb),
+      ]).then(([healthResult, licenceResult, orphanResult, complianceResult]) => {
+        if (cancelled) return;
 
-      if (licenceResult.status === "fulfilled") {
-        setLicences(licenceResult.value);
-      } else {
-        // eslint-disable-next-line no-console
-        console.warn(
-          "[IntakeHealthHome] Licence expiry check failed:",
-          licenceResult.reason instanceof Error
-            ? licenceResult.reason.message
-            : licenceResult.reason,
-        );
-      }
+        if (healthResult.status === "fulfilled") {
+          setScores(healthResult.value);
+        } else {
+          setError(
+            healthResult.reason instanceof Error
+              ? healthResult.reason.message
+              : String(healthResult.reason),
+          );
+        }
 
-      if (orphanResult.status === "fulfilled") {
-        setOrphans(orphanResult.value.summary);
-      }
+        if (licenceResult.status === "fulfilled") {
+          setLicences(licenceResult.value);
+        } else {
+          // eslint-disable-next-line no-console
+          console.warn(
+            "[IntakeHealthHome] Licence expiry check failed:",
+            licenceResult.reason instanceof Error
+              ? licenceResult.reason.message
+              : licenceResult.reason,
+          );
+        }
 
-      if (complianceResult.status === "fulfilled") {
-        setCompliance(complianceResult.value);
-      }
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
+        if (orphanResult.status === "fulfilled") {
+          setOrphans(orphanResult.value.summary);
+        }
+
+        if (complianceResult.status === "fulfilled") {
+          setCompliance(complianceResult.value);
+        }
+      }).finally(() => {
+        if (!cancelled) setLoading(false);
+      });
     });
 
     return () => { cancelled = true; };

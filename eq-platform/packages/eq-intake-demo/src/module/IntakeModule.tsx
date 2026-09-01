@@ -172,8 +172,12 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
   const [dataVersion, setDataVersion] = useState(0);
   const bumpDataVersion = useCallback(() => setDataVersion((v) => v + 1), []);
 
-  // Reset drill-down / settings when switching away from health tab
-  useEffect(() => {
+  // Reset drill-down / settings when switching away from health tab —
+  // adjusted during render (not an effect) since this only needs to react to
+  // `mode` changing, not run any I/O.
+  const [prevMode, setPrevMode] = useState(mode);
+  if (mode !== prevMode) {
+    setPrevMode(mode);
     if (mode !== "health") {
       setDrillEntity(null);
       setDrillFilters(null);
@@ -181,7 +185,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
       setShowSettings(false);
       setShowTradesSettings(false);
     }
-  }, [mode]);
+  }
 
   // Lightweight To Do badge — how much is waiting across the two things that
   // now live in that one tab: site-advisory merges (duplicates caught at the

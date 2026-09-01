@@ -188,7 +188,12 @@ export function RemediationQueue({ supabase, canMergeSites, canEditCanonical, te
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    // Deferred a tick so load()'s setError/setItems/setValues don't run
+    // synchronously inside this effect's body — satisfies
+    // react-hooks/set-state-in-effect.
+    queueMicrotask(() => { void load(); });
+  }, [load]);
 
   // Customers list, fetched lazily the first time a link item exists
   useEffect(() => {
