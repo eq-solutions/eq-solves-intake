@@ -155,7 +155,7 @@ const SCHEMA_REGISTRY: Record<string, Record<string, unknown>> = {
 export function App() {
   const [log, setLog] = useState<string[]>([]);
   const [target, setTarget] = useState<TargetKey>("staff");
-  const [mode, setMode] = useState<Mode>("single");
+  const [mode, setMode] = useState<Mode>("intake");
 
   const picked = useMemo(() => pickAi(), []);
   const { ai } = picked;
@@ -253,43 +253,61 @@ export function App() {
       </header>
 
       <main className="eq-shell__main">
-        <section className="eq-mode-tabs" role="tablist" aria-label="Demo mode">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === "single"}
-            className={"eq-mode-tab" + (mode === "single" ? " eq-mode-tab--active" : "")}
-            onClick={() => setMode("single")}
-          >
-            Single file → canonical
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === "bundle"}
-            className={"eq-mode-tab" + (mode === "bundle" ? " eq-mode-tab--active" : "")}
-            onClick={() => setMode("bundle")}
-          >
-            SimPRO bundle → SharePoint paste
-          </button>
+        <section className="eq-mode-primary">
           <button
             type="button"
             role="tab"
             aria-selected={mode === "intake"}
-            className={"eq-mode-tab" + (mode === "intake" ? " eq-mode-tab--active" : "")}
+            className={
+              "eq-mode-primary__button" +
+              (mode === "intake" ? " eq-mode-primary__button--active" : "")
+            }
             onClick={() => setMode("intake")}
           >
-            One-screen Intake
+            <span className="eq-mode-primary__title">One-screen Intake</span>
+            <span className="eq-mode-primary__subtitle">
+              The actual product — same screen embedded in Shell
+            </span>
           </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === "reconcile"}
-            className={"eq-mode-tab" + (mode === "reconcile" ? " eq-mode-tab--active" : "")}
-            onClick={() => setMode("reconcile")}
+        </section>
+
+        <section className="eq-mode-secondary">
+          <p className="eq-mode-secondary__label">
+            Engineering scenarios below — parser test harnesses, not the product
+          </p>
+          <div
+            className="eq-mode-tabs eq-mode-tabs--secondary"
+            role="tablist"
+            aria-label="Engineering scenarios"
           >
-            Reconcile
-          </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "single"}
+              className={"eq-mode-tab" + (mode === "single" ? " eq-mode-tab--active" : "")}
+              onClick={() => setMode("single")}
+            >
+              Single file → canonical
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "bundle"}
+              className={"eq-mode-tab" + (mode === "bundle" ? " eq-mode-tab--active" : "")}
+              onClick={() => setMode("bundle")}
+            >
+              SimPRO bundle → SharePoint paste
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "reconcile"}
+              className={"eq-mode-tab" + (mode === "reconcile" ? " eq-mode-tab--active" : "")}
+              onClick={() => setMode("reconcile")}
+            >
+              Reconcile
+            </button>
+          </div>
         </section>
 
         {mode === "single" ? (

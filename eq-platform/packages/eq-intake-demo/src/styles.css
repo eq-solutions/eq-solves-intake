@@ -881,6 +881,60 @@ button.eq-primary:hover {
   border-bottom-color: var(--eq-sky);
 }
 
+/* ===== Primary mode — the actual product, distinct from the engineering
+   scenarios below it. Royce's own confusion traced to this app defaulting
+   to a parser test harness instead of the real /intake screen (2026-09-04). */
+.eq-mode-primary {
+  margin-bottom: 20px;
+}
+
+.eq-mode-primary__button {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 14px 18px;
+  border: 1px solid var(--eq-line);
+  border-radius: 8px;
+  background: var(--eq-paper);
+  cursor: pointer;
+  text-align: left;
+}
+
+.eq-mode-primary__button:hover,
+.eq-mode-primary__button--active {
+  border-color: var(--eq-sky);
+  background: var(--eq-ice);
+}
+
+.eq-mode-primary__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--eq-ink);
+}
+
+.eq-mode-primary__subtitle {
+  font-size: 12px;
+  color: var(--eq-muted);
+}
+
+.eq-mode-secondary {
+  margin-bottom: 16px;
+}
+
+.eq-mode-secondary__label {
+  margin: 0 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--eq-muted);
+}
+
+.eq-mode-tabs--secondary {
+  margin-bottom: 0;
+}
+
 /* ===== SimPRO bundle rollup ===== */
 .eq-rollup {
   background: var(--eq-paper);
