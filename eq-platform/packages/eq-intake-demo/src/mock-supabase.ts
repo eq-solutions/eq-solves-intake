@@ -50,6 +50,13 @@ export function createMockSupabase(): SupabaseLikeClient {
         return { data: [], error: null };
       }
 
+      if (name === "eq_queue_list") {
+        // No steward process runs against this offline session, so the
+        // remediation queue is genuinely empty — same brand-new-tenant logic
+        // as eq_read_customers_by_intake above.
+        return { data: [], error: null };
+      }
+
       if (name === "eq_intake_commit_batch") {
         const rows = (p.p_rows as Record<string, unknown>[] | undefined) ?? [];
         const table = String(p.p_table ?? "rows");
