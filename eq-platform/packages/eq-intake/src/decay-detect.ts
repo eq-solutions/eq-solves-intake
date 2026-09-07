@@ -8,6 +8,7 @@
  */
 
 import type { SupabaseLikeClient } from './canonical/commit-canonical.js';
+import { readEntityColumns } from './read-entity-columns.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -56,10 +57,6 @@ const PK_FIELD: Record<string, string> = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-type RpcClient = {
-  rpc: (name: string, params: unknown) => Promise<{ data: unknown; error: { message: string } | null }>;
-};
-
 function labelForRow(entity: string, row: Record<string, unknown>): string {
   if (entity === 'staff' || entity === 'contacts') {
     return `${row['first_name'] ?? ''} ${row['last_name'] ?? ''}`.trim();
@@ -91,16 +88,23 @@ function daysSince(isoStr: string, now: Date): number {
 
 const ENTITIES = ['staff', 'customers', 'sites', 'contacts', 'assets'] as const;
 
+// Exactly the columns labelForRow()/the staleness loop below touch for each
+// entity — PK field (per PK_FIELD above) + label fields + active + updated_at.
+const DECAY_COLUMNS: Record<string, string[]> = {
+  staff:     ['staff_id', 'first_name', 'last_name', 'active', 'updated_at'],
+  customers: ['customer_id', 'company_name', 'active', 'updated_at'],
+  sites:     ['site_id', 'name', 'active', 'updated_at'],
+  contacts:  ['first_name', 'last_name', 'active', 'updated_at'],
+  assets:    ['name', 'active', 'updated_at'],
+};
+
 export async function decayCheck(
   supabase: SupabaseLikeClient,
   now = new Date(),
 ): Promise<DecaySummary[]> {
-  const client = supabase as unknown as RpcClient;
-
   const results = await Promise.all(
     ENTITIES.map((entity) =>
-      client
-        .rpc('eq_tidy_read_entity', { p_table: entity })
+      readEntityColumns(supabase, entity, DECAY_COLUMNS[entity]!)
         .then((r) => ({ entity, ...r })),
     ),
   );

@@ -22,7 +22,8 @@
 
 import type { SupabaseLikeClient } from './canonical/commit-canonical.js';
 import { isValidAbn, isValidAuPhone, isValidAuState, isValidAuPostcode } from './normalize.js';
-import { getFlaggableFields, isFieldBlank, type FieldImportanceOverride } from './field-importance.js';
+import { getFlaggableFields, isFieldBlank, FIELD_IMPORTANCE, type FieldImportanceOverride } from './field-importance.js';
+import { readEntityColumns } from './read-entity-columns.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -71,6 +72,46 @@ const PHONE_FIELD: Record<string, string> = {
   contacts:  'work_phone',
   staff:     'phone',
 };
+
+// Real columns behind FIELD_IMPORTANCE's field names — expands a
+// sourceFields-coalesced virtual field (e.g. customers' "phone", which is
+// mobile_phone || primary_phone, not a literal column) into its actual
+// underlying columns, so the projected RPC read never asks for a field name
+// that isn't a real column on the table.
+function physicalColumnsFor(entity: string): string[] {
+  const cols = new Set<string>();
+  for (const entry of FIELD_IMPORTANCE[entity] ?? []) {
+    if (entry.sourceFields) {
+      for (const sf of entry.sourceFields) cols.add(sf);
+    } else {
+      cols.add(entry.field);
+    }
+  }
+  return [...cols];
+}
+
+// rowValidityChecks' own hardcoded field accesses below, entity by entity.
+const VALIDITY_CHECK_COLUMNS: Record<string, string[]> = {
+  customers: ['abn', 'state'],
+  sites:     ['state', 'postcode'],
+};
+
+// The exact set of columns this module ever reads off a row for a given
+// entity — required fields + every field-importance field regardless of
+// tier (a tenant override can promote any of them into scope at runtime,
+// so "optional" fields still need to be fetched) + validity-check fields +
+// the phone field + updated_at (freshness).
+function buildRpcColumns(entity: string): string[] {
+  const cols = new Set<string>([
+    ...(REQUIRED_FIELDS[entity] ?? []),
+    ...physicalColumnsFor(entity),
+    ...(VALIDITY_CHECK_COLUMNS[entity] ?? []),
+    'updated_at',
+  ]);
+  const phoneField = PHONE_FIELD[entity];
+  if (phoneField) cols.add(phoneField);
+  return [...cols];
+}
 
 const FRESHNESS_WINDOW_DAYS = 365;
 
@@ -156,19 +197,16 @@ function topGaps(
 // Public: computeHealthScores
 // ---------------------------------------------------------------------------
 
-type RpcFn = (name: string, params: unknown) => Promise<{ data: unknown; error: { message: string } | null }>;
-
 export async function computeHealthScores(
   supabase: SupabaseLikeClient,
   overrides?: FieldImportanceOverride[],
 ): Promise<HealthScore[]> {
   const entities = Object.keys(REQUIRED_FIELDS) as EntityKey[];
-  const rpc = (supabase as unknown as { rpc: RpcFn }).rpc.bind(supabase);
   const inspectedFields = buildInspectedFields(overrides);
 
   const results = await Promise.all(
     entities.map((entity) =>
-      rpc('eq_tidy_read_entity', { p_table: entity }).then((r) => ({ entity, ...r })),
+      readEntityColumns(supabase, entity, buildRpcColumns(entity)).then((r) => ({ entity, ...r })),
     ),
   );
 

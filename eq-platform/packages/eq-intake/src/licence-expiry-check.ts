@@ -12,6 +12,12 @@
  */
 
 import type { SupabaseLikeClient } from './canonical/commit-canonical.js';
+import { readEntityColumns } from './read-entity-columns.js';
+
+// Every field this module actually reads off a licence row — see LicenceRow.
+// staff_name is never populated by either RPC (no join; kept in the type for
+// callers that might join it in later) so it's deliberately not requested.
+const LICENCE_COLUMNS = ['licence_id', 'licence_type', 'expiry_date', 'staff_id'];
 
 // ---------------------------------------------------------------------------
 // Types
@@ -80,9 +86,7 @@ export async function runLicenceExpiryCheck(
   // Fetch licences expiring within 60 days.
   // We call the tidy read RPC to stay within RLS — it returns all licences
   // for the current tenant. We filter in JS to avoid adding a new RPC.
-  const { data: rawData, error } = await (supabase as unknown as {
-    rpc: (name: string, params: unknown) => Promise<{ data: unknown; error: { message: string } | null }>;
-  }).rpc('eq_tidy_read_entity', { p_table: 'licences' });
+  const { data: rawData, error } = await readEntityColumns(supabase, 'licences', LICENCE_COLUMNS);
 
   if (error) {
     throw new Error(`runLicenceExpiryCheck: failed to read licences — ${error.message}`);
