@@ -87,14 +87,25 @@ function bigrams(s: string): Set<string> {
   return bg;
 }
 
+/**
+ * Core Dice computation over pre-built bigram sets. Split out of dice() so
+ * the O(n²) clustering loop below can precompute each candidate's bigram
+ * set once (buildCandidates) instead of rebuilding both sides on every one
+ * of the ~n²/2 pairs — the dominant cost once an entity gets into the
+ * thousands of rows (2,854 live on the assets table as of 2026-09-07).
+ * Iterates the smaller set as a small additional win.
+ */
+function diceOfBigrams(bA: Set<string>, bB: Set<string>): number {
+  const [small, large] = bA.size <= bB.size ? [bA, bB] : [bB, bA];
+  let matches = 0;
+  small.forEach((bg) => { if (large.has(bg)) matches++; });
+  return (2 * matches) / (bA.size + bB.size);
+}
+
 export function dice(a: string, b: string): number {
   if (a === b) return 1;
   if (a.length < 2 || b.length < 2) return a === b ? 1 : 0;
-  const bA = bigrams(a);
-  const bB = bigrams(b);
-  let matches = 0;
-  bA.forEach((bg) => { if (bB.has(bg)) matches++; });
-  return (2 * matches) / (bA.size + bB.size);
+  return diceOfBigrams(bigrams(a), bigrams(b));
 }
 
 // ---------------------------------------------------------------------------
@@ -153,6 +164,8 @@ type Candidate = {
   active:       boolean;
   hasLink:      boolean;
   completeness: number;
+  // Precomputed once per candidate (not per pair) — see diceOfBigrams().
+  key_primary_bigrams: Set<string>;
 };
 
 /**
@@ -193,7 +206,8 @@ function buildCandidates(entity: string, rows: EntityRow[]): Candidate[] {
       const hasLink      = hasCustomerLink(entity, row);
       const completeness = completenessOf(row);
       const key_primary  = identityKeyFor(entity, row);
-      const base = { id, label, active, hasLink, completeness, key_primary };
+      const key_primary_bigrams = bigrams(key_primary);
+      const base = { id, label, active, hasLink, completeness, key_primary, key_primary_bigrams };
 
       if (entity === 'customers') {
         return {
@@ -325,9 +339,16 @@ function detectForEntity(entity: string, rows: EntityRow[]): DuplicateReport {
         sim   = CODE_SIM;
         field = 'code';
       }
-      // Primary key fuzzy match
+      // Primary key fuzzy match — reuses each candidate's precomputed bigram
+      // set (buildCandidates) instead of rebuilding both sides on every one
+      // of the ~n²/2 pairs. Same short-circuits as dice(), just inlined so
+      // the precomputed sets can be passed straight to diceOfBigrams().
       else if (a.key_primary && b.key_primary) {
-        sim   = dice(a.key_primary, b.key_primary);
+        sim = a.key_primary === b.key_primary
+          ? 1
+          : a.key_primary.length < 2 || b.key_primary.length < 2
+            ? 0
+            : diceOfBigrams(a.key_primary_bigrams, b.key_primary_bigrams);
         field = entity === 'customers' ? 'company_name' :
                 entity === 'sites'     ? 'name+address' :
                 'full_name';
