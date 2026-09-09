@@ -33,7 +33,7 @@
       "format": "uuid",
       "description": "When set with site_id null, plan applies to all sites of this customer.",
       "x-eq-foreign-key": "customer.customer_id",
-      "x-eq-fk-fuzzy-match-on": ["customer.name", "customer.code"],
+      "x-eq-fk-fuzzy-match-on": ["customer.company_name", "customer.code"],
       "x-eq-source-aliases": ["customer", "client", "customer_name", "client_name"]
     },
     "site_id": {

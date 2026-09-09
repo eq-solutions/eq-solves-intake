@@ -3,41 +3,84 @@
 // Source of truth: schemas/contact.schema.json — edit the JSON, regenerate.
 
 /**
- * A named person attached to a customer or a specific site. Replaces eq-solves-service's two parallel tables (customer_contacts, site_contacts) with a single canonical entity where exactly one of customer_id / site_id is set. Site-level contacts are surfaced on site reports; customer-level contacts are surfaced on customer dashboards.
+ * A person at a customer organisation. One customer can have many contacts (procurement, accounts, project manager, etc.). FK to customer via customer_id.
  */
 export interface Contact {
+  /**
+   * Internal canonical ID. Generated on import if not provided.
+   */
   contact_id: string;
+  /**
+   * Owning tenant. Set automatically by import context.
+   */
   tenant_id: string;
   /**
-   * Customer this contact belongs to. Exactly one of customer_id / site_id is set.
+   * Customer this contact belongs to. Resolved by FK match on import.
    */
-  customer_id?: string | null;
+  customer_id: string;
   /**
-   * Site this contact belongs to. Exactly one of customer_id / site_id is set.
+   * Source-system contact ID.
    */
-  site_id?: string | null;
+  external_id?: string | null;
   /**
-   * Full name of the contact.
+   * Source-system Customer ID this contact belongs to. Used at intake to resolve customer_id FK before commit.
    */
-  name: string;
+  external_customer_id?: string | null;
   /**
-   * Free-text job title or role (e.g. 'Facilities Manager', 'Site Supervisor', 'Procurement').
+   * Denormalised company name from the source. Useful when contact rows arrive without a customer lookup table.
    */
-  role?: string | null;
+  company_name?: string | null;
+  /**
+   * Honorific (Mr / Mrs / Dr / etc.).
+   */
+  salutation?: string | null;
+  /**
+   * Given name. Required.
+   */
+  first_name: string;
+  /**
+   * Family name. Required.
+   */
+  last_name: string;
   email?: string | null;
   /**
-   * AU phone, coerced to standard format.
+   * Work / office phone. Normalised to E.164.
    */
-  phone?: string | null;
+  work_phone?: string | null;
+  mobile_phone?: string | null;
+  fax?: string | null;
   /**
-   * Whether this is the primary contact for the parent (customer or site). At most one primary per parent.
+   * Job title or role.
    */
-  is_primary?: boolean;
-  /**
-   * Whether this contact is still current.
-   */
-  active: boolean;
+  position?: string | null;
+  department?: string | null;
   notes?: string | null;
+  /**
+   * True if this is the customer's preferred contact for quotes.
+   */
+  is_default_quote_contact?: boolean | null;
+  /**
+   * True if this is the customer's preferred contact for job paperwork.
+   */
+  is_default_job_contact?: boolean | null;
+  /**
+   * True if this is the customer's preferred contact for invoices.
+   */
+  is_default_invoice_contact?: boolean | null;
+  /**
+   * True if this is the customer's preferred contact for statements.
+   */
+  is_default_statement_contact?: boolean | null;
+  /**
+   * Whether this contact is currently active.
+   */
+  active?: boolean;
+  /**
+   * When this record was last touched by an intake. System-managed.
+   */
   imported_at?: string | null;
+  /**
+   * Source of the import. System-managed.
+   */
   imported_from?: string | null;
 }

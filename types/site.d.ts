@@ -19,7 +19,7 @@ export interface Site {
    */
   external_id?: string | null;
   /**
-   * Source-system Customer ID that owns this site. Used at intake to resolve customer_id FK before commit. SimPRO exports carry this as 'simPRO Customer ID'.
+   * Source-system Customer ID that owns this site. Used at intake to resolve customer_id FK before commit.
    */
   external_customer_id?: string | null;
   /**
