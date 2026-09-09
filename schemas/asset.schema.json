@@ -25,7 +25,7 @@
     "external_id": {
       "type": ["string", "null"],
       "description": "Customer's tag/equipment number. Often physically labelled on the asset.",
-      "x-eq-source-aliases": ["tag", "tag_number", "tag_no", "equipment_no", "equipment_number", "asset_no", "asset_number", "asset_code", "asset_tag", "ref", "code", "plant_no", "plant_number", "plant_id", "item_code", "item_number", "item_no", "customer_tag", "equipment_tag", "facility_id"],
+      "x-eq-source-aliases": ["tag", "tag_number", "tag_no", "equipment_no", "equipment_number", "asset_no", "asset_number", "asset_code", "asset_tag", "ref", "code", "plant_no", "plant_number", "plant_id", "item_code", "item_number", "item_no", "sku", "customer_tag", "equipment_tag", "facility_id"],
       "maxLength": 64
     },
     "site_id": {
@@ -34,19 +34,19 @@
       "description": "Site this asset belongs to.",
       "x-eq-foreign-key": "site.site_id",
       "x-eq-fk-fuzzy-match-on": ["site.name", "site.code", "site.external_id"],
-      "x-eq-source-aliases": ["site", "location", "site_name", "site_code"]
+      "x-eq-source-aliases": ["site", "location", "site_name", "site_code", "facility", "facility_name", "premises", "property", "address"]
     },
     "parent_asset_id": {
       "type": ["string", "null"],
       "format": "uuid",
       "description": "If this asset is part of a hierarchy (e.g. a breaker inside a switchboard), the parent.",
       "x-eq-foreign-key": "asset.asset_id",
-      "x-eq-source-aliases": ["parent", "parent_tag", "located_in", "part_of"]
+      "x-eq-source-aliases": ["parent", "parent_tag", "located_in", "part_of", "parent_id", "parent_equipment", "parent_asset", "contained_in", "mounted_on", "housed_in", "parent_ref"]
     },
     "asset_type": {
       "type": "string",
       "description": "Category of asset. Drives default service schedules and inspection forms.",
-      "x-eq-source-aliases": ["type", "category", "equipment_type", "kind", "classification"],
+      "x-eq-source-aliases": ["type", "category", "equipment_type", "kind", "classification", "item_type", "asset_class", "asset_category", "equipment_class", "category_name", "equipment_category", "asset_kind", "type_of_asset"],
       "x-eq-suggested-values": [
         "switchboard",
         "ups",
@@ -81,50 +81,50 @@
     "name": {
       "type": "string",
       "description": "Display name. Required.",
-      "x-eq-source-aliases": ["asset_name", "description", "equipment_name"],
+      "x-eq-source-aliases": ["asset_name", "description", "equipment_name", "title", "item_name", "item_description", "item description", "item", "asset_description", "equipment_description", "label", "asset_label", "plant_name", "part_description", "device_name"],
       "minLength": 1,
       "maxLength": 200
     },
     "make": {
       "type": ["string", "null"],
       "description": "Manufacturer.",
-      "x-eq-source-aliases": ["manufacturer", "mfr", "brand", "make_brand"],
+      "x-eq-source-aliases": ["manufacturer", "mfr", "brand", "make_brand", "oem", "vendor", "manufacturer_name", "mfr_name", "maker", "supplier_brand"],
       "maxLength": 100
     },
     "model": {
       "type": ["string", "null"],
       "description": "Model number / designation.",
-      "x-eq-source-aliases": ["model_no", "model_number", "model_name", "type_no"],
+      "x-eq-source-aliases": ["model_no", "model_number", "model_name", "type_no", "part_number", "part_no", "model_code", "product_code", "product_number", "product_no", "product_name", "catalogue_no", "catalog_no"],
       "maxLength": 100
     },
     "serial_number": {
       "type": ["string", "null"],
-      "x-eq-source-aliases": ["serial", "serial_no", "sn", "s_n", "serial #"],
+      "x-eq-source-aliases": ["serial", "serial_no", "sn", "s_n", "s/n", "serial #", "mfr_serial", "manufacturer_serial", "serial_id", "factory_serial", "unit_serial"],
       "maxLength": 100
     },
     "rating": {
       "type": ["string", "null"],
       "description": "Capacity/rating as a free text string. e.g. '500kVA', '200A', '1600L/min'.",
-      "x-eq-source-aliases": ["capacity", "size", "rating_capacity", "kva", "amps"],
+      "x-eq-source-aliases": ["capacity", "size", "rating_capacity", "kva", "amps", "kw", "kva_rating", "watts", "voltage", "current", "power", "va", "hp", "btu", "lpm", "l_min", "output_rating", "capacity_rating", "electrical_rating", "motor_rating", "duty"],
       "maxLength": 100
     },
     "install_date": {
       "type": ["string", "null"],
       "format": "date",
-      "x-eq-source-aliases": ["installed", "installation_date", "commissioned", "comm_date"],
+      "x-eq-source-aliases": ["installed", "installation_date", "commissioned", "comm_date", "date_installed", "date_commissioned", "fitted_date", "date_fitted", "energised", "energized", "date_energised", "date_energized", "in_service_date", "commissioning_date", "first_used"],
       "x-eq-coerce": "date"
     },
     "warranty_expires": {
       "type": ["string", "null"],
       "format": "date",
-      "x-eq-source-aliases": ["warranty_end", "warranty_expiry", "warranty_until"],
+      "x-eq-source-aliases": ["warranty_end", "warranty_expiry", "warranty_until", "warranty_expiration", "warranty_to", "guarantee_until", "guarantee_expiry", "warranty_finish", "warranty_date", "warranty_ends"],
       "x-eq-coerce": "date"
     },
     "criticality": {
       "type": "string",
       "enum": ["critical", "high", "medium", "low"],
       "description": "Operational criticality. Drives SLA tier and escalation.",
-      "x-eq-source-aliases": ["priority", "importance", "tier", "risk_level"],
+      "x-eq-source-aliases": ["priority", "importance", "tier", "risk_level", "severity", "business_criticality", "criticality_level", "criticality_rating", "risk", "impact_level"],
       "x-eq-enum-aliases": {
         "critical": ["1", "p1", "tier_1", "tier 1", "very high", "vh"],
         "high": ["2", "p2", "tier_2", "tier 2", "h"],
@@ -151,39 +151,39 @@
       "format": "uuid",
       "description": "Reference to the service schedule template applied to this asset.",
       "x-eq-foreign-key": "service_schedule.schedule_id",
-      "x-eq-source-aliases": ["schedule", "service_plan", "pm_schedule", "pm_plan", "maintenance_plan", "service_schedule", "service_template", "pm_template", "schedule_name", "maintenance_schedule"]
+      "x-eq-source-aliases": ["schedule", "service_plan", "pm_schedule", "pm_plan", "maintenance_plan", "service_schedule", "service_template", "pm_template", "schedule_name", "maintenance_schedule", "sla_schedule"]
     },
     "ppm_frequency": {
       "type": ["string", "null"],
       "description": "How often this asset is serviced. Free text — common values: '6-Monthly May/Nov', 'Annual', 'Quarterly', 'Monthly', or shorthand like 'M', 'Q', '6M', 'A'. Parsed into a formal service_schedule record at commit time when the schedule entity is the source of truth.",
-      "x-eq-source-aliases": ["frequency", "service_interval", "pm_frequency", "maintenance_frequency", "service_cadence", "inspection_frequency", "pm_interval", "service_frequency", "maint_freq", "service_period", "ppm interval"],
+      "x-eq-source-aliases": ["frequency", "service_interval", "pm_frequency", "maintenance_frequency", "service_cadence", "inspection_frequency", "pm_interval", "service_frequency", "maint_freq", "service_period", "ppm_frequency", "ppm interval"],
       "maxLength": 100
     },
     "last_service_date": {
       "type": ["string", "null"],
       "format": "date",
-      "x-eq-source-aliases": ["last_pm", "last_serviced", "last_inspection", "last_service"],
+      "x-eq-source-aliases": ["last_pm", "last_serviced", "last_inspection", "last_service", "previous_service", "prev_service", "last_maintenance", "last_check", "last_test", "date_last_serviced", "last_pm_date", "last_inspection_date", "last_serviced_date"],
       "x-eq-coerce": "date"
     },
     "next_service_due": {
       "type": ["string", "null"],
       "format": "date",
-      "x-eq-source-aliases": ["next_pm", "due_date", "next_due", "next_inspection"],
+      "x-eq-source-aliases": ["next_pm", "due_date", "next_due", "next_inspection", "next_service", "scheduled_service", "due", "next_maintenance", "service_due", "pm_due", "next_check", "next_test", "next_pm_date", "due_for_service", "next_service_date"],
       "x-eq-coerce": "date"
     },
     "location_in_site": {
       "type": ["string", "null"],
       "description": "Free text location within the site, e.g. 'Level 2 Plant Room', 'MSB-A'.",
-      "x-eq-source-aliases": ["location_detail", "room", "area", "where", "physical_location"]
+      "x-eq-source-aliases": ["location_detail", "room", "area", "where", "physical_location", "building", "floor", "level", "zone", "position", "rack", "room_name", "plant_room", "sub_location", "exact_location", "room_number", "specific_location", "location_within_site"]
     },
     "barcode": {
       "type": ["string", "null"],
       "description": "Barcode or QR code value for scan-based identification.",
-      "x-eq-source-aliases": ["qr", "qr_code", "barcode_value"]
+      "x-eq-source-aliases": ["qr", "qr_code", "barcode_value", "scan_code", "barcode_id", "bar_code", "qr_value", "scannable_id", "rfid"]
     },
     "active": {
       "type": "boolean",
-      "x-eq-source-aliases": ["is_active", "current", "status", "in_service"],
+      "x-eq-source-aliases": ["is_active", "current", "status", "in_service", "enabled", "state", "asset_status", "operational", "in_use", "live"],
       "x-eq-coerce": "boolean",
       "default": true
     },
@@ -195,7 +195,7 @@
     },
     "client_classification": {
       "type": ["object", "null"],
-      "description": "Customer-imposed asset taxonomy preserved verbatim. Used when a client requires their own classification scheme on their assets (e.g. data centre operator's Maximo IAM values, principal contractor's compliance taxonomy). Stays as free-form so client-specific structure isn't coerced into our canonical enums.",
+      "description": "Customer-imposed asset taxonomy preserved verbatim. Used when a client requires their own classification scheme on their assets (e.g. data centre operator's Maximo IAM values, principal contractor's compliance taxonomy). Stays as free-form so client-specific structure isn't coerced into our canonical enums. Set programmatically by importers when a source spreadsheet carries 50+ extra columns of customer-side metadata.",
       "additionalProperties": true,
       "x-eq-source-aliases": ["client_class", "customer_taxonomy", "client_attributes", "client_metadata", "external_classification", "client_taxonomy"]
     },

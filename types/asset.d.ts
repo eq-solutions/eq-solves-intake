@@ -75,7 +75,7 @@ export interface Asset {
    */
   defects_summary?: string | null;
   /**
-   * Customer-imposed asset taxonomy preserved verbatim. Used when a client requires their own classification scheme on their assets (e.g. data centre operator's Maximo IAM values, principal contractor's compliance taxonomy). Stays as free-form so client-specific structure isn't coerced into our canonical enums.
+   * Customer-imposed asset taxonomy preserved verbatim. Used when a client requires their own classification scheme on their assets (e.g. data centre operator's Maximo IAM values, principal contractor's compliance taxonomy). Stays as free-form so client-specific structure isn't coerced into our canonical enums. Set programmatically by importers when a source spreadsheet carries 50+ extra columns of customer-side metadata.
    */
   client_classification?: {
     [k: string]: unknown;
