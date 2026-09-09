@@ -58,8 +58,7 @@
     },
     "client_name": {
       "type": ["string", "null"],
-      "description": "DEPRECATED legacy free-text client name. Retained for round-trip on imports from sources that don't carry a stable customer_id. New imports should resolve to customer_id via the FK resolver; this column may be removed in v2.",
-      "x-eq-deprecated": true,
+      "description": "Name of the client this site belongs to.",
       "x-eq-source-aliases": ["client", "customer", "customer_name", "company"]
     },
     "site_type": {
@@ -115,8 +114,9 @@
     },
     "country": {
       "type": ["string", "null"],
-      "description": "ISO 3166-1 alpha-2 code. Defaults to AU on import if not specified.",
+      "description": "ISO 3166-1 alpha-2 code. Defaults to AU on import if not specified. Input is coerced via @eq/validation's coerceCountry so full names like 'Australia' or short forms like 'USA'/'UK' resolve to their alpha-2 codes before the length check runs.",
       "x-eq-source-aliases": ["nation", "country_code"],
+      "x-eq-coerce": "country-iso-alpha2",
       "default": "AU",
       "maxLength": 2
     },

@@ -35,7 +35,7 @@ export interface Site {
    */
   customer_id?: string | null;
   /**
-   * DEPRECATED legacy free-text client name. Retained for round-trip on imports from sources that don't carry a stable customer_id. New imports should resolve to customer_id via the FK resolver; this column may be removed in v2.
+   * Name of the client this site belongs to.
    */
   client_name?: string | null;
   /**
@@ -63,7 +63,7 @@ export interface Site {
    */
   postcode?: string | null;
   /**
-   * ISO 3166-1 alpha-2 code. Defaults to AU on import if not specified.
+   * ISO 3166-1 alpha-2 code. Defaults to AU on import if not specified. Input is coerced via @eq/validation's coerceCountry so full names like 'Australia' or short forms like 'USA'/'UK' resolve to their alpha-2 codes before the length check runs.
    */
   country?: string | null;
   /**
