@@ -34,13 +34,13 @@
     "external_id": {
       "type": ["string", "null"],
       "description": "Source-system contact ID.",
-      "x-eq-source-aliases": ["simpro_contact_id", "contact_id", "id"],
+      "x-eq-source-aliases": ["contact_id", "id"],
       "maxLength": 64
     },
     "external_customer_id": {
       "type": ["string", "null"],
       "description": "Source-system Customer ID this contact belongs to. Used at intake to resolve customer_id FK before commit.",
-      "x-eq-source-aliases": ["simpro_customer_id", "customer_id", "account_id", "company_id"],
+      "x-eq-source-aliases": ["customer_id", "account_id", "company_id"],
       "maxLength": 64
     },
     "company_name": {
